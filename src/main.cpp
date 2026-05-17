@@ -5,11 +5,19 @@
 #include "render/engine.h"
 #include "net/wifi.h"
 #include "net/axiom.h"
+#include "store/nvs.h"
 
-// Ensures axiom.cpp is linked; never actually executes (false branch).
-[[maybe_unused]] static auto axiom_linker_anchor = []() {
+// Ensures axiom.cpp and nvs.cpp are linked; never actually executes (false branch).
+[[maybe_unused]] static auto link_anchors = []() {
   std::vector<rcpaper::PageRecord> v;
-  if (false) rcpaper::axiom_fetch_pages(v);
+  rcpaper::DeviceState s;
+  if (false) {
+    rcpaper::axiom_fetch_pages(v);
+    s = rcpaper::nvs_load();
+    rcpaper::nvs_save(s);
+    rcpaper::nvs_save_index(0);
+    rcpaper::nvs_init();
+  }
   return 0;
 }();
 
