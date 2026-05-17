@@ -15,7 +15,10 @@ void setup() {
   static const char* PAGE = R"({
   "type":"vstack","pad":14,"gap":6,
   "children":[
-    {"type":"text","value":"rcpapercolor","size":"h1","color":"white","bg":"red","pad":8,"align":"center"},
+    {"type":"hstack","align":"center","gap":8,"children":[
+      {"type":"icon","name":"claude","size":24,"color":"red"},
+      {"type":"text","value":"rcpapercolor","size":"h1","color":"white","bg":"red","pad":8}
+    ]},
     {"type":"divider","color":"black","thickness":2},
     {"type":"text","value":"5H WINDOW","size":"sm","weight":"bold"},
     {"type":"hbar","pct":42,"color":"blue","height":24,"label_right":"42%"},

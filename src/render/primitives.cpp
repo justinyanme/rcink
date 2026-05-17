@@ -1,4 +1,5 @@
 #ifdef ARDUINO
+#include <algorithm>
 #include <M5GFX.h>
 #include "render/engine.h"
 #include "render/fonts_icons.h"
@@ -95,9 +96,22 @@ void draw_sparkline(M5GFX& gfx, const SparklineNode& s, Rect r) {
   gfx.drawFastHLine(r.x, r.y + r.h - 1, r.w, 0x000000);
 }
 
-// Stubs to be implemented in Task 8
-void draw_icon(M5GFX&, const IconNode&, Rect) {}
-void draw_image(M5GFX&, const ImageNode&, Rect) {}
+void draw_icon(M5GFX& gfx, const IconNode& i, Rect r) {
+  // Placeholder: filled square of the requested size + colour, centred in rect.
+  int16_t s = i.size > 0 ? i.size : (int16_t)std::min(r.w, r.h);
+  int16_t x = r.x + (r.w - s) / 2;
+  int16_t y = r.y + (r.h - s) / 2;
+  gfx.fillRect(x, y, s, s, color_to_m5gfx(i.color));
+}
+
+void draw_image(M5GFX& gfx, const ImageNode& i, Rect r) {
+  // v1 stub: outline the area + label.
+  gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
+  gfx.setFont(font_for(TextSize::Sm, Weight::Regular));
+  gfx.setTextColor(0x000000);
+  gfx.setCursor(r.x + 4, r.y + 4);
+  gfx.printf("img:%s", i.name.c_str());
+}
 
 }  // namespace rcpaper
 #endif
