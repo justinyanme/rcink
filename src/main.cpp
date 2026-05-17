@@ -36,10 +36,17 @@ static void render_page(const PageRecord& rec, bool stale) {
   paint_layout(M5.Display, laid);
 
   if (stale) {
+    // "STALE" pill in the bottom-right
     M5.Display.setFont(&fonts::FreeSansBold9pt7b);
-    M5.Display.setTextColor(0xD92027);
-    M5.Display.setCursor(8, vp.h - 18);
-    M5.Display.print("STALE");
+    const char* label = "STALE";
+    int16_t tw = M5.Display.textWidth(label);
+    int16_t pw = tw + 12, ph = 18;
+    int16_t px = vp.w - pw - 8;
+    int16_t py = vp.h - ph - 6;
+    M5.Display.fillRect(px, py, pw, ph, 0xD92027);   // red bg
+    M5.Display.setTextColor(0xFFFFFF);
+    M5.Display.setCursor(px + 6, py + 3);
+    M5.Display.print(label);
   }
   M5.Display.display();
 }
