@@ -3,6 +3,7 @@
 #include <M5Unified.h>
 #include "proto/parser.h"
 #include "render/engine.h"
+#include "net/wifi.h"
 
 void setup() {
   auto cfg = M5.config();
@@ -11,6 +12,8 @@ void setup() {
   M5.begin(cfg);
   M5.Display.setEpdMode(epd_mode_t::epd_text);
   M5.Display.fillScreen(0xFFFFFF);
+
+  rcpaper::wifi_connect();
 
   static const char* PAGE = R"({
   "type":"vstack","pad":14,"gap":6,
