@@ -4,6 +4,14 @@
 #include "proto/parser.h"
 #include "render/engine.h"
 #include "net/wifi.h"
+#include "net/axiom.h"
+
+// Ensures axiom.cpp is linked; never actually executes (false branch).
+[[maybe_unused]] static auto axiom_linker_anchor = []() {
+  std::vector<rcpaper::PageRecord> v;
+  if (false) rcpaper::axiom_fetch_pages(v);
+  return 0;
+}();
 
 void setup() {
   auto cfg = M5.config();
