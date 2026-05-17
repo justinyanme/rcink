@@ -70,3 +70,24 @@ def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> lis
         raise AxiomError(f"query HTTP {r.status_code}: {r.text}")
     payload = r.json()
     return [m.get("data", {}) for m in payload.get("matches", [])]
+
+
+def ingest_metric(*, id: str, fields: dict[str, float | int | str]) -> None:
+    """Write a flat metric event (no layout). Used for sparkline aggregation."""
+    token = _env("AXIOM_TOKEN")
+    dataset = _env("AXIOM_DATASET")
+    event = {
+        "_time": _now_iso(),
+        "kind": "metric",
+        "id": id,
+        **fields,
+    }
+    url = f"https://api.axiom.co/v1/datasets/{dataset}/ingest"
+    r = httpx.post(
+        url,
+        json=[event],
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise AxiomError(f"ingest HTTP {r.status_code}: {r.text}")

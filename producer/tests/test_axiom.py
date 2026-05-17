@@ -75,3 +75,20 @@ def test_query_apl_returns_rows(httpx_mock, env):
 def test_missing_env_raises():
     with pytest.raises(RuntimeError, match="AXIOM_TOKEN"):
         ingest(id="x", layout={})
+
+
+def test_ingest_metric(httpx_mock, env):
+    from rcpaper.axiom import ingest_metric
+
+    httpx_mock.add_response(
+        url="https://api.axiom.co/v1/datasets/rcpapercolor/ingest",
+        method="POST",
+        json={"ingested": 1, "failed": 0},
+    )
+    ingest_metric(id="claude.usage", fields={"five_hour_pct": 42.0, "seven_day_pct": 68.0})
+    import json
+
+    body = json.loads(httpx_mock.get_request().read())
+    assert body[0]["kind"] == "metric"
+    assert body[0]["five_hour_pct"] == 42.0
+    assert body[0]["seven_day_pct"] == 68.0
