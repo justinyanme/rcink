@@ -2,6 +2,9 @@
 #include "proto/schema.h"
 #include <cstdint>
 #include <vector>
+#ifdef ARDUINO
+#include <M5GFX.h>
+#endif
 
 namespace rcpaper {
 
@@ -31,5 +34,19 @@ struct LaidOutNode {
 };
 
 LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m);
+
+#ifdef ARDUINO
+class M5GFXMeasurer : public Measurer {
+ public:
+  explicit M5GFXMeasurer(M5GFX& gfx) : gfx_(gfx) {}
+  Size text_size(const TextNode& t) const override;
+  Size icon_size(const IconNode& i) const override;
+  Size image_size(const ImageNode& i) const override;
+ private:
+  M5GFX& gfx_;
+};
+
+void paint_layout(M5GFX& gfx, const LaidOutNode& laid);
+#endif
 
 }  // namespace rcpaper

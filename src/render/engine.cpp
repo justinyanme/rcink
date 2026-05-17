@@ -172,3 +172,63 @@ LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m)
 }
 
 }  // namespace rcpaper
+
+#ifdef ARDUINO
+#include "render/fonts_icons.h"
+
+namespace rcpaper {
+
+Size M5GFXMeasurer::text_size(const TextNode& t) const {
+  gfx_.setFont(font_for(t.size, t.weight));
+  int16_t w = gfx_.textWidth(t.value.c_str()) + 2 * t.pad;
+  int16_t h = font_height(t.size, t.weight) + 2 * t.pad;
+  return Size{w, h};
+}
+
+Size M5GFXMeasurer::icon_size(const IconNode& i) const {
+  return Size{i.size, i.size};
+}
+
+Size M5GFXMeasurer::image_size(const ImageNode& i) const {
+  return Size{i.width, i.height};
+}
+
+// Forward declarations from primitives.cpp
+void draw_text(M5GFX&, const TextNode&, Rect);
+void draw_divider(M5GFX&, const DividerNode&, Rect, bool vertical_main);
+void draw_hbar(M5GFX&, const HBarNode&, Rect);
+void draw_icon(M5GFX&, const IconNode&, Rect);
+void draw_image(M5GFX&, const ImageNode&, Rect);
+void draw_sparkline(M5GFX&, const SparklineNode&, Rect);
+void draw_marker(M5GFX&, const MarkerNode&, Rect);
+
+static void paint_node(M5GFX& gfx, const LaidOutNode& laid) {
+  if (!laid.node) return;
+  switch (laid.node->type) {
+    case NodeType::VStack:
+    case NodeType::HStack:
+      for (const auto& c : laid.children) paint_node(gfx, c);
+      break;
+    case NodeType::Spacer:
+      // no-op
+      break;
+    case NodeType::Divider:
+      draw_divider(gfx, laid.node->as_divider, laid.rect, /*vertical_main=*/false);
+      break;
+    case NodeType::Text:      draw_text(gfx,      laid.node->as_text,      laid.rect); break;
+    case NodeType::HBar:      draw_hbar(gfx,      laid.node->as_hbar,      laid.rect); break;
+    case NodeType::Icon:      draw_icon(gfx,      laid.node->as_icon,      laid.rect); break;
+    case NodeType::Image:     draw_image(gfx,     laid.node->as_image,     laid.rect); break;
+    case NodeType::Sparkline: draw_sparkline(gfx, laid.node->as_sparkline, laid.rect); break;
+    case NodeType::Marker:    draw_marker(gfx,    laid.node->as_marker,    laid.rect); break;
+    case NodeType::Unknown:
+    default: break;
+  }
+}
+
+void paint_layout(M5GFX& gfx, const LaidOutNode& root) {
+  paint_node(gfx, root);
+}
+
+}  // namespace rcpaper
+#endif
