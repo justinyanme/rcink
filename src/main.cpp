@@ -6,8 +6,9 @@
 #include "net/wifi.h"
 #include "net/axiom.h"
 #include "store/nvs.h"
+#include "power/sleep.h"
 
-// Ensures axiom.cpp and nvs.cpp are linked; never actually executes (false branch).
+// Ensures axiom.cpp, nvs.cpp, and sleep.cpp are linked; never actually executes (false branch).
 [[maybe_unused]] static auto link_anchors = []() {
   std::vector<rcpaper::PageRecord> v;
   rcpaper::DeviceState s;
@@ -17,6 +18,8 @@
     rcpaper::nvs_save(s);
     rcpaper::nvs_save_index(0);
     rcpaper::nvs_init();
+    rcpaper::current_wake_reason();
+    rcpaper::enter_deep_sleep_until(0);
   }
   return 0;
 }();
