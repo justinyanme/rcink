@@ -13,13 +13,18 @@ void setup() {
   M5.Display.fillScreen(0xFFFFFF);
 
   static const char* PAGE = R"({
-    "type":"vstack","pad":14,"gap":6,
-    "children":[
-      {"type":"text","value":"rcpapercolor","size":"h1","color":"white","bg":"red","pad":8,"align":"center"},
-      {"type":"divider","color":"black","thickness":2},
-      {"type":"text","value":"text + divider live","size":"body"}
-    ]
-  })";
+  "type":"vstack","pad":14,"gap":6,
+  "children":[
+    {"type":"text","value":"rcpapercolor","size":"h1","color":"white","bg":"red","pad":8,"align":"center"},
+    {"type":"divider","color":"black","thickness":2},
+    {"type":"text","value":"5H WINDOW","size":"sm","weight":"bold"},
+    {"type":"hbar","pct":42,"color":"blue","height":24,"label_right":"42%"},
+    {"type":"text","value":"7D WINDOW","size":"sm","weight":"bold"},
+    {"type":"hbar","pct":68,"color":"green","height":24,"label_right":"68%"},
+    {"type":"text","value":"daily usage","size":"sm","weight":"bold"},
+    {"type":"sparkline","values":[12,18,14,22,19,28,31],"color":"blue","height":50}
+  ]
+})";
 
   JsonDocument doc;
   deserializeJson(doc, PAGE);

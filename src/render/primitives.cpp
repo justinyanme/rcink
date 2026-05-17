@@ -29,12 +29,75 @@ void draw_divider(M5GFX& gfx, const DividerNode& d, Rect r, bool /*vertical_main
   gfx.fillRect(r.x, r.y, r.w, d.thickness, color_to_m5gfx(d.color));
 }
 
-// Stubs to be implemented in Tasks 7-8
-void draw_hbar(M5GFX&, const HBarNode&, Rect) {}
+void draw_hbar(M5GFX& gfx, const HBarNode& b, Rect r) {
+  // Border
+  uint32_t fg = color_to_m5gfx(b.color);
+  gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
+  // Fill
+  int16_t inner_w = r.w - 4;
+  int16_t pct = (int16_t)b.pct;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  int16_t fill = (int16_t)(((int32_t)inner_w * pct) / 100);
+  if (fill > 0) gfx.fillRect(r.x + 2, r.y + 2, fill, r.h - 4, fg);
+
+  // Optional labels — left at the inset, right at the trailing edge.
+  if (!b.label_left.empty()) {
+    gfx.setFont(font_for(TextSize::Sm, Weight::Bold));
+    gfx.setTextColor(0xFFFFFF);
+    gfx.setCursor(r.x + 4, r.y + (r.h - 14) / 2);
+    gfx.print(b.label_left.c_str());
+  }
+  if (!b.label_right.empty()) {
+    gfx.setFont(font_for(TextSize::Sm, Weight::Bold));
+    gfx.setTextColor(0x000000);
+    int16_t tw = gfx.textWidth(b.label_right.c_str());
+    gfx.setCursor(r.x + r.w - tw - 4, r.y + (r.h - 14) / 2);
+    gfx.print(b.label_right.c_str());
+  }
+}
+
+void draw_marker(M5GFX& gfx, const MarkerNode& m, Rect r) {
+  // r covers the previous sibling's rect (passed by engine via overlay layout).
+  // We just draw a vertical line at pct of r.w, full height of r.
+  int16_t pct = (int16_t)m.pct;
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  int16_t x = r.x + (int16_t)(((int32_t)r.w * pct) / 100);
+  gfx.drawFastVLine(x, r.y - 4, r.h + 8, color_to_m5gfx(m.color));
+}
+
+void draw_sparkline(M5GFX& gfx, const SparklineNode& s, Rect r) {
+  if (s.values.empty()) return;
+  uint32_t fg = color_to_m5gfx(s.color);
+
+  // Baseline + range
+  float lo = s.values[0], hi = s.values[0];
+  for (float v : s.values) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (hi == lo) { lo -= 1; hi += 1; }
+
+  auto y_of = [&](float v) -> int16_t {
+    float pct = (v - lo) / (hi - lo);
+    return (int16_t)(r.y + r.h - (int16_t)(pct * (r.h - 2)) - 1);
+  };
+
+  size_t n = s.values.size();
+  if (n < 2) {
+    gfx.fillCircle(r.x + r.w / 2, y_of(s.values[0]), 2, fg);
+    return;
+  }
+  for (size_t i = 1; i < n; ++i) {
+    int16_t x0 = r.x + (int16_t)(((int32_t)(i - 1) * (r.w - 1)) / (int32_t)(n - 1));
+    int16_t x1 = r.x + (int16_t)(((int32_t)i       * (r.w - 1)) / (int32_t)(n - 1));
+    gfx.drawLine(x0, y_of(s.values[i - 1]), x1, y_of(s.values[i]), fg);
+  }
+  // Baseline rule
+  gfx.drawFastHLine(r.x, r.y + r.h - 1, r.w, 0x000000);
+}
+
+// Stubs to be implemented in Task 8
 void draw_icon(M5GFX&, const IconNode&, Rect) {}
 void draw_image(M5GFX&, const ImageNode&, Rect) {}
-void draw_sparkline(M5GFX&, const SparklineNode&, Rect) {}
-void draw_marker(M5GFX&, const MarkerNode&, Rect) {}
 
 }  // namespace rcpaper
 #endif
