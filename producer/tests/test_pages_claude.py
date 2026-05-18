@@ -33,10 +33,14 @@ def test_header_is_red_knockout_title():
 
 def test_footer_includes_updated_and_plan():
     page = build_claude_page(make_usage(), sparkline=None, updated_at=dt.datetime(2026, 5, 17, 14, 32))
-    footer_text = page["children"][-1]
-    assert footer_text["type"] == "text"
-    assert "14:32" in footer_text["value"]
-    assert "Max" in footer_text["value"]
+    footer_row = page["children"][-1]
+    assert footer_row["type"] == "hstack"
+    # Footer row is [icon('claude'), text('Max · updated 14:32')].
+    icon_node, text_node = footer_row["children"]
+    assert icon_node["type"] == "icon" and icon_node["name"] == "claude"
+    assert text_node["type"] == "text"
+    assert "14:32" in text_node["value"]
+    assert "Max" in text_node["value"]
 
 
 def test_sparkline_only_added_when_present():

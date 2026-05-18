@@ -1,4 +1,10 @@
-"""Build a Codex usage page in the magazine style."""
+"""Build a Codex usage page in the magazine style.
+
+Mirrors `buildCodexMagazine` from the design canvas: knockout green header,
+two KPI rows (hbar height 18), DAILY USAGE · LAST 7 sparkline, yellow CREDITS
+sticker, hairline + metadata footer. The firmware paints the page-rotation
+indicator over the bottom 26 px.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,7 @@ from rcpaper.layout import (
     divider,
     hbar,
     hstack,
+    icon,
     spacer,
     text,
     vstack,
@@ -32,7 +39,7 @@ def _window_label(minutes: int | None) -> str:
 
 def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
     return vstack(
-        gap=3,
+        gap=2,
         children=[
             hstack(
                 align="center",
@@ -50,12 +57,9 @@ def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
                         f"{int(pct)}%" if pct is not None else "—",
                         size="h1",
                         color=color,
+                        weight="bold",
                     ),
-                    hbar(
-                        pct=pct if pct is not None else 0,
-                        color=color,
-                        height=14,
-                    ),
+                    hbar(pct=pct if pct is not None else 0, color=color, height=18),
                 ],
             ),
         ],
@@ -76,8 +80,9 @@ def build_codex_page(
             bg="green",
             pad=8,
             align="center",
+            weight="bold",
         ),
-        spacer(size=6),
+        spacer(size=8),
         _kpi_row(
             _window_label(usage.primary_window_min),
             usage.primary_pct,
@@ -87,7 +92,7 @@ def build_codex_page(
     ]
 
     if usage.secondary_pct is not None:
-        children.append(spacer(size=8))
+        children.append(spacer(size=12))
         children.append(
             _kpi_row(
                 _window_label(usage.secondary_window_min),
@@ -98,12 +103,12 @@ def build_codex_page(
         )
 
     if sparkline:
-        children.append(spacer(size=10))
+        children.append(spacer(size=12))
         children.append(text("DAILY USAGE · LAST 7", size="sm", weight="bold"))
-        children.append(spark(sparkline, color="blue", height=40))
+        children.append(spark(sparkline, color="blue", height=56))
 
     if usage.credits_dollars is not None:
-        children.append(spacer(size=10))
+        children.append(spacer(size=12))
         children.append(
             text(
                 f"CREDITS  ${usage.credits_dollars:.2f}",
@@ -119,11 +124,17 @@ def build_codex_page(
     children.append(spacer())
     children.append(divider(color="black", thickness=1))
     children.append(
-        text(
-            f"{usage.plan} plan · updated {updated_at:%H:%M}",
-            size="sm",
+        hstack(
             align="center",
-        )
+            gap=6,
+            children=[
+                icon("codex", size=12, color="green"),
+                text(
+                    f"{usage.plan} · updated {updated_at:%H:%M}",
+                    size="sm",
+                ),
+            ],
+        ),
     )
 
-    return vstack(pad=14, gap=4, children=children)
+    return vstack(pad=14, gap=6, children=children)

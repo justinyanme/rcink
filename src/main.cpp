@@ -74,12 +74,13 @@ static void paint_indicator(M5Canvas& canvas,
   const uint8_t prev_idx = (uint8_t)((idx + n - 1) % n);
   const uint8_t next_idx = (uint8_t)((idx + 1) % n);
 
-  auto upper = [](std::string s) {
-    for (char& c : s) c = (char)toupper((unsigned char)c);
-    return s;
+  auto upper = [](const String& s) {
+    String out = s;
+    out.toUpperCase();
+    return out;
   };
-  const std::string prev_id = upper(pages[prev_idx].id);
-  const std::string next_id = upper(pages[next_idx].id);
+  const String prev_id = upper(pages[prev_idx].id);
+  const String next_id = upper(pages[next_idx].id);
 
   const int16_t mid = y + IND_STRIP_H / 2;
 
@@ -124,7 +125,9 @@ static void render_page(const PageRecord& rec, bool stale) {
   M5GFXMeasurer m(M5.Display);
   int16_t W = (int16_t)M5.Display.width();
   int16_t H = (int16_t)M5.Display.height();
-  Rect vp{0, 0, W, H};
+  // Reserve the bottom strip for the page-rotation indicator (painted after
+  // the page tree), so producer pages can't write into that band.
+  Rect vp{0, 0, W, (int16_t)(H - IND_STRIP_H)};
   auto laid = run_layout(root, vp, m);
 
 #ifdef RCPAPER_DEV_NO_DRAW

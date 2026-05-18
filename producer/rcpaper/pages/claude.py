@@ -1,4 +1,11 @@
-"""Build a Claude usage page in the magazine style."""
+"""Build a Claude usage page in the magazine style.
+
+Mirrors `buildClaudeMagazine` from the design canvas: knockout red header,
+KPI rows with hbars (height 18), BY MODEL · 7D, DAILY USAGE · LAST 7 sparkline,
+hairline + footer row. The firmware overlays the page-rotation indicator at
+the bottom 26 px, so this builder doesn't include prev/next/index — only the
+plan + last-updated metadata footer.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +15,7 @@ from rcpaper.layout import (
     divider,
     hbar,
     hstack,
+    icon,
     spacer,
     text,
     vstack,
@@ -20,7 +28,7 @@ from rcpaper.sources.claude import ClaudeUsage
 
 def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
     return vstack(
-        gap=3,
+        gap=2,
         children=[
             hstack(
                 align="center",
@@ -38,12 +46,9 @@ def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
                         f"{int(pct)}%" if pct is not None else "—",
                         size="h1",
                         color=color,
+                        weight="bold",
                     ),
-                    hbar(
-                        pct=pct if pct is not None else 0,
-                        color=color,
-                        height=14,
-                    ),
+                    hbar(pct=pct if pct is not None else 0, color=color, height=18),
                 ],
             ),
         ],
@@ -51,12 +56,17 @@ def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
 
 
 def _model_cell(label: str, pct: float) -> dict:
-    color = "red" if pct >= 80 else "green"
     return vstack(
         pad=4,
+        gap=2,
         children=[
             text(label, size="sm", weight="bold"),
-            text(f"{int(pct)}%", size="body", color=color),
+            text(
+                f"{int(pct)}%",
+                size="body",
+                color="red" if pct >= 80 else "green",
+                weight="bold",
+            ),
         ],
     )
 
@@ -68,7 +78,6 @@ def build_claude_page(
     updated_at: dt.datetime,
 ) -> dict:
     children: list[dict] = [
-        # Red knockout header
         text(
             "CLAUDE",
             size="h1",
@@ -76,40 +85,45 @@ def build_claude_page(
             bg="red",
             pad=8,
             align="center",
+            weight="bold",
         ),
-        spacer(size=6),
-        # KPI rows
-        _kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "blue"),
         spacer(size=8),
+        _kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "blue"),
+        spacer(size=10),
         _kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "green"),
     ]
 
-    # Per-model row only when we have data
     model_cells = []
     if usage.opus_pct is not None:
-        model_cells.append(_model_cell("Opus", usage.opus_pct))
+        model_cells.append(_model_cell("OPUS", usage.opus_pct))
     if usage.sonnet_pct is not None:
-        model_cells.append(_model_cell("Sonnet", usage.sonnet_pct))
+        model_cells.append(_model_cell("SONNET", usage.sonnet_pct))
     if model_cells:
-        children.append(spacer(size=10))
+        children.append(spacer(size=12))
         children.append(text("BY MODEL · 7D", size="sm", weight="bold"))
         children.append(hstack(gap=6, children=model_cells))
 
-    # Sparkline only when provided
     if sparkline:
         children.append(spacer(size=10))
         children.append(text("DAILY USAGE · LAST 7", size="sm", weight="bold"))
-        children.append(spark(sparkline, color="blue", height=40))
+        children.append(spark(sparkline, color="blue", height=56))
 
-    # Footer
+    # Flex spacer pushes the footer to the bottom of whatever room is left after
+    # the firmware indicator strip is subtracted from the page viewport.
     children.append(spacer())
     children.append(divider(color="black", thickness=1))
     children.append(
-        text(
-            f"{usage.plan} plan · updated {updated_at:%H:%M}",
-            size="sm",
+        hstack(
             align="center",
-        )
+            gap=6,
+            children=[
+                icon("claude", size=12, color="red"),
+                text(
+                    f"{usage.plan} · updated {updated_at:%H:%M}",
+                    size="sm",
+                ),
+            ],
+        ),
     )
 
-    return vstack(pad=14, gap=4, children=children)
+    return vstack(pad=14, gap=6, children=children)

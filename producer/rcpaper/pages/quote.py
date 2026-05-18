@@ -19,7 +19,7 @@ _LINE_COLORS: tuple[str | None, ...] = (None, "blue", None, "red")
 
 def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
     masthead = hstack(
-        align="center",
+        align="start",
         children=[
             text("QUOTE", size="sm", weight="bold"),
             spacer(),
