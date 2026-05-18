@@ -18,13 +18,17 @@ using namespace rcpaper;
 // Persistent across the dev-console loop. Loaded once in setup().
 static DeviceState g_state;
 
+static void apply_local_tz() {
+  setenv("TZ", LOCAL_TZ, 1);
+  tzset();
+}
+
 static void sync_ntp_once() {
   // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
   configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
   // Apply local TZ so subsequent localtime_r() calls (e.g. for the footer
   // HH:MM stamps) render in the user's wall-clock instead of UTC.
-  setenv("TZ", LOCAL_TZ, 1);
-  tzset();
+  apply_local_tz();
   struct tm ti;
   int i;
   for (i = 0; i < 20 && !getLocalTime(&ti); ++i) delay(500);
@@ -67,11 +71,14 @@ static constexpr int TS_H  = 14;
 static constexpr int NAV_H = 22;
 static constexpr int IND_STRIP_H = TS_H + NAV_H;
 
-static String format_hhmm(uint64_t epoch_s) {
+static String format_local_hhmm(uint64_t epoch_s) {
   if (epoch_s == 0) return String("--:--");
+  // Both producer data_ts and firmware last_fetch_s are stored as UTC epoch
+  // seconds. LOCAL_TZ is a display rule only, applied identically here.
+  apply_local_tz();
   time_t t = (time_t)epoch_s;
-  struct tm tm;
-  localtime_r(&t, &tm);
+  struct tm tm {};
+  if (!localtime_r(&t, &tm)) return String("--:--");
   char buf[8];
   snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
   return String(buf);
@@ -143,9 +150,9 @@ static void paint_indicator(M5Canvas& canvas,
   // Bottom row: data HH:MM → refresh HH:MM, centered.
   const PageRecord& rec = pages[idx];
   String line = "data ";
-  line += format_hhmm(rec.data_ts);
+  line += format_local_hhmm(rec.data_ts);
   line += "  ->  refresh ";
-  line += format_hhmm(last_fetch_s);
+  line += format_local_hhmm(last_fetch_s);
 
   canvas.setFont(&fonts::FreeSans9pt7b);
   int16_t tw = canvas.textWidth(line.c_str());
@@ -474,8 +481,7 @@ void setup() {
   // Apply local TZ once per boot. TZ env survives within a process but not
   // across esp_restart/deep-sleep cycles, so set it before any localtime_r()
   // call (e.g. on cache-only wakes that skip NTP).
-  setenv("TZ", LOCAL_TZ, 1);
-  tzset();
+  apply_local_tz();
 
   WakeReason wr = current_wake_reason();
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);

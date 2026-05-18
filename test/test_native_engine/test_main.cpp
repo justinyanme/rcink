@@ -128,11 +128,71 @@ void test_divider_in_hstack_does_not_blow_up_outer_vstack() {
   TEST_ASSERT_EQUAL(74, right_div.rect.w);
 }
 
+// Regression: nested flex inside a multi-column hstack (the overview page's
+// shape) must not collapse to zero rects. Outer hstack of two vstack columns,
+// each column containing a kpi-row hstack with [text, flex-hbar]. Without
+// the UNBOUNDED_THRESHOLD guard, the inner hbar's probe-flex sizes the column
+// at 0x7FFF, the outer hstack's fixed_main overflows int16, and one or both
+// columns get a 0-width or negative-width rect.
+void test_nested_flex_two_column_overview_shape() {
+  // Build a kpi row: hstack([text("64%"), hbar(flex)]).
+  auto make_kpi_col = [](const char* label) {
+    LayoutNode col;
+    col.type = NodeType::VStack;
+    col.as_stack.gap = 4;
+
+    LayoutNode title;
+    title.type = NodeType::Text;
+    title.as_text.value = label;  // 6 chars → w=60
+
+    LayoutNode row;
+    row.type = NodeType::HStack;
+    row.as_stack.gap = 6;
+    LayoutNode pct;
+    pct.type = NodeType::Text;
+    pct.as_text.value = "42%";  // 3 chars → w=30
+    LayoutNode bar;
+    bar.type = NodeType::HBar;
+    bar.as_hbar.height = 12;
+    row.as_stack.children = {pct, bar};
+
+    col.as_stack.children = {title, row};
+    return col;
+  };
+
+  LayoutNode columns;
+  columns.type = NodeType::HStack;
+  columns.as_stack.gap = 10;
+  columns.as_stack.children = {make_kpi_col("CLAUDE"), make_kpi_col("CODEXX")};
+
+  LayoutNode root;
+  root.type = NodeType::VStack;
+  root.as_stack.pad = 14;
+  root.as_stack.children = {columns};
+
+  FakeMeasurer m;
+  auto layout = run_layout(root, Rect{0, 0, 540, 800}, m);
+
+  TEST_ASSERT_EQUAL(1, layout.children.size());
+  const auto& row_laid = layout.children[0];
+  TEST_ASSERT_EQUAL(2, row_laid.children.size());
+
+  // Both columns must be placed with non-trivial positive width.
+  const auto& col_a = row_laid.children[0];
+  const auto& col_b = row_laid.children[1];
+  TEST_ASSERT_GREATER_THAN(0, col_a.rect.w);
+  TEST_ASSERT_GREATER_THAN(0, col_b.rect.w);
+
+  // The columns must sit at distinct x positions (i.e. not overlapping at x=0).
+  TEST_ASSERT_NOT_EQUAL(col_a.rect.x, col_b.rect.x);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_vstack_basic_layout);
   RUN_TEST(test_flex_spacer_eats_remaining_space);
   RUN_TEST(test_align_center_in_hstack);
   RUN_TEST(test_divider_in_hstack_does_not_blow_up_outer_vstack);
+  RUN_TEST(test_nested_flex_two_column_overview_shape);
   return UNITY_END();
 }

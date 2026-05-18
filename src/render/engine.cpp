@@ -7,6 +7,13 @@ namespace rcpaper {
 static LaidOutNode layout_node(const LayoutNode& n, Rect viewport, const Measurer& m);
 static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m);
 
+// Sentinel: a main axis size at or above this is treated as "unbounded"
+// — i.e. we're inside a probe pass whose caller doesn't know its size yet.
+// In that case flex children must NOT inflate to fill, or their flexed
+// width gets accumulated into the parent's `fixed_main` and overflows int16.
+// Anything below this is still ample for real layouts (the panel is 540 px).
+static constexpr int16_t UNBOUNDED_THRESHOLD = 0x4000;
+
 // Compute natural main/cross size for a leaf node.
 // parent_cross is the available cross-axis dimension (used by fill-parent nodes).
 static Size natural_size(const LayoutNode& n, const Measurer& m, int16_t parent_cross, bool vertical) {
@@ -107,7 +114,10 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
 
     Size sz;
     if (c.type == NodeType::VStack || c.type == NodeType::HStack) {
-      // Probe-layout nested stack to determine its natural extent.
+      // Probe-layout nested stack to determine its natural extent. Pass
+      // probing=true so any flex descendants don't inflate to 0x7FFF and
+      // overflow int16 when summed; they contribute 0 main-size in probe
+      // mode and only flex on the real layout pass with a finite parent.
       Rect probe = vertical
         ? Rect{0, 0, cross_avail, 0x7FFF}
         : Rect{0, 0, 0x7FFF, cross_avail};
@@ -141,9 +151,14 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
     ? (int16_t)((n_children - 1) * s.gap)
     : (int16_t)0;
 
-  // Distribute remaining space to flex spacers.
+  // Distribute remaining space to flex spacers. If main_avail is at the
+  // unbounded sentinel (caller is probing this stack to measure its natural
+  // extent), flex children must NOT inflate — they'd grab 0x7FFF each and
+  // overflow the parent's int16 fixed_main accumulator, hiding the sub-tree.
+  // Flex only happens when the parent has handed us a real, finite main size.
+  const bool unbounded = main_avail >= UNBOUNDED_THRESHOLD;
   int16_t flex_each = 0;
-  if (flex_count > 0) {
+  if (flex_count > 0 && !unbounded) {
     int16_t remaining = (int16_t)(main_avail - fixed_main - gaps_total);
     flex_each = (int16_t)(std::max<int16_t>(0, remaining) / flex_count);
   }
