@@ -73,14 +73,21 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
   int16_t fixed_main = 0;
   int16_t max_cross  = 0;  // used as container row/col size for cross alignment
 
-  // HBar and Sparkline flex along the perpendicular of their own thickness:
-  // an HBar in an HStack wants to grow horizontally to fill remaining width,
-  // and its `height` property is the *cross-axis* thickness, not its main
-  // size. Same for Sparkline. (In a VStack these still report cross_avail as
-  // width and `height` as height, so the existing path still works.)
+  // HBar / Sparkline / Divider flex along the perpendicular of their own
+  // thickness: in an HStack they grow horizontally to fill remaining width,
+  // and their `height` / `thickness` property is the *cross-axis* extent,
+  // not their main size. (In a VStack they still report cross_avail as width
+  // and `height` / `thickness` as height, so the existing path still works.)
+  //
+  // Divider has to be in this list too: without it, an `hstack([…, divider,
+  // …])` pattern (e.g. editorial mastheads) trips natural_size's parent_cross
+  // path during the outer vstack's probe, where parent_cross = 0x7FFF; max_cross
+  // then blows up to int16 max and every sibling row gets pushed off-screen.
   auto child_is_flex_main = [&](const LayoutNode& c) {
     if (c.type == NodeType::Spacer && !c.as_spacer.has_size) return true;
-    if (!vertical && (c.type == NodeType::HBar || c.type == NodeType::Sparkline)) return true;
+    if (!vertical && (c.type == NodeType::HBar
+                   || c.type == NodeType::Sparkline
+                   || c.type == NodeType::Divider)) return true;
     return false;
   };
 
@@ -90,9 +97,10 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
     if (child_is_flex_main(c)) {
       flex_count++;
       is_flex[i] = true;
-      // For HBar/Sparkline in HStack: cross-axis size = their thickness.
+      // For HBar/Sparkline/Divider in HStack: cross-axis size = their thickness.
       if (c.type == NodeType::HBar)       child_cross[i] = c.as_hbar.height;
       if (c.type == NodeType::Sparkline)  child_cross[i] = c.as_sparkline.height;
+      if (c.type == NodeType::Divider)    child_cross[i] = c.as_divider.thickness;
       if (child_cross[i] > 0) max_cross = std::max(max_cross, child_cross[i]);
       continue;  // main size determined later
     }

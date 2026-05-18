@@ -84,10 +84,55 @@ void test_align_center_in_hstack() {
   TEST_ASSERT_EQUAL(10, layout.children[1].rect.y);
 }
 
+// Regression: divider inside an hstack must flex along the main axis like
+// hbar / sparkline. Without that treatment, natural_size returns parent_cross
+// (== 0x7FFF during the outer vstack's probe), max_cross blows up to int16
+// max, and every sibling row of the outer vstack gets pushed off-screen.
+//
+// Pattern: vstack([ hstack([divider, text("MASTHEAD"), divider]), text("BODY") ])
+// — the editorial direction's centered-text-with-rules masthead.
+void test_divider_in_hstack_does_not_blow_up_outer_vstack() {
+  LayoutNode masthead;
+  masthead.type = NodeType::HStack;
+  masthead.as_stack.gap = 6;
+  masthead.as_stack.align = Align::Center;
+
+  LayoutNode dl; dl.type = NodeType::Divider; dl.as_divider.thickness = 1;
+  LayoutNode title; title.type = NodeType::Text; title.as_text.value = "MAST"; // w=40, h=16
+  LayoutNode dr; dr.type = NodeType::Divider; dr.as_divider.thickness = 1;
+  masthead.as_stack.children = {dl, title, dr};
+
+  LayoutNode body; body.type = NodeType::Text; body.as_text.value = "B"; // w=10, h=16
+
+  LayoutNode root;
+  root.type = NodeType::VStack;
+  root.as_stack.gap = 4;
+  root.as_stack.children = {masthead, body};
+
+  FakeMeasurer m;
+  auto layout = run_layout(root, Rect{0, 0, 200, 600}, m);
+
+  TEST_ASSERT_EQUAL(2, layout.children.size());
+  // Masthead row must measure as tall as its tallest non-flex child (the title,
+  // h=16) — NOT 0x7FFF.
+  TEST_ASSERT_EQUAL(16, layout.children[0].rect.h);
+  // Body sits immediately after the masthead + gap, well inside the 600px viewport.
+  TEST_ASSERT_EQUAL(16 + 4, layout.children[1].rect.y);
+  // Dividers in the hstack flex along x: the row of {div, gap, title, gap, div}
+  // shares 200 - 40 - 2*6 = 148 between the two dividers ⇒ 74 px each.
+  TEST_ASSERT_EQUAL(3, layout.children[0].children.size());
+  const auto& left_div = layout.children[0].children[0];
+  const auto& right_div = layout.children[0].children[2];
+  TEST_ASSERT_EQUAL(74, left_div.rect.w);
+  TEST_ASSERT_EQUAL(1,  left_div.rect.h);  // thickness, not full row height
+  TEST_ASSERT_EQUAL(74, right_div.rect.w);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_vstack_basic_layout);
   RUN_TEST(test_flex_spacer_eats_remaining_space);
   RUN_TEST(test_align_center_in_hstack);
+  RUN_TEST(test_divider_in_hstack_does_not_blow_up_outer_vstack);
   return UNITY_END();
 }
