@@ -12,6 +12,7 @@ dependencies = [
 [project.scripts]
 claude-fetch = "scripts.claude_fetch:app"
 codex-fetch  = "scripts.codex_fetch:app"
+preview      = "scripts.preview:app"
 
 [dependency-groups]
 dev = [

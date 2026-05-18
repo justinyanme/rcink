@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <M5Unified.h>
+#include <esp_system.h>
 #include <time.h>
 
 #include "config.h"
@@ -13,6 +14,9 @@
 #include "power/sleep.h"
 
 using namespace rcpaper;
+
+// Persistent across the dev-console loop. Loaded once in setup().
+static DeviceState g_state;
 
 static void sync_ntp_once() {
   // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
@@ -29,6 +33,16 @@ static void sync_ntp_once() {
   }
 }
 
+static const char* epd_mode_name(epd_mode_t m) {
+  switch (m) {
+    case epd_mode_t::epd_quality:  return "quality";
+    case epd_mode_t::epd_text:     return "text";
+    case epd_mode_t::epd_fast:     return "fast";
+    case epd_mode_t::epd_fastest:  return "fastest";
+    default:                       return "?";
+  }
+}
+
 static void render_page(const PageRecord& rec, bool stale) {
   JsonDocument doc;
   if (deserializeJson(doc, rec.layout_json)) {
@@ -38,7 +52,9 @@ static void render_page(const PageRecord& rec, bool stale) {
   LayoutNode root = parse_layout(doc.as<JsonVariantConst>());
 
   M5GFXMeasurer m(M5.Display);
-  Rect vp{0, 0, (int16_t)M5.Display.width(), (int16_t)M5.Display.height()};
+  int16_t W = (int16_t)M5.Display.width();
+  int16_t H = (int16_t)M5.Display.height();
+  Rect vp{0, 0, W, H};
   auto laid = run_layout(root, vp, m);
 
 #ifdef RCPAPER_DEV_NO_DRAW
@@ -46,23 +62,56 @@ static void render_page(const PageRecord& rec, bool stale) {
                 rec.id.c_str(), stale ? 1 : 0, vp.w, vp.h);
   (void)laid;
 #else
-  M5.Display.fillScreen(0xFFFFFF);
-  paint_layout(M5.Display, laid);
+  uint32_t t0 = millis();
+  Serial.printf("[render] page=%s stale=%d mode=%s W=%d H=%d draw begin\n",
+                rec.id.c_str(), stale ? 1 : 0,
+                epd_mode_name(M5.Display.getEpdMode()), W, H);
+
+  // Draw to an offscreen canvas in PSRAM, then push the whole sprite to the
+  // panel in one operation. Color e-paper commits per-op when drawing
+  // directly on M5.Display — each text/rect would cause its own panel
+  // refresh. The canvas keeps all draws in RAM until pushSprite().
+  M5Canvas canvas(&M5.Display);
+  // 16bpp RGB565: keeps our muted brand colors (0xD92027, 0x0F4D92, ...)
+  // intact through the canvas. 4bpp indexed mode loses them to the default
+  // 16-color palette. Cost: 480 KB in PSRAM, of which we have ~8 MB free.
+  canvas.setColorDepth(16);
+  canvas.setPsram(true);
+  if (!canvas.createSprite(W, H)) {
+    Serial.println("[render] canvas alloc FAILED — falling back to direct draw");
+    M5.Display.fillScreen(0xFFFFFF);
+    paint_layout(M5.Display, laid);
+    M5.Display.display();
+    return;
+  }
+  canvas.fillSprite(0xFFFFFF);
+  paint_layout(canvas, laid);
 
   if (stale) {
     // "STALE" pill in the bottom-right
-    M5.Display.setFont(&fonts::FreeSansBold9pt7b);
+    canvas.setFont(&fonts::FreeSansBold9pt7b);
     const char* label = "STALE";
-    int16_t tw = M5.Display.textWidth(label);
+    int16_t tw = canvas.textWidth(label);
     int16_t pw = tw + 12, ph = 18;
-    int16_t px = vp.w - pw - 8;
-    int16_t py = vp.h - ph - 6;
-    M5.Display.fillRect(px, py, pw, ph, 0xD92027);   // red bg
-    M5.Display.setTextColor(0xFFFFFF);
-    M5.Display.setCursor(px + 6, py + 3);
-    M5.Display.print(label);
+    int16_t px = W - pw - 8;
+    int16_t py = H - ph - 6;
+    canvas.fillRect(px, py, pw, ph, 0xD92027);
+    canvas.setTextColor(0xFFFFFF);
+    canvas.setCursor(px + 6, py + 3);
+    canvas.print(label);
   }
+  uint32_t t_draw = millis() - t0;
+  uint32_t t_push0 = millis();
+  canvas.pushSprite(0, 0);
+  uint32_t t_push = millis() - t_push0;
+  canvas.deleteSprite();
+
+  uint32_t t_disp0 = millis();
   M5.Display.display();
+  uint32_t t_disp = millis() - t_disp0;
+  Serial.printf("[render] draw=%ums push=%ums display=%ums total=%ums\n",
+                (unsigned)t_draw, (unsigned)t_push, (unsigned)t_disp,
+                (unsigned)(millis() - t0));
 #endif
 }
 
@@ -70,17 +119,188 @@ static void render_error(const char* msg) {
 #ifdef RCPAPER_DEV_NO_DRAW
   Serial.printf("[render] DEV_NO_DRAW error=%s\n", msg);
 #else
-  M5.Display.fillScreen(0xFFFFFF);
-  M5.Display.setFont(&fonts::FreeSansBold12pt7b);
-  M5.Display.setTextColor(0x000000);
-  M5.Display.setCursor(20, 40);
-  M5.Display.print("rcpapercolor");
-  M5.Display.setFont(&fonts::FreeSans9pt7b);
-  M5.Display.setCursor(20, 80);
-  M5.Display.print(msg);
+  // Same offscreen-canvas approach as render_page — keep the error path off
+  // the live framebuffer so the panel only refreshes once.
+  M5Canvas canvas(&M5.Display);
+  canvas.setColorDepth(16);
+  canvas.setPsram(true);
+  if (!canvas.createSprite(M5.Display.width(), M5.Display.height())) {
+    M5.Display.fillScreen(0xFFFFFF);
+    M5.Display.setFont(&fonts::FreeSansBold12pt7b);
+    M5.Display.setTextColor(0x000000);
+    M5.Display.setCursor(20, 40);
+    M5.Display.print(msg);
+    M5.Display.display();
+    return;
+  }
+  canvas.fillSprite(0xFFFFFF);
+  canvas.setFont(&fonts::FreeSansBold12pt7b);
+  canvas.setTextColor(0x000000);
+  canvas.setCursor(20, 40);
+  canvas.print("rcpapercolor");
+  canvas.setFont(&fonts::FreeSans9pt7b);
+  canvas.setCursor(20, 80);
+  canvas.print(msg);
+  canvas.pushSprite(0, 0);
+  canvas.deleteSprite();
   M5.Display.display();
 #endif
 }
+
+// ---- shared cycle steps ---------------------------------------------------
+
+static bool refetch_now() {
+  if (!wifi_connect()) {
+    Serial.println("[main] wifi failed");
+    return false;
+  }
+  sync_ntp_once();
+  std::vector<PageRecord> fresh;
+  bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
+  if (ok) {
+    g_state.pages        = std::move(fresh);
+    g_state.last_fetch_s = (uint64_t)time(nullptr);
+    g_state.page_index   = 0;
+    nvs_save(g_state);
+    Serial.printf("[main] fetched %u pages, idx=0\n", (unsigned)g_state.pages.size());
+  } else {
+    Serial.println("[main] fetch failed; keeping cache");
+  }
+  wifi_disconnect();
+  return ok;
+}
+
+static void render_current() {
+  if (g_state.pages.empty()) {
+    render_error("no pages — check producer + Axiom dataset");
+    return;
+  }
+  bool stale = (uint64_t)time(nullptr) - g_state.last_fetch_s > FETCH_INTERVAL_SEC;
+  render_page(g_state.pages[g_state.page_index], stale);
+}
+
+// ---- USB-CDC dev console --------------------------------------------------
+//
+// Sit in loop() reading single chars from Serial; dispatch to firmware ops.
+// Lets the Mac drive the device end-to-end without buttons. Enabled by
+// RCPAPER_DEV_CONSOLE — when off, setup() ends in deep_sleep as before.
+
+#ifdef RCPAPER_DEV_CONSOLE
+
+static void console_help() {
+  Serial.println(F("[console] commands:"));
+  Serial.println(F("  f  refetch from Axiom + persist + render"));
+  Serial.println(F("  r  re-render current page from cache"));
+  Serial.println(F("  n  next page"));
+  Serial.println(F("  b  previous page"));
+  Serial.println(F("  c  clear screen (white)"));
+  Serial.println(F("  s  state dump"));
+  Serial.println(F("  q  dump cached layout_json for current page"));
+  Serial.println(F("  m  cycle EPD mode (quality→text→fast→fastest)"));
+  Serial.println(F("  D  enter deep sleep (10 s)"));
+  Serial.println(F("  R  reboot now"));
+  Serial.println(F("  h  this help"));
+}
+
+static void console_state_dump() {
+  Serial.printf("[state] pages=%u idx=%u last_fetch=%llu epd=%s heap=%u\n",
+                (unsigned)g_state.pages.size(),
+                (unsigned)g_state.page_index,
+                (unsigned long long)g_state.last_fetch_s,
+                epd_mode_name(M5.Display.getEpdMode()),
+                (unsigned)esp_get_free_heap_size());
+  for (size_t i = 0; i < g_state.pages.size(); ++i) {
+    Serial.printf("  [%u] id=%s order=%d layout=%u B\n",
+                  (unsigned)i,
+                  g_state.pages[i].id.c_str(),
+                  g_state.pages[i].order,
+                  (unsigned)g_state.pages[i].layout_json.length());
+  }
+}
+
+static void console_dispatch(char c) {
+  switch (c) {
+    case 'h': case '?':
+      console_help();
+      break;
+    case 's':
+      console_state_dump();
+      break;
+    case 'q':
+      if (g_state.pages.empty()) {
+        Serial.println("[console] no pages");
+      } else {
+        const auto& rec = g_state.pages[g_state.page_index];
+        Serial.printf("[console] layout_json id=%s len=%u:\n%s\n",
+                      rec.id.c_str(), (unsigned)rec.layout_json.length(),
+                      rec.layout_json.c_str());
+      }
+      break;
+    case 'r':
+      Serial.println("[console] r → re-render current");
+      render_current();
+      break;
+    case 'f':
+      Serial.println("[console] f → refetch");
+      if (refetch_now()) render_current();
+      break;
+    case 'n':
+      if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
+      g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
+      nvs_save_index(g_state.page_index);
+      Serial.printf("[console] n → idx=%u\n", g_state.page_index);
+      render_current();
+      break;
+    case 'b':
+      if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
+      g_state.page_index = (g_state.page_index + g_state.pages.size() - 1) % g_state.pages.size();
+      nvs_save_index(g_state.page_index);
+      Serial.printf("[console] b → idx=%u\n", g_state.page_index);
+      render_current();
+      break;
+    case 'c': {
+      Serial.println("[console] c → clear screen");
+      uint32_t t0 = millis();
+      M5.Display.startWrite();
+      M5.Display.fillScreen(0xFFFFFF);
+      M5.Display.endWrite();
+      M5.Display.display();
+      Serial.printf("[console] clear done in %u ms\n", (unsigned)(millis() - t0));
+      break;
+    }
+    case 'm': {
+      // quality → text → fast → fastest → quality
+      epd_mode_t cur = M5.Display.getEpdMode();
+      epd_mode_t nxt = (cur == epd_mode_t::epd_quality) ? epd_mode_t::epd_text :
+                       (cur == epd_mode_t::epd_text)    ? epd_mode_t::epd_fast :
+                       (cur == epd_mode_t::epd_fast)    ? epd_mode_t::epd_fastest :
+                                                          epd_mode_t::epd_quality;
+      M5.Display.setEpdMode(nxt);
+      Serial.printf("[console] m → epd_mode %s → %s\n",
+                    epd_mode_name(cur), epd_mode_name(nxt));
+      break;
+    }
+    case 'D':
+      Serial.println("[console] D → deep sleep 10s");
+      enter_deep_sleep_until((uint64_t)time(nullptr) + 10);
+      break;
+    case 'R':
+      Serial.println("[console] R → esp_restart");
+      Serial.flush();
+      delay(50);
+      esp_restart();
+      break;
+    case '\n': case '\r': case ' ': case 0:
+      break;
+    default:
+      Serial.printf("[console] unknown char 0x%02x (try 'h')\n", (unsigned)(uint8_t)c);
+      break;
+  }
+}
+
+#endif  // RCPAPER_DEV_CONSOLE
+
+// ---- entry points ---------------------------------------------------------
 
 void setup() {
   Serial.begin(115200);
@@ -88,71 +308,65 @@ void setup() {
 
   auto cfg = M5.config();
 #ifdef RCPAPER_DEV_NO_DRAW
-  // Skip the full color-eink wipe on every wake (those "broken dot" patterns
-  // are the 7-color refresh sequence). Pair with the paint-skip below.
   cfg.clear_display = false;
 #else
   cfg.clear_display = true;
 #endif
   cfg.output_power  = true;
   M5.begin(cfg);
-  M5.Display.setEpdMode(epd_mode_t::epd_text);
+  // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
+  // them in one full-panel refresh on Display.display(). epd_text auto-pushes
+  // after each text write, which on a 7-color panel manifests as one full
+  // refresh cycle per element drawn.
+  M5.Display.setEpdMode(epd_mode_t::epd_quality);
 
   WakeReason wr = current_wake_reason();
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);
 
-  DeviceState state = nvs_load();
+  g_state = nvs_load();
   time_t now;
   time(&now);
 
   bool needs_fetch =
-      state.pages.empty()
+      g_state.pages.empty()
       || wr == WakeReason::ButtonC
-      || (uint64_t)now - state.last_fetch_s >= FETCH_INTERVAL_SEC;
+      || (uint64_t)now - g_state.last_fetch_s >= FETCH_INTERVAL_SEC;
 
   if (needs_fetch) {
-    if (!wifi_connect()) {
-      render_error("WiFi failed; keeping cached pages");
-    } else {
-      sync_ntp_once();
-      std::vector<PageRecord> fresh;
-      if (axiom_fetch_pages(fresh) && !fresh.empty()) {
-        state.pages        = std::move(fresh);
-        state.last_fetch_s = (uint64_t)time(nullptr);
-        state.page_index   = 0;  // land on first page after fetch
-        nvs_save(state);
-      } else {
-        Serial.println("[main] fetch failed; using cache");
-      }
-      wifi_disconnect();
-    }
+    refetch_now();
   }
 
   // Rotate based on wake reason
-  if (!state.pages.empty()) {
+  if (!g_state.pages.empty()) {
     if (wr == WakeReason::ButtonA || wr == WakeReason::Timer) {
-      state.page_index = (uint8_t)((state.page_index + 1) % state.pages.size());
+      g_state.page_index = (uint8_t)((g_state.page_index + 1) % g_state.pages.size());
     } else if (wr == WakeReason::ButtonB) {
-      state.page_index = (uint8_t)((state.page_index + state.pages.size() - 1)
-                                    % state.pages.size());
+      g_state.page_index = (uint8_t)((g_state.page_index + g_state.pages.size() - 1)
+                                      % g_state.pages.size());
     }
-    nvs_save_index(state.page_index);
+    nvs_save_index(g_state.page_index);
   }
 
-  // Render
-  if (state.pages.empty()) {
-    render_error("no pages — check producer + Axiom dataset");
-  } else {
-    bool stale = (uint64_t)time(nullptr) - state.last_fetch_s > FETCH_INTERVAL_SEC;
-    render_page(state.pages[state.page_index], stale);
-  }
+  render_current();
 
-  // Compute next wake
-  uint64_t next_fetch  = state.last_fetch_s + FETCH_INTERVAL_SEC;
+#ifdef RCPAPER_DEV_CONSOLE
+  Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
+#else
+  // Production path: compute next wake and deep sleep.
+  uint64_t next_fetch  = g_state.last_fetch_s + FETCH_INTERVAL_SEC;
   uint64_t next_rotate = (uint64_t)time(nullptr) + ROTATE_INTERVAL_SEC;
   uint64_t next_wake   = next_fetch < next_rotate ? next_fetch : next_rotate;
-
   enter_deep_sleep_until(next_wake);
+#endif
 }
 
-void loop() { /* unreachable: setup() ends in deep sleep */ }
+void loop() {
+#ifdef RCPAPER_DEV_CONSOLE
+  while (Serial.available() > 0) {
+    int c = Serial.read();
+    if (c < 0) break;
+    console_dispatch((char)c);
+  }
+  delay(20);
+#endif
+}

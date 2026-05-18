@@ -46,7 +46,11 @@ class M5GFXMeasurer : public Measurer {
   M5GFX& gfx_;
 };
 
-void paint_layout(M5GFX& gfx, const LaidOutNode& laid);
+// Accepts a LovyanGFX surface (M5.Display *or* an M5Canvas sprite) so the
+// caller can draw to an offscreen buffer and push once — color e-paper
+// panels commit per-call on the live framebuffer, so direct-draw shows up
+// as a refresh-per-element.
+void paint_layout(LovyanGFX& gfx, const LaidOutNode& laid);
 #endif
 
 }  // namespace rcpaper

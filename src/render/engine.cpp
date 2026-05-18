@@ -194,15 +194,15 @@ Size M5GFXMeasurer::image_size(const ImageNode& i) const {
 }
 
 // Forward declarations from primitives.cpp
-void draw_text(M5GFX&, const TextNode&, Rect);
-void draw_divider(M5GFX&, const DividerNode&, Rect, bool vertical_main);
-void draw_hbar(M5GFX&, const HBarNode&, Rect);
-void draw_icon(M5GFX&, const IconNode&, Rect);
-void draw_image(M5GFX&, const ImageNode&, Rect);
-void draw_sparkline(M5GFX&, const SparklineNode&, Rect);
-void draw_marker(M5GFX&, const MarkerNode&, Rect);
+void draw_text(LovyanGFX&, const TextNode&, Rect);
+void draw_divider(LovyanGFX&, const DividerNode&, Rect, bool vertical_main);
+void draw_hbar(LovyanGFX&, const HBarNode&, Rect);
+void draw_icon(LovyanGFX&, const IconNode&, Rect);
+void draw_image(LovyanGFX&, const ImageNode&, Rect);
+void draw_sparkline(LovyanGFX&, const SparklineNode&, Rect);
+void draw_marker(LovyanGFX&, const MarkerNode&, Rect);
 
-static void paint_node(M5GFX& gfx, const LaidOutNode& laid) {
+static void paint_node(LovyanGFX& gfx, const LaidOutNode& laid) {
   if (!laid.node) return;
   switch (laid.node->type) {
     case NodeType::VStack:
@@ -226,7 +226,7 @@ static void paint_node(M5GFX& gfx, const LaidOutNode& laid) {
   }
 }
 
-void paint_layout(M5GFX& gfx, const LaidOutNode& root) {
+void paint_layout(LovyanGFX& gfx, const LaidOutNode& root) {
   paint_node(gfx, root);
 }
 

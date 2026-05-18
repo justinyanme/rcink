@@ -8,7 +8,7 @@
 
 namespace rcpaper {
 
-void draw_text(M5GFX& gfx, const TextNode& t, Rect r) {
+void draw_text(LovyanGFX& gfx, const TextNode& t, Rect r) {
   if (t.has_bg) {
     gfx.fillRect(r.x, r.y, r.w, r.h, color_to_m5gfx(t.bg));
   }
@@ -26,11 +26,11 @@ void draw_text(M5GFX& gfx, const TextNode& t, Rect r) {
   gfx.print(t.value.c_str());
 }
 
-void draw_divider(M5GFX& gfx, const DividerNode& d, Rect r, bool /*vertical_main*/) {
+void draw_divider(LovyanGFX& gfx, const DividerNode& d, Rect r, bool /*vertical_main*/) {
   gfx.fillRect(r.x, r.y, r.w, d.thickness, color_to_m5gfx(d.color));
 }
 
-void draw_hbar(M5GFX& gfx, const HBarNode& b, Rect r) {
+void draw_hbar(LovyanGFX& gfx, const HBarNode& b, Rect r) {
   // Border
   uint32_t fg = color_to_m5gfx(b.color);
   gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
@@ -58,7 +58,7 @@ void draw_hbar(M5GFX& gfx, const HBarNode& b, Rect r) {
   }
 }
 
-void draw_marker(M5GFX& gfx, const MarkerNode& m, Rect r) {
+void draw_marker(LovyanGFX& gfx, const MarkerNode& m, Rect r) {
   // r covers the previous sibling's rect (passed by engine via overlay layout).
   // We just draw a vertical line at pct of r.w, full height of r.
   int16_t pct = (int16_t)m.pct;
@@ -68,7 +68,7 @@ void draw_marker(M5GFX& gfx, const MarkerNode& m, Rect r) {
   gfx.drawFastVLine(x, r.y - 4, r.h + 8, color_to_m5gfx(m.color));
 }
 
-void draw_sparkline(M5GFX& gfx, const SparklineNode& s, Rect r) {
+void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
   if (s.values.empty()) return;
   uint32_t fg = color_to_m5gfx(s.color);
 
@@ -96,7 +96,7 @@ void draw_sparkline(M5GFX& gfx, const SparklineNode& s, Rect r) {
   gfx.drawFastHLine(r.x, r.y + r.h - 1, r.w, 0x000000);
 }
 
-void draw_icon(M5GFX& gfx, const IconNode& i, Rect r) {
+void draw_icon(LovyanGFX& gfx, const IconNode& i, Rect r) {
   // Placeholder: filled square of the requested size + colour, centred in rect.
   int16_t s = i.size > 0 ? i.size : (int16_t)std::min(r.w, r.h);
   int16_t x = r.x + (r.w - s) / 2;
@@ -104,7 +104,7 @@ void draw_icon(M5GFX& gfx, const IconNode& i, Rect r) {
   gfx.fillRect(x, y, s, s, color_to_m5gfx(i.color));
 }
 
-void draw_image(M5GFX& gfx, const ImageNode& i, Rect r) {
+void draw_image(LovyanGFX& gfx, const ImageNode& i, Rect r) {
   // v1 stub: outline the area + label.
   gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
   gfx.setFont(font_for(TextSize::Sm, Weight::Regular));
