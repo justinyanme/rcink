@@ -1,6 +1,8 @@
 #ifdef ARDUINO
 #include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <HTTPClient.h>
 #include <M5GFX.h>
 #include "render/engine.h"
 #include "render/fonts_icons.h"
@@ -215,13 +217,112 @@ void draw_icon(LovyanGFX& gfx, const IconNode& i, Rect r) {
   blit_1bit(gfx, x, y, bake_sz, px, fg);
 }
 
-void draw_image(LovyanGFX& gfx, const ImageNode& i, Rect r) {
-  // v1 stub: outline the area + label.
+enum class ImageFormat {
+  Unknown = 0,
+  Png,
+  Jpg,
+  Bmp,
+  Qoi,
+};
+
+static void draw_image_placeholder(LovyanGFX& gfx, const ImageNode& i, Rect r, const char* label) {
   gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
   gfx.setFont(font_for(TextSize::Sm, Weight::Regular));
   gfx.setTextColor(0x000000);
   gfx.setCursor(r.x + 4, r.y + 4);
-  gfx.printf("img:%s", i.name.c_str());
+  gfx.print(label);
+  if (!i.name.empty()) {
+    gfx.setCursor(r.x + 4, r.y + 18);
+    gfx.print(i.name.c_str());
+  } else if (!i.url.empty()) {
+    gfx.setCursor(r.x + 4, r.y + 18);
+    gfx.print(i.url.c_str());
+  }
+}
+
+static ImageFormat image_format_from_token(const std::string& raw) {
+  std::string token;
+  token.reserve(raw.size());
+  for (char ch : raw) token.push_back((char)std::tolower((unsigned char)ch));
+  if (token == "png") return ImageFormat::Png;
+  if (token == "jpg" || token == "jpeg") return ImageFormat::Jpg;
+  if (token == "bmp") return ImageFormat::Bmp;
+  if (token == "qoi") return ImageFormat::Qoi;
+  return ImageFormat::Unknown;
+}
+
+static ImageFormat image_format_from_content_type(const String& raw) {
+  if (raw.startsWith("image/png")) return ImageFormat::Png;
+  if (raw.startsWith("image/jpeg") || raw.startsWith("image/jpg")) return ImageFormat::Jpg;
+  if (raw.startsWith("image/bmp")) return ImageFormat::Bmp;
+  if (raw.startsWith("image/qoi")) return ImageFormat::Qoi;
+  return ImageFormat::Unknown;
+}
+
+static ImageFormat image_format_from_url(const std::string& raw) {
+  String url(raw.c_str());
+  int q = url.indexOf('?');
+  if (q >= 0) url.remove(q);
+  url.toLowerCase();
+  if (url.endsWith(".png")) return ImageFormat::Png;
+  if (url.endsWith(".jpg") || url.endsWith(".jpeg")) return ImageFormat::Jpg;
+  if (url.endsWith(".bmp")) return ImageFormat::Bmp;
+  if (url.endsWith(".qoi")) return ImageFormat::Qoi;
+  return ImageFormat::Unknown;
+}
+
+static bool draw_decoded_image(LovyanGFX& gfx, Stream* stream, ImageFormat fmt, Rect r) {
+  switch (fmt) {
+    case ImageFormat::Png:
+      return gfx.drawPng(stream, r.x, r.y, r.w, r.h, 0, 0, 0.0f, 0.0f, datum_t::middle_center);
+    case ImageFormat::Jpg:
+      return gfx.drawJpg(stream, r.x, r.y, r.w, r.h, 0, 0, 0.0f, 0.0f, datum_t::middle_center);
+    case ImageFormat::Bmp:
+      return gfx.drawBmp(stream, r.x, r.y, r.w, r.h, 0, 0, 0.0f, 0.0f, datum_t::middle_center);
+    case ImageFormat::Qoi:
+      return gfx.drawQoi(stream, r.x, r.y, r.w, r.h, 0, 0, 0.0f, 0.0f, datum_t::middle_center);
+    case ImageFormat::Unknown:
+    default:
+      return false;
+  }
+}
+
+void draw_image(LovyanGFX& gfx, const ImageNode& i, Rect r) {
+  if (!i.url.empty()) {
+    HTTPClient http;
+    static const char* headers[] = {"Content-Type"};
+    http.collectHeaders(headers, 1);
+    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+    http.setTimeout(30000);
+    if (!http.begin(String(i.url.c_str()))) {
+      draw_image_placeholder(gfx, i, r, "img begin failed");
+      return;
+    }
+
+    int code = http.GET();
+    if (code != HTTP_CODE_OK) {
+      http.end();
+      draw_image_placeholder(gfx, i, r, "img http failed");
+      return;
+    }
+
+    ImageFormat fmt = image_format_from_token(i.format);
+    if (fmt == ImageFormat::Unknown) fmt = image_format_from_content_type(http.header("Content-Type"));
+    if (fmt == ImageFormat::Unknown) fmt = image_format_from_url(i.url);
+    if (fmt == ImageFormat::Unknown) {
+      http.end();
+      draw_image_placeholder(gfx, i, r, "img fmt?");
+      return;
+    }
+
+    WiFiClient* stream = http.getStreamPtr();
+    bool ok = stream != nullptr && draw_decoded_image(gfx, stream, fmt, r);
+    http.end();
+    if (!ok) draw_image_placeholder(gfx, i, r, "img decode failed");
+    return;
+  }
+
+  draw_image_placeholder(gfx, i, r, "img");
 }
 
 }  // namespace rcpaper

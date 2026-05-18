@@ -25,6 +25,11 @@ from loguru import logger
 from rcpaper.preview import to_html
 
 app = typer.Typer(add_completion=False, help=__doc__, no_args_is_help=True)
+DEFAULT_PREVIEW_OUT = Path("/tmp/rcpaper-preview.html")
+FILE_OPTION = typer.Option(None, "--file", help="Render a layout dict from this JSON file.")
+AXIOM_OPTION = typer.Option(False, "--axiom", help="Pull the latest layout for <page> from Axiom.")
+OUT_OPTION = typer.Option(DEFAULT_PREVIEW_OUT, "--out", help="Output HTML path.")
+NO_OPEN_OPTION = typer.Option(False, "--no-open", help="Don't open the browser.")
 
 
 def _build_local(page_id: str) -> dict[str, Any]:
@@ -49,7 +54,7 @@ def _build_local(page_id: str) -> dict[str, Any]:
         from rcpaper.sources.reminders import fetch_todays_reminders
 
         now = dt.datetime.now().astimezone()
-        return build_todo_page(fetch_todays_reminders(now=now))
+        return build_todo_page(fetch_todays_reminders(now=now), now=now)
     if page_id == "quote":
         from rcpaper.pages.quote import build_quote_page
         from rcpaper.sources.quotes import pick_quote
@@ -76,10 +81,10 @@ def _pull_axiom(page_id: str) -> dict[str, Any]:
 @app.command()
 def main(
     page: str = typer.Argument(None, help="Page id: 'claude' or 'codex' (omit if using --file)."),
-    file: Path | None = typer.Option(None, "--file", help="Render a layout dict from this JSON file."),
-    axiom: bool = typer.Option(False, "--axiom", help="Pull the latest layout for <page> from Axiom."),
-    out: Path = typer.Option(Path("/tmp/rcpaper-preview.html"), "--out", help="Output HTML path."),
-    no_open: bool = typer.Option(False, "--no-open", help="Don't open the browser."),
+    file: Path | None = FILE_OPTION,
+    axiom: bool = AXIOM_OPTION,
+    out: Path = OUT_OPTION,
+    no_open: bool = NO_OPEN_OPTION,
 ) -> None:
     if file:
         layout = json.loads(file.read_text())

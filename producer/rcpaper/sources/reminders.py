@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from typing import Any
 
 if sys.platform != "darwin":  # pragma: no cover - module is mac-only
     raise RuntimeError("rcpaper.sources.reminders requires macOS (EventKit)")
@@ -24,6 +25,7 @@ import Foundation as F
 class Reminder:
     title: str
     due: dt.datetime | None
+    updated: dt.datetime | None
     priority: int  # 0..9; 0 = no priority
 
 
@@ -42,6 +44,12 @@ def _due_to_dt(components) -> dt.datetime | None:
     if date is None:
         return None
     return dt.datetime.fromtimestamp(date.timeIntervalSince1970(), tz=dt.timezone.utc).astimezone()
+
+
+def _nsdate_to_dt(value: Any) -> dt.datetime | None:
+    if value is None:
+        return None
+    return dt.datetime.fromtimestamp(value.timeIntervalSince1970(), tz=dt.timezone.utc).astimezone()
 
 
 def _fetch_sync(store: ek.EKEventStore, predicate) -> list:
@@ -92,16 +100,18 @@ def fetch_todays_reminders(now: dt.datetime | None = None) -> TodaysReminders:
                 Reminder(
                     title=title,
                     due=due,
+                    updated=_nsdate_to_dt(r.lastModifiedDate()) or _nsdate_to_dt(r.creationDate()),
                     priority=int(r.priority()),
                 )
             )
 
-    # Sort: overdue first, then due-today, then no-date. EventKit priorities are
-    # 1 (highest) .. 9 (lowest), 0 = none — invert so highest priority sorts up.
+    # Sort: most recently updated first so stale old reminders fall off the
+    # page. Priority and due date only break ties.
     def sort_key(item: Reminder):
-        bucket = 0 if (item.due is not None and item.due < now) else 1 if item.due is not None else 2
         prio = item.priority if item.priority > 0 else 10
-        return (bucket, prio, item.due or dt.datetime.max)
+        updated_ts = item.updated.timestamp() if item.updated is not None else float("-inf")
+        due_ts = item.due.timestamp() if item.due is not None else float("inf")
+        return (-updated_ts, prio, due_ts, item.title.casefold())
 
     items.sort(key=sort_key)
 

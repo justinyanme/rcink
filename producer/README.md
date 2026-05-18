@@ -10,6 +10,7 @@ Sources:
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
 - **Quote** — one of a curated set, rotated by date ordinal.
+- **Image** — one-off remote image URL pages pushed manually with `uv run image-fetch ...`.
 
 ## One-time setup
 
@@ -23,6 +24,7 @@ Sources:
    export AXIOM_DATASET=rcpapercolor
    uv run claude-fetch
    uv run codex-fetch
+   uv run image-fetch 'https://example.com/frame.png'
    ```
 
    You should see two `kind=page` events appear in the Axiom dataset.

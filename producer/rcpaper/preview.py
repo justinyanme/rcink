@@ -135,8 +135,21 @@ def _node_html(node: dict[str, Any]) -> str:
         return f'<div class="icon" style="width:{s}px;height:{s}px;background:{color};"></div>'
 
     if t == "image":
+        width = int(node.get("width", 240) or 240)
+        height = int(node.get("height", 180) or 180)
+        url = node.get("url")
+        if url:
+            safe_url = html.escape(str(url), quote=True)
+            return (
+                f'<div class="image" style="width:{width}px;height:{height}px;'
+                f'border:1px solid #000;box-sizing:border-box;overflow:hidden;">'
+                f'<img src="{safe_url}" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>'
+            )
         name = html.escape(str(node.get("name", "")))
-        return f'<div class="image" style="border:1px solid #000;padding:4px;font-size:12px;">img:{name}</div>'
+        return (
+            f'<div class="image" style="width:{width}px;height:{height}px;'
+            f'border:1px solid #000;padding:4px;font-size:12px;box-sizing:border-box;">img:{name}</div>'
+        )
 
     if t == "marker":
         # Overlay; in browser preview just show a vertical bar at the requested pct.

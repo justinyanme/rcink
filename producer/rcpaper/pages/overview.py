@@ -38,10 +38,7 @@ def _usage_row(
     secondary_label: str,
 ) -> dict:
     """One full-width row: [BRAND chip] [primary % + flex hbar] [7D pct]."""
-    if primary_pct is None:
-        pct_text = "—"
-    else:
-        pct_text = f"{int(primary_pct)}%"
+    pct_text = "—" if primary_pct is None else f"{int(primary_pct)}%"
     secondary_text = f"{int(secondary_pct)}%" if secondary_pct is not None else "—"
 
     return hstack(

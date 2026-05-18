@@ -8,6 +8,7 @@ and deep-sleeps.
 Two halves of one repo:
 
 - `producer/` — Python (uv) on Mac. Pulls Claude/Codex usage, pushes pages.
+  Also supports one-off remote image pages via `uv run image-fetch <url>`.
   See `producer/README.md` for setup.
 - `src/` + `platformio.ini` — ESP32-S3 firmware. PlatformIO + M5Unified +
   M5GFX. See below.

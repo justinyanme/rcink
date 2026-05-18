@@ -7,6 +7,7 @@ unicode checkbox + priority chips (no proposed primitives).
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from urllib.parse import urlparse
 
@@ -14,6 +15,7 @@ from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
 from rcpaper.sources.reminders import Reminder, TodaysReminders
 
 _URL_RE = re.compile(r"https?://\S+")
+VISIBLE_ITEMS = 10
 
 
 def _extract_hosts(raw: str) -> tuple[list[str], str]:
@@ -44,7 +46,30 @@ def _trim(s: str, *, limit: int) -> str:
     return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
 
 
-def render_item_children(item: Reminder, *, limit: int = 30) -> list[dict]:
+def _relative_short(when: dt.datetime | None, *, now: dt.datetime) -> str:
+    if when is None:
+        return ""
+    delta = now - when
+    seconds = max(0, int(delta.total_seconds()))
+    if seconds < 60:
+        return "now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d"
+    weeks = days // 7
+    if weeks < 5:
+        return f"{weeks}w"
+    months = max(1, days // 30)
+    return f"{months}mo"
+
+
+def render_item_children(item: Reminder, *, limit: int = 24) -> list[dict]:
     """Build the right-hand side of a todo row.
 
     URL-heavy reminders become `[icon] hostname` (+ residual text if any),
@@ -83,7 +108,7 @@ def _prio_color(p: int) -> str | None:
     return "blue"
 
 
-def _item_row(item: Reminder) -> dict:
+def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
     # The ☐ unicode glyph doesn't render in our bundled fonts; use an ASCII
     # box that the FreeSans / efontCN fonts both have.
     checkbox = text("[ ]", size="body", color="black", weight="bold")
@@ -95,12 +120,17 @@ def _item_row(item: Reminder) -> dict:
         # Reserve the priority slot so titles align across rows.
         children.append(spacer(size=10))
     children.extend(render_item_children(item))
+    relative = _relative_short(item.updated, now=now)
+    if relative:
+        children.append(spacer())
+        children.append(text(relative, size="sm", weight="bold", color="blue"))
     return hstack(gap=8, align="center", children=children)
 
 
-def build_todo_page(rem: TodaysReminders) -> dict:
+def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> dict:
+    now = now or dt.datetime.now().astimezone()
     total = max(1, rem.incomplete_total)  # avoid div-by-zero
-    visible = rem.items[:8]
+    visible = rem.items[:VISIBLE_ITEMS]
     count_chip = f"{rem.list_name.upper()} · {len(visible)} / {rem.incomplete_total}"
 
     children: list[dict] = [
@@ -124,7 +154,7 @@ def build_todo_page(rem: TodaysReminders) -> dict:
         ]
     else:
         for item in visible:
-            children.append(_item_row(item))
+            children.append(_item_row(item, now=now))
 
     pct = int(100 * (1 - len(rem.items) / total))
     children += [
@@ -151,4 +181,4 @@ def build_todo_page(rem: TodaysReminders) -> dict:
         ),
     ]
 
-    return vstack(pad=16, gap=8, children=children)
+    return vstack(pad=16, gap=4, children=children)

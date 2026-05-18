@@ -61,6 +61,8 @@ struct IconNode {
 
 struct ImageNode {
   std::string name;
+  std::string url;
+  std::string format;
   int16_t     width  = 0;
   int16_t     height = 0;
 };

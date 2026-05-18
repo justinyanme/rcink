@@ -71,6 +71,21 @@ void test_hbar() {
   TEST_ASSERT_EQUAL_STRING("42%", n.as_hbar.label_right.c_str());
 }
 
+void test_remote_image() {
+  auto n = parse_str(R"({
+    "type":"image",
+    "url":"https://example.com/frame.png",
+    "format":"png",
+    "width":320,
+    "height":200
+  })");
+  TEST_ASSERT_EQUAL(NodeType::Image, n.type);
+  TEST_ASSERT_EQUAL_STRING("https://example.com/frame.png", n.as_image.url.c_str());
+  TEST_ASSERT_EQUAL_STRING("png", n.as_image.format.c_str());
+  TEST_ASSERT_EQUAL(320, n.as_image.width);
+  TEST_ASSERT_EQUAL(200, n.as_image.height);
+}
+
 void test_sparkline_values() {
   auto n = parse_str(R"({"type":"sparkline","values":[1,2,3,4,5],"color":"blue","height":40})");
   TEST_ASSERT_EQUAL(NodeType::Sparkline, n.type);
@@ -90,6 +105,7 @@ int main() {
   RUN_TEST(test_vstack_with_children);
   RUN_TEST(test_spacer_flex);
   RUN_TEST(test_hbar);
+  RUN_TEST(test_remote_image);
   RUN_TEST(test_sparkline_values);
   RUN_TEST(test_unknown_type_becomes_unknown);
   return UNITY_END();

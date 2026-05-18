@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <M5Unified.h>
+#include <WiFi.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -160,13 +161,35 @@ static void paint_indicator(M5Canvas& canvas,
   canvas.print(line.c_str());
 }
 
-static void render_page(const PageRecord& rec, bool stale) {
+static bool layout_has_remote_image(const LayoutNode& node) {
+  if (node.type == NodeType::Image && !node.as_image.url.empty()) return true;
+  if (node.type != NodeType::VStack && node.type != NodeType::HStack) return false;
+  for (const auto& child : node.as_stack.children) {
+    if (layout_has_remote_image(child)) return true;
+  }
+  return false;
+}
+
+static bool layout_has_any_image(const LayoutNode& node) {
+  if (node.type == NodeType::Image) return true;
+  if (node.type != NodeType::VStack && node.type != NodeType::HStack) return false;
+  for (const auto& child : node.as_stack.children) {
+    if (layout_has_any_image(child)) return true;
+  }
+  return false;
+}
+
+static bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
   JsonDocument doc;
   if (deserializeJson(doc, rec.layout_json)) {
     Serial.println("[render] inner parse failed");
-    return;
+    return false;
   }
-  LayoutNode root = parse_layout(doc.as<JsonVariantConst>());
+  root = parse_layout(doc.as<JsonVariantConst>());
+  return true;
+}
+
+static void render_page(const PageRecord& rec, const LayoutNode& root, bool stale) {
 
   M5GFXMeasurer m(M5.Display);
   int16_t W = (int16_t)M5.Display.width();
@@ -182,6 +205,9 @@ static void render_page(const PageRecord& rec, bool stale) {
   (void)laid;
 #else
   uint32_t t0 = millis();
+  if (layout_has_any_image(root)) {
+    M5.Display.setEpdMode(epd_mode_t::epd_quality);
+  }
   Serial.printf("[render] page=%s stale=%d mode=%s W=%d H=%d draw begin\n",
                 rec.id.c_str(), stale ? 1 : 0,
                 epd_mode_name(M5.Display.getEpdMode()), W, H);
@@ -289,7 +315,6 @@ static bool refetch_now() {
   } else {
     Serial.println("[main] fetch failed; keeping cache");
   }
-  wifi_disconnect();
   return ok;
 }
 
@@ -298,8 +323,24 @@ static void render_current() {
     render_error("no pages — check producer + Axiom dataset");
     return;
   }
+  const PageRecord& rec = g_state.pages[g_state.page_index];
+  LayoutNode root;
+  if (!parse_page_layout(rec, root)) {
+    render_error("layout_json parse failed");
+    return;
+  }
+  bool connected_here = false;
+  if (layout_has_remote_image(root) && WiFi.status() != WL_CONNECTED) {
+    connected_here = wifi_connect();
+    if (!connected_here) {
+      Serial.println("[render] wifi unavailable for remote image");
+    }
+  }
   bool stale = (uint64_t)time(nullptr) - g_state.last_fetch_s > FETCH_INTERVAL_SEC;
-  render_page(g_state.pages[g_state.page_index], stale);
+  render_page(rec, root, stale);
+  if (connected_here) {
+    wifi_disconnect();
+  }
 }
 
 // ---- USB-CDC dev console --------------------------------------------------
@@ -401,6 +442,7 @@ static void console_dispatch(char c) {
     case 'f':
       Serial.println("[console] f → refetch");
       if (refetch_now()) render_current();
+      if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
       break;
     case 'n':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
@@ -511,6 +553,9 @@ void setup() {
   }
 
   render_current();
+  if (WiFi.status() == WL_CONNECTED) {
+    wifi_disconnect();
+  }
 
 #ifdef RCPAPER_DEV_CONSOLE
   dev_buttons_init();

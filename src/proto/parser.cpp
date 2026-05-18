@@ -104,6 +104,8 @@ LayoutNode parse_layout(JsonVariantConst v) {
 
     case NodeType::Image:
       n.as_image.name   = (const char*)(v["name"] | "");
+      n.as_image.url    = (const char*)(v["url"] | "");
+      n.as_image.format = (const char*)(v["format"] | "");
       n.as_image.width  = v["width"]  | 0;
       n.as_image.height = v["height"] | 0;
       break;

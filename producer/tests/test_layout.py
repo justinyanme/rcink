@@ -93,6 +93,13 @@ def test_icon_image():
         "width": 80,
         "height": 80,
     }
+    assert image(url="https://example.com/paper.png", format="png", width=80, height=80) == {
+        "type": "image",
+        "url": "https://example.com/paper.png",
+        "format": "png",
+        "width": 80,
+        "height": 80,
+    }
 
 
 def test_sparkline_marker():
@@ -113,3 +120,12 @@ def test_omits_none_keys():
     # We never serialize None — the firmware applies its own defaults
     assert "color" not in text("X")
     assert "size" not in spacer()
+
+
+def test_image_requires_exactly_one_source():
+    try:
+        image(width=80, height=80)
+    except ValueError as exc:
+        assert "exactly one" in str(exc)
+    else:  # pragma: no cover - defensive
+        raise AssertionError("image() should reject missing source")

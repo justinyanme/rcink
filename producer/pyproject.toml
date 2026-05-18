@@ -19,6 +19,7 @@ quote-fetch    = "scripts.quote_fetch:app"
 calendar-fetch = "scripts.calendar_fetch:app"
 todo-fetch     = "scripts.todo_fetch:app"
 overview-fetch = "scripts.overview_fetch:app"
+image-fetch    = "scripts.image_fetch:app"
 preview        = "scripts.preview:app"
 
 [dependency-groups]

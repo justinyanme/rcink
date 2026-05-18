@@ -17,8 +17,10 @@ app = typer.Typer(add_completion=False, help=__doc__)
 def run() -> None:
     now = dt.datetime.now().astimezone()
     rem = fetch_todays_reminders(now=now)
-    logger.info(f"reminders: list={rem.list_name!r} due-today={len(rem.items)} incomplete-total={rem.incomplete_total}")
-    page = build_todo_page(rem)
+    logger.info(
+        f"reminders: list={rem.list_name!r} visible-pool={len(rem.items)} incomplete-total={rem.incomplete_total}"
+    )
+    page = build_todo_page(rem, now=now)
     ingest(id="todo", layout=page, order=40)
 
 

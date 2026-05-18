@@ -85,8 +85,17 @@ def icon(name: str, *, size: int | None = None, color: str | None = None) -> dic
     return _node("icon", name=name, size=size, color=color)
 
 
-def image(name: str, *, width: int | None = None, height: int | None = None) -> dict:
-    return _node("image", name=name, width=width, height=height)
+def image(
+    name: str | None = None,
+    *,
+    url: str | None = None,
+    format: str | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> dict:
+    if bool(name) == bool(url):
+        raise ValueError("image() requires exactly one of name=... or url=...")
+    return _node("image", name=name, url=url, format=format, width=width, height=height)
 
 
 def sparkline(
