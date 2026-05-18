@@ -8,8 +8,6 @@ indicator over the bottom 26 px.
 
 from __future__ import annotations
 
-import datetime as dt
-
 from rcpaper.layout import (
     divider,
     hbar,
@@ -70,7 +68,6 @@ def build_codex_page(
     usage: CodexUsage,
     *,
     sparkline: list[float] | None,
-    updated_at: dt.datetime,
 ) -> dict:
     children: list[dict] = [
         text(
@@ -121,6 +118,8 @@ def build_codex_page(
             )
         )
 
+    # Firmware paints the page-rotation indicator + data/refresh timestamps
+    # in the bottom band; the footer here just shows the brand + plan above it.
     children.append(spacer())
     children.append(divider(color="black", thickness=1))
     children.append(
@@ -128,11 +127,8 @@ def build_codex_page(
             align="center",
             gap=6,
             children=[
-                icon("codex", size=12, color="green"),
-                text(
-                    f"{usage.plan} · updated {updated_at:%H:%M}",
-                    size="sm",
-                ),
+                icon("codex", size=14, color="green"),
+                text(f"CODEX  ·  {usage.plan}", size="sm", weight="bold"),
             ],
         ),
     )

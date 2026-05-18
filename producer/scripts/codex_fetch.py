@@ -30,7 +30,7 @@ def run() -> None:
     logger.info(f"codex usage: primary={usage.primary_pct}% secondary={usage.secondary_pct}%")
 
     spark = _sparkline_7d()
-    page = build_codex_page(usage, sparkline=spark or None, updated_at=dt.datetime.now())
+    page = build_codex_page(usage, sparkline=spark or None)
     ingest(id="codex", layout=page, order=20)
 
     ingest_metric(

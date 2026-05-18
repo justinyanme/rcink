@@ -9,7 +9,7 @@
 // Axiom
 #define AXIOM_QUERY_URL      "https://api.axiom.co/v1/datasets/_apl?format=legacy"
 #define AXIOM_TOKEN          "xaat-your-token"
-#define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json']) by ['id'] | project ['id'], ['order'], ['layout_json'] | order by ['order'] asc nulls last, ['id'] asc"
+#define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json'], ['data_ts']) by ['id'] | project ['id'], ['order'], ['layout_json'], ['data_ts'] | order by ['order'] asc nulls last, ['id'] asc"
 
 // Behavior
 #define FETCH_INTERVAL_SEC   900   // 15 min

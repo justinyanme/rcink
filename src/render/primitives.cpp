@@ -96,12 +96,134 @@ void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
   gfx.drawFastHLine(r.x, r.y + r.h - 1, r.w, 0x000000);
 }
 
+namespace {
+
+// Vector glyphs drawn procedurally so the firmware doesn't need bitmap assets.
+// All glyphs draw into an s×s box at top-left (x,y) using the requested color.
+// Stroke widths are tuned for 12–16 px icons on the E6 panel.
+
+inline void icon_claude(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // 8-pointed burst: four bars rotated 45°. Brand-adjacent without a logo trace.
+  int16_t cx = x + s / 2, cy = y + s / 2;
+  int16_t arm = s / 2;
+  int16_t t = std::max<int16_t>(1, s / 8);
+  // Horizontal + vertical
+  g.fillRect(cx - arm, cy - t / 2, arm * 2, t, fg);
+  g.fillRect(cx - t / 2, cy - arm, t, arm * 2, fg);
+  // Diagonals: drawn as thick lines
+  for (int16_t i = -t / 2; i <= t / 2; ++i) {
+    g.drawLine(cx - arm + i, cy - arm, cx + arm + i, cy + arm, fg);
+    g.drawLine(cx - arm + i, cy + arm, cx + arm + i, cy - arm, fg);
+  }
+}
+
+inline void icon_codex(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // "</>" — two angle brackets pointing outward.
+  int16_t t = std::max<int16_t>(1, s / 8);
+  int16_t lx = x + s / 6;
+  int16_t rx = x + s - s / 6;
+  int16_t top = y + s / 4;
+  int16_t mid = y + s / 2;
+  int16_t bot = y + s - s / 4;
+  for (int16_t i = 0; i < t; ++i) {
+    g.drawLine(lx, mid - i, lx + s / 3, top - i, fg);
+    g.drawLine(lx, mid + i, lx + s / 3, bot + i, fg);
+    g.drawLine(rx, mid - i, rx - s / 3, top - i, fg);
+    g.drawLine(rx, mid + i, rx - s / 3, bot + i, fg);
+  }
+}
+
+inline void icon_quote(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // Two filled "drop" shapes for an opening double quote.
+  int16_t w = s * 2 / 5;
+  int16_t h = s * 2 / 3;
+  int16_t gap = std::max<int16_t>(1, s / 10);
+  int16_t x1 = x + (s - 2 * w - gap) / 2;
+  int16_t x2 = x1 + w + gap;
+  int16_t top = y + s / 6;
+  // Two filled rounded rects approximating quote shapes
+  g.fillRect(x1, top, w, h, fg);
+  g.fillRect(x2, top, w, h, fg);
+  // Lower-right "tail" — small triangles below each blob
+  g.fillTriangle(x1, top + h, x1 + w, top + h, x1 + w, top + h + h / 3, fg);
+  g.fillTriangle(x2, top + h, x2 + w, top + h, x2 + w, top + h + h / 3, fg);
+}
+
+inline void icon_calendar(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // Rectangle with a thick header bar + two grid notches.
+  int16_t t = std::max<int16_t>(1, s / 10);
+  int16_t pad = s / 8;
+  int16_t bx = x + pad, by = y + pad;
+  int16_t bw = s - pad * 2, bh = s - pad * 2;
+  // Outline
+  for (int16_t i = 0; i < t; ++i) g.drawRect(bx + i, by + i, bw - 2 * i, bh - 2 * i, fg);
+  // Header bar fill
+  g.fillRect(bx, by, bw, std::max<int16_t>(2, bh / 4), fg);
+  // Two ring binders on top
+  int16_t ring_w = std::max<int16_t>(1, bw / 8);
+  int16_t ring_h = std::max<int16_t>(2, bh / 5);
+  g.fillRect(bx + bw / 4 - ring_w / 2, by - ring_h / 2, ring_w, ring_h, fg);
+  g.fillRect(bx + 3 * bw / 4 - ring_w / 2, by - ring_h / 2, ring_w, ring_h, fg);
+}
+
+inline void icon_todo(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // Checkbox: outlined square with a check mark inside.
+  int16_t t = std::max<int16_t>(1, s / 10);
+  int16_t pad = s / 8;
+  int16_t bx = x + pad, by = y + pad;
+  int16_t bw = s - pad * 2, bh = s - pad * 2;
+  for (int16_t i = 0; i < t; ++i) g.drawRect(bx + i, by + i, bw - 2 * i, bh - 2 * i, fg);
+  // Check mark: 2 line segments
+  int16_t cw = std::max<int16_t>(1, s / 7);
+  for (int16_t i = -cw / 2; i <= cw / 2; ++i) {
+    g.drawLine(bx + bw / 5, by + bh / 2 + i, bx + bw * 2 / 5, by + bh * 3 / 4 + i, fg);
+    g.drawLine(bx + bw * 2 / 5, by + bh * 3 / 4 + i, bx + bw * 4 / 5, by + bh / 4 + i, fg);
+  }
+}
+
+inline void icon_weather(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // Sun: filled disc with 8 short rays.
+  int16_t cx = x + s / 2, cy = y + s / 2;
+  int16_t rd = s / 4;
+  int16_t ray = s / 2 - rd / 2;
+  g.fillCircle(cx, cy, rd, fg);
+  int16_t t = std::max<int16_t>(1, s / 12);
+  // 4 cardinal rays
+  g.fillRect(cx - t / 2, cy - rd - ray, t, ray - 1, fg);
+  g.fillRect(cx - t / 2, cy + rd + 1,   t, ray - 1, fg);
+  g.fillRect(cx - rd - ray, cy - t / 2, ray - 1, t, fg);
+  g.fillRect(cx + rd + 1,   cy - t / 2, ray - 1, t, fg);
+  // 4 diagonal rays (drawn as short thick lines)
+  int16_t d = (int16_t)(rd * 0.8f);
+  for (int16_t i = -t / 2; i <= t / 2; ++i) {
+    g.drawLine(cx + d + i, cy - d, cx + d + ray / 2 + i, cy - d - ray / 2, fg);
+    g.drawLine(cx - d + i, cy - d, cx - d - ray / 2 + i, cy - d - ray / 2, fg);
+    g.drawLine(cx + d + i, cy + d, cx + d + ray / 2 + i, cy + d + ray / 2, fg);
+    g.drawLine(cx - d + i, cy + d, cx - d - ray / 2 + i, cy + d + ray / 2, fg);
+  }
+}
+
+inline void icon_fallback(LovyanGFX& g, int16_t x, int16_t y, int16_t s, uint32_t fg) {
+  // Filled square — preserves the v1 placeholder behavior for unknown names.
+  g.fillRect(x, y, s, s, fg);
+}
+
+}  // namespace
+
 void draw_icon(LovyanGFX& gfx, const IconNode& i, Rect r) {
-  // Placeholder: filled square of the requested size + colour, centred in rect.
   int16_t s = i.size > 0 ? i.size : (int16_t)std::min(r.w, r.h);
   int16_t x = r.x + (r.w - s) / 2;
   int16_t y = r.y + (r.h - s) / 2;
-  gfx.fillRect(x, y, s, s, color_to_m5gfx(i.color));
+  uint32_t fg = color_to_m5gfx(i.color);
+
+  const std::string& n = i.name;
+  if      (n == "claude")   icon_claude(gfx, x, y, s, fg);
+  else if (n == "codex")    icon_codex(gfx, x, y, s, fg);
+  else if (n == "quote")    icon_quote(gfx, x, y, s, fg);
+  else if (n == "calendar") icon_calendar(gfx, x, y, s, fg);
+  else if (n == "todo")     icon_todo(gfx, x, y, s, fg);
+  else if (n == "weather" || n == "sun") icon_weather(gfx, x, y, s, fg);
+  else                      icon_fallback(gfx, x, y, s, fg);
 }
 
 void draw_image(LovyanGFX& gfx, const ImageNode& i, Rect r) {

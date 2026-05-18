@@ -28,8 +28,13 @@ def _now_iso() -> str:
 def ingest(*, id: str, layout: dict[str, Any], order: int | None = None, ttl_sec: int = 3600) -> None:
     token = _env("AXIOM_TOKEN")
     dataset = _env("AXIOM_DATASET")
+    now = dt.datetime.now(dt.timezone.utc)
     event = {
-        "_time": _now_iso(),
+        "_time": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        # Producer-side wallclock at build time, exposed as epoch seconds so the
+        # firmware can format both "data HH:MM" (this value) and
+        # "refresh HH:MM" (its own last_fetch_s) without re-parsing _time.
+        "data_ts": int(now.timestamp()),
         "type": "rcpaper_page",
         "id": id,
         "ttl_sec": ttl_sec,
@@ -55,7 +60,16 @@ def ingest(*, id: str, layout: dict[str, Any], order: int | None = None, ttl_sec
 
 
 def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> list[dict[str, Any]]:
-    """Run an APL query; return a flat list of `data` dicts from matches."""
+    """Run an APL query; return a flat list of result rows.
+
+    - Non-aggregation queries (project/take) populate `matches[]`; each row's
+      `data` is the column dict.
+    - Aggregation queries (summarize) populate `buckets.series[].groups[]`
+      instead; the legacy response shape buries the time bin in `startTime`
+      and each aggregation's value under `aggregations[]`. We flatten both
+      paths into a single list of dicts so callers don't care which kind of
+      query they ran.
+    """
     token = _env("AXIOM_TOKEN")
     end = dt.datetime.now(dt.timezone.utc)
     start = end - lookback
@@ -73,7 +87,29 @@ def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> lis
     if r.status_code != 200:
         raise AxiomError(f"query HTTP {r.status_code}: {r.text}")
     payload = r.json()
-    return [m.get("data", {}) for m in payload.get("matches", [])]
+
+    matches = payload.get("matches") or []
+    if matches:
+        return [m.get("data", {}) for m in matches]
+
+    series = (payload.get("buckets") or {}).get("series") or []
+    rows: list[dict[str, Any]] = []
+    for bucket in series:
+        groups = bucket.get("groups") or []
+        if not groups:
+            # Preserve empty bins so callers building time series can see the
+            # full range — they distinguish "no data" via None values.
+            rows.append({"_time": bucket.get("startTime")})
+            continue
+        for g in groups:
+            row: dict[str, Any] = {"_time": bucket.get("startTime")}
+            row.update(g.get("group") or {})
+            for agg in g.get("aggregations") or []:
+                op = agg.get("op")
+                if op is not None:
+                    row[op] = agg.get("value")
+            rows.append(row)
+    return rows
 
 
 def ingest_metric(*, id: str, fields: dict[str, float | int | str]) -> None:

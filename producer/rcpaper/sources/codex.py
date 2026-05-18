@@ -40,12 +40,10 @@ def _format_countdown(secs: int) -> str:
     return f"{m}m"
 
 
-def _reset_text(iso: str | None) -> str:
-    if not iso:
+def _reset_from_seconds(secs: float | int | None) -> str:
+    if secs is None:
         return ""
-    when = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    delta = (when - dt.datetime.now(dt.timezone.utc)).total_seconds()
-    return _format_countdown(int(delta))
+    return _format_countdown(int(secs))
 
 
 def _load(path: Path) -> dict:
@@ -92,30 +90,51 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
     r.raise_for_status()
     data = r.json()
 
-    rl = data.get("rate_limits", {})
+    # API schema (verified 2026-05-18):
+    #   rate_limit: { primary_window: {...}, secondary_window: {...} }
+    # Each window: used_percent (int), reset_after_seconds (int),
+    # limit_window_seconds (int), reset_at (epoch).
+    rl = data.get("rate_limit") or {}
 
-    def pct(key: str) -> float | None:
+    def window_block(key: str) -> dict:
         v = rl.get(key)
-        return float(v["used_percent"]) if isinstance(v, dict) else None
+        return v if isinstance(v, dict) else {}
 
-    def reset(key: str) -> str:
-        v = rl.get(key)
-        return _reset_text(v.get("resets_at")) if isinstance(v, dict) else ""
+    def pct(block: dict) -> float | None:
+        v = block.get("used_percent")
+        return float(v) if isinstance(v, (int, float)) else None
 
-    def window(key: str) -> int | None:
-        v = rl.get(key)
-        return int(v["window_minutes"]) if isinstance(v, dict) and "window_minutes" in v else None
+    def reset(block: dict) -> str:
+        return _reset_from_seconds(block.get("reset_after_seconds"))
 
-    credits = data.get("credits", {})
-    cents = credits.get("balance_cents")
-    dollars = float(cents) / 100 if isinstance(cents, (int, float)) else None
+    def window_min(block: dict) -> int | None:
+        secs = block.get("limit_window_seconds")
+        return int(secs) // 60 if isinstance(secs, (int, float)) else None
+
+    primary = window_block("primary_window")
+    secondary = window_block("secondary_window")
+
+    # credits.balance is a string ("0", "12.34", ...). Only surface it when
+    # `has_credits` is true to avoid showing $0.00 on plans that don't use it.
+    credits = data.get("credits") or {}
+    dollars: float | None = None
+    if credits.get("has_credits"):
+        bal = credits.get("balance")
+        try:
+            dollars = float(bal) if bal is not None else None
+        except (TypeError, ValueError):
+            dollars = None
+
+    plan_type = data.get("plan_type")
+    plan = plan_type.capitalize() if isinstance(plan_type, str) else "Plus"
 
     return CodexUsage(
-        primary_pct=pct("primary"),
-        primary_reset=reset("primary"),
-        primary_window_min=window("primary"),
-        secondary_pct=pct("secondary"),
-        secondary_reset=reset("secondary"),
-        secondary_window_min=window("secondary"),
+        primary_pct=pct(primary),
+        primary_reset=reset(primary),
+        primary_window_min=window_min(primary),
+        secondary_pct=pct(secondary),
+        secondary_reset=reset(secondary),
+        secondary_window_min=window_min(secondary),
         credits_dollars=dollars,
+        plan=plan,
     )

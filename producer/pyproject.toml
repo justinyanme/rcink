@@ -7,13 +7,18 @@ dependencies = [
     "httpx>=0.27",
     "typer>=0.12",
     "loguru>=0.7",
+    # macOS-only EventKit bridge for the Apple Calendar + Reminders sources.
+    # pyobjc-framework-EventKit pulls in the Core/Foundation bridges it needs.
+    'pyobjc-framework-EventKit>=10.3; sys_platform == "darwin"',
 ]
 
 [project.scripts]
-claude-fetch = "scripts.claude_fetch:app"
-codex-fetch  = "scripts.codex_fetch:app"
-quote-fetch  = "scripts.quote_fetch:app"
-preview      = "scripts.preview:app"
+claude-fetch   = "scripts.claude_fetch:app"
+codex-fetch    = "scripts.codex_fetch:app"
+quote-fetch    = "scripts.quote_fetch:app"
+calendar-fetch = "scripts.calendar_fetch:app"
+todo-fetch     = "scripts.todo_fetch:app"
+preview        = "scripts.preview:app"
 
 [dependency-groups]
 dev = [

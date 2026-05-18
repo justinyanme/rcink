@@ -1,8 +1,15 @@
 # rcpaper — producer side
 
-Pulls Claude/Codex usage from the OAuth files those CLIs already maintain
-(`~/.claude/.credentials.json`, `~/.codex/auth.json`), builds a layout-tree
-page, and pushes one event per run to the `rcpapercolor` Axiom dataset.
+Builds dashboard pages and pushes one event per run to the `rcpapercolor`
+Axiom dataset. The firmware reads them back at the next fetch interval.
+
+Sources:
+- **Claude / Codex** — usage via the OAuth files those CLIs already maintain
+  (`~/.claude/.credentials.json`, `~/.codex/auth.json`).
+- **Calendar** — today's events from all macOS Calendars (EventKit).
+- **Todo** — incomplete reminders from the default macOS Reminders list
+  (EventKit, async fetch pumped synchronously via NSRunLoop).
+- **Quote** — one of a curated set, rotated by date ordinal.
 
 ## One-time setup
 
@@ -23,23 +30,26 @@ page, and pushes one event per run to the `rcpapercolor` Axiom dataset.
 ## Schedule with launchd
 
 ```bash
-# Copy and edit
-cp launchd/com.rocry.rcpaper.claude.plist.example \
-   ~/Library/LaunchAgents/com.rocry.rcpaper.claude.plist
-cp launchd/com.rocry.rcpaper.codex.plist.example \
-   ~/Library/LaunchAgents/com.rocry.rcpaper.codex.plist
-
-# Fix `CHANGE_ME` paths + AXIOM_TOKEN in both files
-$EDITOR ~/Library/LaunchAgents/com.rocry.rcpaper.claude.plist
-$EDITOR ~/Library/LaunchAgents/com.rocry.rcpaper.codex.plist
+# Copy and edit (one plist per fetcher)
+for kind in claude codex calendar todo; do
+  cp launchd/com.rocry.rcpaper.${kind}.plist.example \
+     ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
+  $EDITOR ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
+done
 
 # Load
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rocry.rcpaper.claude.plist
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rocry.rcpaper.codex.plist
+for kind in claude codex calendar todo; do
+  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
+done
 
 # Tail logs
-tail -f /tmp/rcpaper-{claude,codex}.log
+tail -f /tmp/rcpaper-{claude,codex,calendar,todo}.log
 ```
+
+The `calendar-fetch` + `todo-fetch` jobs read from macOS Calendar/Reminders via
+EventKit. On first launch macOS prompts to grant Calendar and Reminders access
+to the `uv`/`python` binary; grant it. The default Reminders list (System
+Settings → Reminders → Default List) is the one rendered.
 
 ## Adding a new dashboard
 

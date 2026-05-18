@@ -30,7 +30,7 @@ def run() -> None:
     logger.info(f"claude usage: 5h={usage.five_hour_pct}% 7d={usage.seven_day_pct}%")
 
     spark = _sparkline_7d()
-    page = build_claude_page(usage, sparkline=spark or None, updated_at=dt.datetime.now())
+    page = build_claude_page(usage, sparkline=spark or None)
     ingest(id="claude", layout=page, order=10)
 
     ingest_metric(

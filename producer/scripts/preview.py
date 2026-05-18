@@ -32,15 +32,31 @@ def _build_local(page_id: str) -> dict[str, Any]:
         from rcpaper.pages.claude import build_claude_page
         from rcpaper.sources.claude import fetch_claude_usage
 
-        usage = fetch_claude_usage()
-        return build_claude_page(usage, sparkline=None, updated_at=dt.datetime.now())
+        return build_claude_page(fetch_claude_usage(), sparkline=None)
     if page_id == "codex":
         from rcpaper.pages.codex import build_codex_page
         from rcpaper.sources.codex import fetch_codex_usage
 
-        usage = fetch_codex_usage()
-        return build_codex_page(usage, sparkline=None, updated_at=dt.datetime.now())
-    raise ValueError(f"unknown page id: {page_id} (expected 'claude' or 'codex')")
+        return build_codex_page(fetch_codex_usage(), sparkline=None)
+    if page_id == "calendar":
+        from rcpaper.pages.calendar import build_calendar_page
+        from rcpaper.sources.calendar import fetch_todays_events
+
+        now = dt.datetime.now().astimezone()
+        return build_calendar_page(fetch_todays_events(now=now), now=now)
+    if page_id == "todo":
+        from rcpaper.pages.todo import build_todo_page
+        from rcpaper.sources.reminders import fetch_todays_reminders
+
+        now = dt.datetime.now().astimezone()
+        return build_todo_page(fetch_todays_reminders(now=now))
+    if page_id == "quote":
+        from rcpaper.pages.quote import build_quote_page
+        from rcpaper.sources.quotes import pick_quote
+
+        now = dt.datetime.now()
+        return build_quote_page(pick_quote(now.date()), now=now)
+    raise ValueError(f"unknown page id: {page_id} (expected 'claude'/'codex'/'calendar'/'todo'/'quote')")
 
 
 def _pull_axiom(page_id: str) -> dict[str, Any]:

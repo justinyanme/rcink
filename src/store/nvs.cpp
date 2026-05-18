@@ -28,6 +28,7 @@ DeviceState nvs_load() {
     PageRecord rec;
     rec.id          = (const char*)(v["id"] | "");
     rec.order       = v["order"] | 0;
+    rec.data_ts     = (uint64_t)(v["data_ts"] | (uint64_t)0);
     rec.layout_json = (const char*)(v["layout_json"] | "");
     s.pages.push_back(std::move(rec));
   }
@@ -42,6 +43,7 @@ void nvs_save(const DeviceState& s) {
     JsonObject o      = arr.add<JsonObject>();
     o["id"]           = rec.id.c_str();
     o["order"]        = rec.order;
+    o["data_ts"]      = (uint64_t)rec.data_ts;
     o["layout_json"]  = rec.layout_json.c_str();
   }
   String blob;

@@ -9,8 +9,6 @@ plan + last-updated metadata footer.
 
 from __future__ import annotations
 
-import datetime as dt
-
 from rcpaper.layout import (
     divider,
     hbar,
@@ -75,7 +73,6 @@ def build_claude_page(
     usage: ClaudeUsage,
     *,
     sparkline: list[float] | None,
-    updated_at: dt.datetime,
 ) -> dict:
     children: list[dict] = [
         text(
@@ -110,6 +107,9 @@ def build_claude_page(
 
     # Flex spacer pushes the footer to the bottom of whatever room is left after
     # the firmware indicator strip is subtracted from the page viewport.
+    # The firmware draws the page-rotation indicator strip + data/refresh
+    # timestamps in the bottom band; we just place the brand + plan footer
+    # above that strip.
     children.append(spacer())
     children.append(divider(color="black", thickness=1))
     children.append(
@@ -117,11 +117,8 @@ def build_claude_page(
             align="center",
             gap=6,
             children=[
-                icon("claude", size=12, color="red"),
-                text(
-                    f"{usage.plan} · updated {updated_at:%H:%M}",
-                    size="sm",
-                ),
+                icon("claude", size=14, color="red"),
+                text(f"CLAUDE  ·  {usage.plan}", size="sm", weight="bold"),
             ],
         ),
     )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from rcpaper.layout import divider, hstack, spacer, text, vstack
+from rcpaper.layout import divider, hstack, icon, spacer, text, vstack
 from rcpaper.sources.quotes import Quote
 
 # Color cycle for body lines. Index = line position. Picked to match the
@@ -56,7 +56,11 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
         spacer(size=4),
         hstack(
             align="center",
-            children=[text("QUOTE OF THE DAY", size="sm")],
+            gap=6,
+            children=[
+                icon("quote", size=14, color="red"),
+                text("QUOTE OF THE DAY", size="sm", weight="bold"),
+            ],
         ),
     ]
 

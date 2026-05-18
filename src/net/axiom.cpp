@@ -65,6 +65,7 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
     PageRecord rec;
     rec.id          = (const char*)(data["id"] | "");
     rec.order       = data["order"] | 0;
+    rec.data_ts     = (uint64_t)(data["data_ts"] | (uint64_t)0);
     rec.layout_json = (const char*)(data["layout_json"] | "");
     out.push_back(std::move(rec));
   }

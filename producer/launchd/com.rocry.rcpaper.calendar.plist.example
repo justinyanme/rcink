@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.rocry.rcpaper.calendar</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/CHANGE_ME/.local/bin/uv</string>
+    <string>run</string>
+    <string>--directory</string>
+    <string>/Users/CHANGE_ME/w/_hw/rcpapercolor/producer</string>
+    <string>calendar-fetch</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AXIOM_TOKEN</key>
+    <string>xaat-CHANGE_ME</string>
+    <key>AXIOM_DATASET</key>
+    <string>rocry</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/rcpaper-calendar.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/rcpaper-calendar.log</string>
+</dict>
+</plist>
