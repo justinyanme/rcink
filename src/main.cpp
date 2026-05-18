@@ -87,7 +87,13 @@ void setup() {
   delay(50);
 
   auto cfg = M5.config();
+#ifdef RCPAPER_DEV_NO_DRAW
+  // Skip the full color-eink wipe on every wake (those "broken dot" patterns
+  // are the 7-color refresh sequence). Pair with the paint-skip below.
+  cfg.clear_display = false;
+#else
   cfg.clear_display = true;
+#endif
   cfg.output_power  = true;
   M5.begin(cfg);
   M5.Display.setEpdMode(epd_mode_t::epd_text);

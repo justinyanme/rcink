@@ -1,16 +1,19 @@
-"""Read Claude OAuth from ~/.claude/.credentials.json, refresh + fetch usage."""
+"""Read Claude OAuth (file or macOS Keychain), refresh + fetch usage."""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
 import os
+import platform
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
 CREDS_DEFAULT = Path.home() / ".claude" / ".credentials.json"
+KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain item name
 OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # public, from eInkClaude
 REFRESH_LEEWAY_SEC = 300  # refresh if expiry < 5 min away
 
@@ -26,14 +29,60 @@ class ClaudeUsage:
     plan: str = "Max"
 
 
+def _keychain_read() -> dict | None:
+    if platform.system() != "Darwin":
+        return None
+    r = subprocess.run(
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0:
+        return None
+    return json.loads(r.stdout)["claudeAiOauth"]
+
+
+def _keychain_write(creds: dict) -> None:
+    payload = json.dumps({"claudeAiOauth": creds})
+    subprocess.run(
+        [
+            "security",
+            "add-generic-password",
+            "-s",
+            KEYCHAIN_SERVICE,
+            "-a",
+            os.environ.get("USER", ""),
+            "-w",
+            payload,
+            "-U",
+        ],
+        check=True,
+    )
+
+
 def load_creds(path: Path = CREDS_DEFAULT) -> dict:
-    raw = json.loads(Path(path).read_text())
-    return raw["claudeAiOauth"]
+    # Prefer the file when present (Linux default + explicit override path);
+    # otherwise fall back to macOS Keychain where Claude Code stores creds.
+    if Path(path).exists():
+        raw = json.loads(Path(path).read_text())
+        return raw["claudeAiOauth"]
+    creds = _keychain_read()
+    if creds is None:
+        raise FileNotFoundError(
+            f"Claude credentials not found at {path} or in macOS Keychain "
+            f"(service='{KEYCHAIN_SERVICE}'). Log in via the Claude CLI first."
+        )
+    return creds
 
 
 def save_creds(path: Path, creds: dict) -> None:
-    Path(path).write_text(json.dumps({"claudeAiOauth": creds}, indent=2))
-    os.chmod(path, 0o600)
+    # If the path doesn't exist but Keychain is the live source, write back
+    # there too. The path-based write stays as the canonical Linux behavior.
+    if Path(path).exists() or platform.system() != "Darwin":
+        Path(path).write_text(json.dumps({"claudeAiOauth": creds}, indent=2))
+        os.chmod(path, 0o600)
+        return
+    _keychain_write(creds)
 
 
 def _refresh(refresh_token: str) -> dict:
