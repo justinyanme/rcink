@@ -43,6 +43,76 @@ static const char* epd_mode_name(epd_mode_t m) {
   }
 }
 
+// Draws a 26 px nav strip at the bottom of the canvas showing where the user
+// is in the rotation. Layout:
+//
+//   ◀ PREV-ID         ● ○ ○         NEXT-ID ▶
+//
+// Filled dot = current, hollow = other pages. PREV-ID and NEXT-ID are the IDs
+// of the pages the user reaches by pressing BtnB and BtnA respectively (the
+// rotation cycles). Drawn straight on the M5Canvas so it composes with the
+// page tree underneath — producers don't need to reserve space, but their own
+// bottom-row content will be covered by this strip.
+static constexpr int IND_STRIP_H = 26;
+
+static void paint_indicator(M5Canvas& canvas,
+                            const std::vector<PageRecord>& pages, uint8_t idx) {
+  if (pages.empty()) return;
+  const int16_t W = canvas.width();
+  const int16_t H = canvas.height();
+  const int16_t y = H - IND_STRIP_H;
+
+  // Solid white background + hairline top rule so the strip floats cleanly
+  // above any page content drawn behind it.
+  canvas.fillRect(0, y, W, IND_STRIP_H, 0xFFFFFF);
+  canvas.drawFastHLine(0, y, W, 0x000000);
+
+  canvas.setFont(&fonts::FreeSansBold9pt7b);
+  canvas.setTextColor(0x000000);
+
+  const size_t n = pages.size();
+  const uint8_t prev_idx = (uint8_t)((idx + n - 1) % n);
+  const uint8_t next_idx = (uint8_t)((idx + 1) % n);
+
+  auto upper = [](std::string s) {
+    for (char& c : s) c = (char)toupper((unsigned char)c);
+    return s;
+  };
+  const std::string prev_id = upper(pages[prev_idx].id);
+  const std::string next_id = upper(pages[next_idx].id);
+
+  const int16_t mid = y + IND_STRIP_H / 2;
+
+  // Left: ◀  PREV
+  const int16_t lpad = 8;
+  canvas.fillTriangle(lpad,     mid,
+                      lpad + 7, y + 6,
+                      lpad + 7, y + IND_STRIP_H - 6, 0x000000);
+  canvas.setCursor(lpad + 13, y + 5);
+  canvas.print(prev_id.c_str());
+
+  // Right: NEXT  ▶
+  const int16_t rpad = 8;
+  const int16_t arrow_x = W - rpad - 7;
+  canvas.fillTriangle(arrow_x,     y + 6,
+                      arrow_x,     y + IND_STRIP_H - 6,
+                      arrow_x + 7, mid, 0x000000);
+  const int16_t next_w = canvas.textWidth(next_id.c_str());
+  canvas.setCursor(arrow_x - 5 - next_w, y + 5);
+  canvas.print(next_id.c_str());
+
+  // Center: dot pagination. Spacing chosen so even 8 pages stay comfortably
+  // within the middle gap between the prev/next labels.
+  const int16_t dot_gap = 12;
+  const int16_t dots_w = (int16_t)((n - 1) * dot_gap);
+  int16_t dx = W / 2 - dots_w / 2;
+  for (size_t i = 0; i < n; ++i) {
+    if (i == idx) canvas.fillCircle(dx, mid, 3, 0x000000);
+    else          canvas.drawCircle(dx, mid, 2, 0x000000);
+    dx += dot_gap;
+  }
+}
+
 static void render_page(const PageRecord& rec, bool stale) {
   JsonDocument doc;
   if (deserializeJson(doc, rec.layout_json)) {
@@ -86,6 +156,9 @@ static void render_page(const PageRecord& rec, bool stale) {
   }
   canvas.fillSprite(0xFFFFFF);
   paint_layout(canvas, laid);
+
+  // Overlay the page-rotation indicator strip at the bottom of every page.
+  paint_indicator(canvas, g_state.pages, g_state.page_index);
 
   if (stale) {
     // "STALE" pill in the bottom-right
@@ -215,6 +288,41 @@ static void console_state_dump() {
                   g_state.pages[i].id.c_str(),
                   g_state.pages[i].order,
                   (unsigned)g_state.pages[i].layout_json.length());
+  }
+}
+
+static void console_dispatch(char c);  // forward decl for dev_buttons_poll
+
+// In production the buttons act as EXT1 deep-sleep wake sources, so the device
+// wakes → fetches/rotates → renders → sleeps in one cycle. In DEV_CONSOLE mode
+// the device stays awake and never sleeps, so those wake sources are inert.
+// Poll the three side buttons (M5Unified mapping: G9=A, G10=B, G1=C) directly
+// in loop() and dispatch the matching console command on a falling edge so the
+// device behaves the same as a deep-sleep cycle from the user's POV.
+struct DevBtn { int pin; char cmd; bool prev_high; uint32_t last_change_ms; };
+static DevBtn g_dev_btns[] = {
+  { 9,  'n', true, 0 },   // BtnA → next page
+  { 10, 'b', true, 0 },   // BtnB → previous page
+  { 1,  'f', true, 0 },   // BtnC → force refetch
+};
+
+static void dev_buttons_init() {
+  for (auto& b : g_dev_btns) pinMode(b.pin, INPUT_PULLUP);
+}
+
+static void dev_buttons_poll() {
+  uint32_t now = millis();
+  for (auto& b : g_dev_btns) {
+    bool high = digitalRead(b.pin) != 0;
+    if (high == b.prev_high) continue;
+    // 30 ms debounce: a real press is much longer than any contact bounce.
+    if (now - b.last_change_ms < 30) continue;
+    b.prev_high = high;
+    b.last_change_ms = now;
+    if (!high) {  // falling edge = press
+      Serial.printf("[btn] G%d → '%c'\n", b.pin, b.cmd);
+      console_dispatch(b.cmd);
+    }
   }
 }
 
@@ -350,6 +458,7 @@ void setup() {
   render_current();
 
 #ifdef RCPAPER_DEV_CONSOLE
+  dev_buttons_init();
   Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
 #else
   // Production path: compute next wake and deep sleep.
@@ -367,6 +476,7 @@ void loop() {
     if (c < 0) break;
     console_dispatch((char)c);
   }
+  dev_buttons_poll();
   delay(20);
 #endif
 }
