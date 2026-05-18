@@ -27,10 +27,10 @@ def test_ingest_posts_event(httpx_mock, env):
     payload = json.loads(body)
     assert isinstance(payload, list) and len(payload) == 1
     ev = payload[0]
-    assert ev["kind"] == "page"
+    assert ev["type"] == "rcpaper_page"
     assert ev["id"] == "claude"
     assert ev["order"] == 10
-    assert ev["layout"] == {"type": "text", "value": "X"}
+    assert json.loads(ev["layout_json"]) == {"type": "text", "value": "X"}
     # _time must be ISO8601 UTC
     dt.datetime.fromisoformat(ev["_time"].replace("Z", "+00:00"))
 
@@ -89,6 +89,6 @@ def test_ingest_metric(httpx_mock, env):
     import json
 
     body = json.loads(httpx_mock.get_request().read())
-    assert body[0]["kind"] == "metric"
+    assert body[0]["type"] == "rcpaper_metric"
     assert body[0]["five_hour_pct"] == 42.0
     assert body[0]["seven_day_pct"] == 68.0
