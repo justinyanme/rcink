@@ -21,15 +21,19 @@ static DeviceState g_state;
 static void sync_ntp_once() {
   // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
   configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
+  // Apply local TZ so subsequent localtime_r() calls (e.g. for the footer
+  // HH:MM stamps) render in the user's wall-clock instead of UTC.
+  setenv("TZ", LOCAL_TZ, 1);
+  tzset();
   struct tm ti;
   int i;
   for (i = 0; i < 20 && !getLocalTime(&ti); ++i) delay(500);
   if (i >= 20) {
     Serial.println("[ntp] sync failed (timeout)");
   } else {
-    Serial.printf("[ntp] synced after %d iters; now=%04d-%02d-%02d %02d:%02d:%02dZ\n",
+    Serial.printf("[ntp] synced after %d iters; now=%04d-%02d-%02d %02d:%02d:%02d (tz=%s)\n",
                   i, ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
-                  ti.tm_hour, ti.tm_min, ti.tm_sec);
+                  ti.tm_hour, ti.tm_min, ti.tm_sec, LOCAL_TZ);
   }
 }
 
@@ -46,20 +50,22 @@ static const char* epd_mode_name(epd_mode_t m) {
 // Two-row strip at the bottom of the canvas:
 //
 //   ─────────────────────────────────────────────
-//   ◀ PREV-ID         ● ○ ○         NEXT-ID ▶
 //                  data 14:32 → refresh 14:45
+//   ◀ PREV-ID         ● ○ ○         NEXT-ID ▶
 //
-// Top row (NAV_H px): rotation cursor — filled dot is current, hollow others;
-// PREV-ID and NEXT-ID are the IDs reached by BtnB / BtnA.
-// Bottom row (TS_H px): producer build time vs. firmware fetch time, drawn
-// from the current page's data_ts and DeviceState::last_fetch_s.
+// Top row (TS_H px): producer build time vs. firmware fetch time, drawn from
+// the current page's data_ts and DeviceState::last_fetch_s.
+// Bottom row (NAV_H px): rotation cursor — filled dot is current, hollow others;
+// PREV-ID and NEXT-ID are the IDs reached by BtnB / BtnA. Sits flush against
+// the bottom of the visible panel; the M5PaperColor bezel clips a few pixels
+// below the dot row, so the nav row must be the lowest content.
 //
 // Drawn straight on the M5Canvas so it composes with the page tree underneath
 // — producers don't need to reserve space, but content drawn into the bottom
 // IND_STRIP_H pixels is covered.
+static constexpr int TS_H  = 14;
 static constexpr int NAV_H = 22;
-static constexpr int TS_H  = 16;
-static constexpr int IND_STRIP_H = NAV_H + TS_H;
+static constexpr int IND_STRIP_H = TS_H + NAV_H;
 
 static String format_hhmm(uint64_t epoch_s) {
   if (epoch_s == 0) return String("--:--");
@@ -78,8 +84,10 @@ static void paint_indicator(M5Canvas& canvas,
   const int16_t W = canvas.width();
   const int16_t H = canvas.height();
   const int16_t y_strip = H - IND_STRIP_H;
-  const int16_t y_nav   = y_strip;
-  const int16_t y_ts    = y_strip + NAV_H;
+  // Timestamps on top of the strip so they sit above the bezel-clipped area;
+  // the nav row is flush with the bottom of the visible panel.
+  const int16_t y_ts    = y_strip;
+  const int16_t y_nav   = y_strip + TS_H;
 
   // Solid white background + hairline top rule so the strip floats cleanly
   // above any page content drawn behind it.
@@ -462,6 +470,12 @@ void setup() {
   // after each text write, which on a 7-color panel manifests as one full
   // refresh cycle per element drawn.
   M5.Display.setEpdMode(epd_mode_t::epd_quality);
+
+  // Apply local TZ once per boot. TZ env survives within a process but not
+  // across esp_restart/deep-sleep cycles, so set it before any localtime_r()
+  // call (e.g. on cache-only wakes that skip NTP).
+  setenv("TZ", LOCAL_TZ, 1);
+  tzset();
 
   WakeReason wr = current_wake_reason();
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);

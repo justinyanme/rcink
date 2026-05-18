@@ -8,22 +8,63 @@
 
 namespace rcpaper {
 
+// Truncate a UTF-8 string with an ellipsis so its rendered width fits inside
+// `max_w` using the currently configured font. We assume `gfx` already has
+// the right font/size set; the caller swaps in the CJK font as needed.
+static std::string fit_utf8(LovyanGFX& gfx, const std::string& s, int16_t max_w) {
+  if (max_w <= 0) return s;
+  if (gfx.textWidth(s.c_str()) <= max_w) return s;
+  const char* ell = "...";
+  int16_t ell_w = gfx.textWidth(ell);
+  if (ell_w >= max_w) {
+    // Almost no room — return empty so we don't draw a stray "..." in 1 px.
+    return std::string();
+  }
+  // Walk one codepoint at a time. UTF-8 lead bytes start with 0xxxxxxx or
+  // 11xxxxxx; continuation bytes are 10xxxxxx.
+  std::string out;
+  for (size_t i = 0; i < s.size();) {
+    unsigned char c = (unsigned char)s[i];
+    size_t step = (c < 0x80) ? 1
+                : (c < 0xC0) ? 1                 // stray cont byte; skip 1
+                : (c < 0xE0) ? 2
+                : (c < 0xF0) ? 3
+                :              4;
+    if (i + step > s.size()) step = s.size() - i;
+    std::string candidate = out + s.substr(i, step) + ell;
+    if (gfx.textWidth(candidate.c_str()) > max_w) break;
+    out.append(s, i, step);
+    i += step;
+  }
+  return out + ell;
+}
+
 void draw_text(LovyanGFX& gfx, const TextNode& t, Rect r) {
   if (t.has_bg) {
     gfx.fillRect(r.x, r.y, r.w, r.h, color_to_m5gfx(t.bg));
   }
-  gfx.setFont(font_for(t.size, t.weight));
+  // Wrap is on by default; that breaks our fixed-height row layout because
+  // wrapped text writes onto the next row's pixels without claiming extra
+  // vertical space. Disable wrap and instead truncate with an ellipsis below.
+  gfx.setTextWrap(false, false);
+  const bool needs_cjk = string_needs_cjk(t.value);
+  gfx.setFont(needs_cjk ? cjk_font_for(t.size, t.weight)
+                        : font_for(t.size, t.weight));
   gfx.setTextColor(color_to_m5gfx(t.color));
+
+  int16_t inner_w = r.w - 2 * t.pad;
+  if (inner_w < 0) inner_w = 0;
+  const std::string fitted = fit_utf8(gfx, t.value, inner_w);
 
   int16_t tx = r.x + t.pad;
   int16_t ty = r.y + t.pad;
-  int16_t text_w = gfx.textWidth(t.value.c_str());
+  int16_t text_w = gfx.textWidth(fitted.c_str());
 
   if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;
   else if (t.align == Align::End) tx = r.x + r.w - text_w - t.pad;
 
   gfx.setCursor(tx, ty);
-  gfx.print(t.value.c_str());
+  gfx.print(fitted.c_str());
 }
 
 void draw_divider(LovyanGFX& gfx, const DividerNode& d, Rect r, bool /*vertical_main*/) {
@@ -72,14 +113,22 @@ void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
   if (s.values.empty()) return;
   uint32_t fg = color_to_m5gfx(s.color);
 
-  // Baseline + range
-  float lo = s.values[0], hi = s.values[0];
-  for (float v : s.values) { if (v < lo) lo = v; if (v > hi) hi = v; }
-  if (hi == lo) { lo -= 1; hi += 1; }
+  // Range. Anchor low at 0 so a flat line at 50% reads as half-height instead
+  // of being normalised to a meaningless mid-line. Cap the top so 100%-bound
+  // sparklines (usage percentages) can't get rescaled to a tiny range when
+  // all values cluster.
+  float hi = s.values[0];
+  for (float v : s.values) { if (v > hi) hi = v; }
+  if (hi <= 0) hi = 1;  // avoid div-by-zero
 
+  // Reserve a 1-px gutter top + bottom so the line doesn't hug the edges.
+  const int16_t gutter = 2;
+  const int16_t inner_h = r.h - 2 * gutter;
   auto y_of = [&](float v) -> int16_t {
-    float pct = (v - lo) / (hi - lo);
-    return (int16_t)(r.y + r.h - (int16_t)(pct * (r.h - 2)) - 1);
+    if (v < 0) v = 0;
+    if (v > hi) v = hi;
+    float pct = v / hi;
+    return (int16_t)(r.y + gutter + inner_h - (int16_t)(pct * inner_h));
   };
 
   size_t n = s.values.size();
@@ -87,13 +136,22 @@ void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
     gfx.fillCircle(r.x + r.w / 2, y_of(s.values[0]), 2, fg);
     return;
   }
+  // Thicker stroke (3 px) so the line is readable on the E6 panel; the M5GFX
+  // antialiased line is only 1 px wide and tends to disappear at our colors.
   for (size_t i = 1; i < n; ++i) {
     int16_t x0 = r.x + (int16_t)(((int32_t)(i - 1) * (r.w - 1)) / (int32_t)(n - 1));
     int16_t x1 = r.x + (int16_t)(((int32_t)i       * (r.w - 1)) / (int32_t)(n - 1));
-    gfx.drawLine(x0, y_of(s.values[i - 1]), x1, y_of(s.values[i]), fg);
+    int16_t y0 = y_of(s.values[i - 1]);
+    int16_t y1 = y_of(s.values[i]);
+    gfx.drawLine(x0, y0,     x1, y1,     fg);
+    gfx.drawLine(x0, y0 - 1, x1, y1 - 1, fg);
+    gfx.drawLine(x0, y0 + 1, x1, y1 + 1, fg);
   }
-  // Baseline rule
-  gfx.drawFastHLine(r.x, r.y + r.h - 1, r.w, 0x000000);
+  // Dotted baseline at the bottom — visually anchors the chart without
+  // competing with the data line.
+  for (int16_t x = r.x; x < r.x + r.w; x += 4) {
+    gfx.drawPixel(x, r.y + r.h - 1, 0x808080);
+  }
 }
 
 namespace {

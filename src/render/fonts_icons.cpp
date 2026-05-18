@@ -35,6 +35,32 @@ const lgfx::IFont* font_for(TextSize size, Weight weight) {
   }
 }
 
+// efontCN_* is the M5GFX-bundled bitmap CJK font (u8g2 format). It covers
+// CJK plus ASCII, so we can swap to it whenever a string contains any
+// non-ASCII byte without losing Latin glyphs.
+const lgfx::IFont* cjk_font_for(TextSize size, Weight weight) {
+  switch (size) {
+    case TextSize::H1:
+      return weight == Weight::Bold ? &fonts::efontCN_24_b : &fonts::efontCN_24;
+    case TextSize::H2:
+      return weight == Weight::Bold ? &fonts::efontCN_24_b : &fonts::efontCN_24;
+    case TextSize::Body:
+      return weight == Weight::Bold ? &fonts::efontCN_16_b : &fonts::efontCN_16;
+    case TextSize::Sm:
+    default:
+      return weight == Weight::Bold ? &fonts::efontCN_14_b : &fonts::efontCN_14;
+  }
+}
+
+bool string_needs_cjk(const std::string& s) {
+  // efontCN ships with ASCII too, but switching unnecessarily makes Latin
+  // headers heavier — only swap when there's at least one non-ASCII byte.
+  for (unsigned char c : s) {
+    if (c >= 0x80) return true;
+  }
+  return false;
+}
+
 IconResult draw_icon_placeholder(M5GFX& gfx, int16_t x, int16_t y,
                                  const IconNode& n) {
   int16_t s = n.size > 0 ? n.size : 16;

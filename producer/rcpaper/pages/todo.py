@@ -7,8 +7,29 @@ unicode checkbox + priority chips (no proposed primitives).
 
 from __future__ import annotations
 
+import re
+
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
 from rcpaper.sources.reminders import Reminder, TodaysReminders
+
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _clean_title(raw: str, *, limit: int = 36) -> str:
+    """Strip URLs and collapse whitespace so the row stays scannable.
+
+    Many reminders are literally just URLs; replace each with a [link] sentinel
+    so the row still hints at content. Hard-cap chars (the firmware also
+    truncates with an ellipsis, but trimming at the source keeps Axiom events
+    small and gives the layout engine accurate row widths).
+    """
+    cleaned = _URL_RE.sub("[link]", raw)
+    cleaned = " ".join(cleaned.split())
+    if not cleaned:
+        cleaned = "[link]"
+    if len(cleaned) > limit:
+        cleaned = cleaned[: limit - 1].rstrip() + "…"
+    return cleaned
 
 
 # EventKit priority buckets → palette + label.
@@ -24,9 +45,9 @@ def _prio_color(p: int) -> str | None:
 
 
 def _item_row(item: Reminder) -> dict:
-    # Empty checkbox glyph (always incomplete here; completed items are filtered
-    # out at the source) drawn as a small black square via text+bg trick.
-    checkbox = text("☐", size="h2", color="black", weight="bold")
+    # The ☐ unicode glyph doesn't render in our bundled fonts; use an ASCII
+    # box that the FreeSans / efontCN fonts both have.
+    checkbox = text("[ ]", size="body", color="black", weight="bold")
     prio_color = _prio_color(item.priority)
     children: list[dict] = [checkbox]
     if prio_color is not None:
@@ -34,7 +55,7 @@ def _item_row(item: Reminder) -> dict:
     else:
         # Reserve the priority slot so titles align across rows.
         children.append(spacer(size=10))
-    children.append(text(item.title, size="body", weight="bold", max_lines=1))
+    children.append(text(_clean_title(item.title), size="body", weight="bold", max_lines=1))
     return hstack(gap=8, align="center", children=children)
 
 

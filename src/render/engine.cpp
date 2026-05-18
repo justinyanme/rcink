@@ -209,7 +209,11 @@ LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m)
 namespace rcpaper {
 
 Size M5GFXMeasurer::text_size(const TextNode& t) const {
-  gfx_.setFont(font_for(t.size, t.weight));
+  // Match the font draw_text() will actually use, otherwise the layout
+  // engine reserves the wrong horizontal width for CJK strings.
+  const bool needs_cjk = string_needs_cjk(t.value);
+  gfx_.setFont(needs_cjk ? cjk_font_for(t.size, t.weight)
+                         : font_for(t.size, t.weight));
   int16_t w = gfx_.textWidth(t.value.c_str()) + 2 * t.pad;
   int16_t h = font_height(t.size, t.weight) + 2 * t.pad;
   return Size{w, h};

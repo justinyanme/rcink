@@ -101,7 +101,7 @@ def build_codex_page(
 
     if sparkline:
         children.append(spacer(size=12))
-        children.append(text("DAILY USAGE · LAST 7", size="sm", weight="bold"))
+        children.append(text("USAGE · LAST 24H", size="sm", weight="bold"))
         children.append(spark(sparkline, color="blue", height=56))
 
     if usage.credits_dollars is not None:

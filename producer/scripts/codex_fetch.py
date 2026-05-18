@@ -13,15 +13,20 @@ from rcpaper.sources.codex import fetch_codex_usage
 app = typer.Typer(add_completion=False, help=__doc__)
 
 
-def _sparkline_7d() -> list[float]:
+def _sparkline_24h() -> list[float]:
+    """Last-24h hourly average of the primary-window usage %."""
     rows = query_apl(
         "['rocry'] "
         "| where ['type'] == 'rcpaper_metric' and ['id'] == 'codex.usage' "
-        "| summarize avg_pct = avg(['primary_pct']) by bin(_time, 1d) "
-        "| order by _time asc",
-        lookback=dt.timedelta(days=7),
+        "| summarize avg_pct = avg(['primary_pct']) by bin(_time, 1h)",
+        lookback=dt.timedelta(hours=24),
     )
-    return [float(r.get("avg_pct", 0) or 0) for r in rows]
+    out: list[float] = []
+    for r in rows:
+        v = r.get("avg_pct")
+        if v is not None:
+            out.append(float(v))
+    return out
 
 
 @app.command()
@@ -29,7 +34,7 @@ def run() -> None:
     usage = fetch_codex_usage()
     logger.info(f"codex usage: primary={usage.primary_pct}% secondary={usage.secondary_pct}%")
 
-    spark = _sparkline_7d()
+    spark = _sparkline_24h()
     page = build_codex_page(usage, sparkline=spark or None)
     ingest(id="codex", layout=page, order=20)
 
