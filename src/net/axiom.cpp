@@ -9,13 +9,6 @@
 
 namespace rcpaper {
 
-static void iso_minus(time_t now, time_t delta, char* out, size_t n) {
-  time_t t = now - delta;
-  struct tm tm_;
-  gmtime_r(&t, &tm_);
-  strftime(out, n, "%Y-%m-%dT%H:%M:%SZ", &tm_);
-}
-
 bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   WiFiClientSecure client;
   client.setCACert(AXIOM_ROOT_CA);
@@ -29,16 +22,13 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   http.addHeader("Authorization", String("Bearer ") + AXIOM_TOKEN);
   http.addHeader("Content-Type", "application/json");
 
-  time_t now;
-  time(&now);
-  char start[32], end[32];
-  iso_minus(now, 60 * 60, start, sizeof(start));   // 1h lookback (APL also filters)
-  iso_minus(now, 0,       end,   sizeof(end));
-
+  // Use a wide static window — the APL itself does `_time > ago(1h)`, so the
+  // envelope just needs to be a superset. Avoids depending on NTP being
+  // synced before the first fetch (e.g. on networks that block pool.ntp.org).
   JsonDocument req;
   req["apl"]       = AXIOM_APL_QUERY;
-  req["startTime"] = start;
-  req["endTime"]   = end;
+  req["startTime"] = "2024-01-01T00:00:00Z";
+  req["endTime"]   = "2099-12-31T23:59:59Z";
   String body;
   serializeJson(req, body);
 
@@ -53,7 +43,9 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   String payload = http.getString();
   http.end();
 
-  // Parse the OUTER response only; keep `layout` as raw JSON.
+  // Parse only the outer envelope; `layout_json` is already a stringified
+  // tree (producer serializes it before ingest, so Axiom doesn't flatten
+  // the nested object across columns).
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
   if (err) {
@@ -71,11 +63,9 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
     JsonVariantConst data = m["data"];
     if (data.isNull()) continue;
     PageRecord rec;
-    rec.id    = (const char*)(data["id"] | "");
-    rec.order = data["order"] | 0;
-    String layout_str;
-    serializeJson(data["layout"], layout_str);
-    rec.layout_json = layout_str;
+    rec.id          = (const char*)(data["id"] | "");
+    rec.order       = data["order"] | 0;
+    rec.layout_json = (const char*)(data["layout_json"] | "");
     out.push_back(std::move(rec));
   }
   Serial.printf("[axiom] %u pages\n", (unsigned)out.size());

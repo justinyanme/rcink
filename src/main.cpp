@@ -15,9 +15,18 @@
 using namespace rcpaper;
 
 static void sync_ntp_once() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
+  configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
   struct tm ti;
-  for (int i = 0; i < 20 && !getLocalTime(&ti); ++i) delay(500);
+  int i;
+  for (i = 0; i < 20 && !getLocalTime(&ti); ++i) delay(500);
+  if (i >= 20) {
+    Serial.println("[ntp] sync failed (timeout)");
+  } else {
+    Serial.printf("[ntp] synced after %d iters; now=%04d-%02d-%02d %02d:%02d:%02dZ\n",
+                  i, ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+                  ti.tm_hour, ti.tm_min, ti.tm_sec);
+  }
 }
 
 static void render_page(const PageRecord& rec, bool stale) {
@@ -29,10 +38,15 @@ static void render_page(const PageRecord& rec, bool stale) {
   LayoutNode root = parse_layout(doc.as<JsonVariantConst>());
 
   M5GFXMeasurer m(M5.Display);
-  M5.Display.fillScreen(0xFFFFFF);
   Rect vp{0, 0, (int16_t)M5.Display.width(), (int16_t)M5.Display.height()};
-
   auto laid = run_layout(root, vp, m);
+
+#ifdef RCPAPER_DEV_NO_DRAW
+  Serial.printf("[render] DEV_NO_DRAW page=%s stale=%d laid=%dx%d\n",
+                rec.id.c_str(), stale ? 1 : 0, vp.w, vp.h);
+  (void)laid;
+#else
+  M5.Display.fillScreen(0xFFFFFF);
   paint_layout(M5.Display, laid);
 
   if (stale) {
@@ -49,9 +63,13 @@ static void render_page(const PageRecord& rec, bool stale) {
     M5.Display.print(label);
   }
   M5.Display.display();
+#endif
 }
 
 static void render_error(const char* msg) {
+#ifdef RCPAPER_DEV_NO_DRAW
+  Serial.printf("[render] DEV_NO_DRAW error=%s\n", msg);
+#else
   M5.Display.fillScreen(0xFFFFFF);
   M5.Display.setFont(&fonts::FreeSansBold12pt7b);
   M5.Display.setTextColor(0x000000);
@@ -61,6 +79,7 @@ static void render_error(const char* msg) {
   M5.Display.setCursor(20, 80);
   M5.Display.print(msg);
   M5.Display.display();
+#endif
 }
 
 void setup() {

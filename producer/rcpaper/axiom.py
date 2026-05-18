@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 from typing import Any
 
@@ -29,10 +30,13 @@ def ingest(*, id: str, layout: dict[str, Any], order: int | None = None, ttl_sec
     dataset = _env("AXIOM_DATASET")
     event = {
         "_time": _now_iso(),
-        "kind": "page",
+        "type": "rcpaper_page",
         "id": id,
         "ttl_sec": ttl_sec,
-        "layout": layout,
+        # Stringify the layout tree so Axiom stores it as one opaque field
+        # instead of flattening it into layout.children / layout.gap / ...
+        # The firmware does its own JSON parse on `layout_json`.
+        "layout_json": json.dumps(layout, ensure_ascii=False, separators=(",", ":")),
     }
     if order is not None:
         event["order"] = order
@@ -78,7 +82,7 @@ def ingest_metric(*, id: str, fields: dict[str, float | int | str]) -> None:
     dataset = _env("AXIOM_DATASET")
     event = {
         "_time": _now_iso(),
-        "kind": "metric",
+        "type": "rcpaper_metric",
         "id": id,
         **fields,
     }

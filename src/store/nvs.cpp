@@ -26,11 +26,9 @@ DeviceState nvs_load() {
   if (arr.isNull()) return s;
   for (JsonVariantConst v : arr) {
     PageRecord rec;
-    rec.id    = (const char*)(v["id"] | "");
-    rec.order = v["order"] | 0;
-    String layout_str;
-    serializeJson(v["layout"], layout_str);
-    rec.layout_json = layout_str;
+    rec.id          = (const char*)(v["id"] | "");
+    rec.order       = v["order"] | 0;
+    rec.layout_json = (const char*)(v["layout_json"] | "");
     s.pages.push_back(std::move(rec));
   }
   return s;
@@ -41,12 +39,10 @@ void nvs_save(const DeviceState& s) {
   JsonDocument doc;
   JsonArray arr = doc.to<JsonArray>();
   for (const auto& rec : s.pages) {
-    JsonObject o = arr.add<JsonObject>();
-    o["id"]    = rec.id.c_str();
-    o["order"] = rec.order;
-    JsonDocument inner;
-    deserializeJson(inner, rec.layout_json);
-    o["layout"] = inner.as<JsonVariantConst>();
+    JsonObject o      = arr.add<JsonObject>();
+    o["id"]           = rec.id.c_str();
+    o["order"]        = rec.order;
+    o["layout_json"]  = rec.layout_json.c_str();
   }
   String blob;
   serializeJson(doc, blob);

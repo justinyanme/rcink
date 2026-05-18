@@ -9,7 +9,7 @@
 // Axiom
 #define AXIOM_QUERY_URL      "https://api.axiom.co/v1/datasets/_apl?format=legacy"
 #define AXIOM_TOKEN          "xaat-your-token"
-#define AXIOM_APL_QUERY      "['rcpapercolor'] | where ['kind'] == 'page' and _time > ago(1h) | summarize arg_max(_time, *) by ['id'] | project ['id'], ['order'], ['layout'] | order by ['order'] asc nulls last, ['id'] asc"
+#define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json']) by ['id'] | project ['id'], ['order'], ['layout_json'] | order by ['order'] asc nulls last, ['id'] asc"
 
 // Behavior
 #define FETCH_INTERVAL_SEC   900   // 15 min
@@ -17,7 +17,7 @@
 
 // TLS root CA for api.axiom.co (ISRG Root X1 — Let's Encrypt chain).
 // Paste the PEM here; mirrors the eInkClaude pattern.
-#define AXIOM_ROOT_CA R"(-----BEGIN CERTIFICATE-----
+static const char AXIOM_ROOT_CA[] = R"(-----BEGIN CERTIFICATE-----
 ...paste the PEM here...
 -----END CERTIFICATE-----
-)"
+)";

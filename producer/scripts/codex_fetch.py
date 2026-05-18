@@ -15,8 +15,8 @@ app = typer.Typer(add_completion=False, help=__doc__)
 
 def _sparkline_7d() -> list[float]:
     rows = query_apl(
-        "['rcpapercolor'] "
-        "| where ['kind'] == 'metric' and ['id'] == 'codex.usage' "
+        "['rocry'] "
+        "| where ['type'] == 'rcpaper_metric' and ['id'] == 'codex.usage' "
         "| summarize avg_pct = avg(['primary_pct']) by bin(_time, 1d) "
         "| order by _time asc",
         lookback=dt.timedelta(days=7),
