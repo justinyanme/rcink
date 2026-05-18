@@ -127,7 +127,7 @@ def build_codex_page(
             align="center",
             gap=6,
             children=[
-                icon("codex", size=14, color="green"),
+                icon("codex", size=16, color="green"),
                 text(f"CODEX  ·  {usage.plan}", size="sm", weight="bold"),
             ],
         ),

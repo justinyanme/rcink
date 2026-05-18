@@ -476,6 +476,226 @@ function IconGlyph({ name, x, y, size, color, ink }) {
       return <path d={`M ${tx(8)} ${ty(2)} L ${tx(14)} ${ty(10)} L ${tx(2)} ${ty(10)} Z`} fill={color} />;
     case 'arrow_down':
       return <path d={`M ${tx(8)} ${ty(14)} L ${tx(2)} ${ty(6)} L ${tx(14)} ${ty(6)} Z`} fill={color} />;
+    case 'thermometer':
+      return (
+        <>
+          <rect x={tx(6.5)} y={ty(1.5)} width={t(3)} height={t(9)} rx={t(1.5)} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={tx(7.5)} y={ty(5)} width={t(1)} height={t(6)} fill={color} />
+          <circle cx={tx(8)} cy={ty(12)} r={t(2.4)} fill={color} stroke={color} strokeWidth={0.5} />
+        </>
+      );
+    case 'droplet':
+      return (
+        <path d={`M ${tx(8)} ${ty(1.5)} C ${tx(3)} ${ty(8)}, ${tx(2.5)} ${ty(11.5)}, ${tx(8)} ${ty(14.5)} C ${tx(13.5)} ${ty(11.5)}, ${tx(13)} ${ty(8)}, ${tx(8)} ${ty(1.5)} Z`} fill={color} />
+      );
+    case 'led':
+      return (
+        <>
+          <circle cx={tx(8)} cy={ty(8)} r={t(6.5)} fill={color} stroke={ink.black} strokeWidth={0.8} />
+          <circle cx={tx(6)} cy={ty(6)} r={t(1.8)} fill={ink.white} opacity={0.85} />
+          {/* corona */}
+          <circle cx={tx(8)} cy={ty(8)} r={t(7.5)} fill="none" stroke={color} strokeWidth={0.6} opacity={0.4} />
+        </>
+      );
+    case 'mic':
+      return (
+        <>
+          <rect x={tx(6)} y={ty(1.5)} width={t(4)} height={t(8)} rx={t(2)} fill={color} />
+          <path d={`M ${tx(3)} ${ty(8)} Q ${tx(3)} ${ty(11.5)} ${tx(8)} ${ty(11.5)} Q ${tx(13)} ${ty(11.5)} ${tx(13)} ${ty(8)}`} fill="none" stroke={color} strokeWidth={1.3} />
+          <rect x={tx(7.25)} y={ty(11.5)} width={t(1.5)} height={t(2.5)} fill={color} />
+          <rect x={tx(5)} y={ty(14)} width={t(6)} height={t(1)} fill={color} />
+        </>
+      );
+    case 'speaker':
+      return (
+        <>
+          <path d={`M ${tx(2)} ${ty(6)} L ${tx(6)} ${ty(6)} L ${tx(10)} ${ty(2)} L ${tx(10)} ${ty(14)} L ${tx(6)} ${ty(10)} L ${tx(2)} ${ty(10)} Z`} fill={color} />
+          <path d={`M ${tx(12)} ${ty(5)} Q ${tx(15)} ${ty(8)} ${tx(12)} ${ty(11)}`} fill="none" stroke={color} strokeWidth={1.2} />
+          <path d={`M ${tx(13.5)} ${ty(3)} Q ${tx(17.5)} ${ty(8)} ${tx(13.5)} ${ty(13)}`} fill="none" stroke={color} strokeWidth={1.2} opacity={0.6} />
+        </>
+      );
+    case 'sd':
+      return (
+        <>
+          <path d={`M ${tx(3)} ${ty(2)} L ${tx(10)} ${ty(2)} L ${tx(13)} ${ty(5)} L ${tx(13)} ${ty(14)} L ${tx(3)} ${ty(14)} Z`} fill={color} stroke={ink.black} strokeWidth={0.6} />
+          {[5, 7, 9, 11].map((cx, i) => (
+            <rect key={i} x={tx(cx - 0.4)} y={ty(2)} width={t(0.8)} height={t(2.4)} fill={ink.white} />
+          ))}
+        </>
+      );
+    case 'ir':
+      return (
+        <>
+          <rect x={tx(6.5)} y={ty(2)} width={t(3)} height={t(5)} rx={t(0.6)} fill={color} />
+          <path d={`M ${tx(3)} ${ty(9)} Q ${tx(8)} ${ty(13)} ${tx(13)} ${ty(9)}`} fill="none" stroke={color} strokeWidth={1.3} />
+          <path d={`M ${tx(1.5)} ${ty(11)} Q ${tx(8)} ${ty(16.5)} ${tx(14.5)} ${ty(11)}`} fill="none" stroke={color} strokeWidth={1.1} opacity={0.55} />
+          <circle cx={tx(8)} cy={ty(10.5)} r={t(0.9)} fill={color} />
+        </>
+      );
+    case 'clock':
+      return (
+        <>
+          <circle cx={tx(8)} cy={ty(8)} r={t(6.5)} fill="none" stroke={color} strokeWidth={1.3} />
+          <rect x={tx(7.5)} y={ty(3.5)} width={t(1)} height={t(5)} fill={color} />
+          <rect x={tx(7.5)} y={ty(7.5)} width={t(4.5)} height={t(1)} fill={color} />
+          <circle cx={tx(8)} cy={ty(8)} r={t(0.8)} fill={color} />
+        </>
+      );
+    case 'imu':
+      return (
+        <>
+          {/* isometric cube */}
+          <path d={`M ${tx(8)} ${ty(2)} L ${tx(14)} ${ty(5)} L ${tx(14)} ${ty(11)} L ${tx(8)} ${ty(14)} L ${tx(2)} ${ty(11)} L ${tx(2)} ${ty(5)} Z`} fill={color} stroke={ink.black} strokeWidth={0.6} />
+          <path d={`M ${tx(2)} ${ty(5)} L ${tx(8)} ${ty(8)} L ${tx(14)} ${ty(5)}`} fill="none" stroke={ink.white} strokeWidth={0.8} />
+          <path d={`M ${tx(8)} ${ty(8)} L ${tx(8)} ${ty(14)}`} stroke={ink.white} strokeWidth={0.8} />
+        </>
+      );
+    case 'chip':
+      return (
+        <>
+          <rect x={tx(3)} y={ty(3)} width={t(10)} height={t(10)} fill={color} stroke={ink.black} strokeWidth={0.6} />
+          <rect x={tx(5)} y={ty(5)} width={t(6)} height={t(6)} fill={ink.white} />
+          {[5, 8, 11].map((p) => (
+            <g key={p}>
+              <rect x={tx(p - 0.4)} y={ty(1)} width={t(0.8)} height={t(2)} fill={color} />
+              <rect x={tx(p - 0.4)} y={ty(13)} width={t(0.8)} height={t(2)} fill={color} />
+              <rect x={tx(1)} y={ty(p - 0.4)} width={t(2)} height={t(0.8)} fill={color} />
+              <rect x={tx(13)} y={ty(p - 0.4)} width={t(2)} height={t(0.8)} fill={color} />
+            </g>
+          ))}
+        </>
+      );
+    case 'eink':
+      return (
+        <>
+          <rect x={tx(2)} y={ty(2)} width={t(12)} height={t(12)} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={tx(4)} y={ty(4.5)} width={t(8)} height={t(1)} fill={color} />
+          <rect x={tx(4)} y={ty(7)} width={t(5)} height={t(1)} fill={color} />
+          <rect x={tx(4)} y={ty(9.5)} width={t(8)} height={t(1)} fill={color} />
+          <rect x={tx(4)} y={ty(12)} width={t(3)} height={t(1)} fill={color} />
+        </>
+      );
+    case 'calendar':
+      return (
+        <>
+          <rect x={tx(2)} y={ty(3)} width={t(12)} height={t(11)} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={tx(2)} y={ty(3)} width={t(12)} height={t(3)} fill={color} />
+          <rect x={tx(4.5)} y={ty(1.5)} width={t(1.5)} height={t(3)} fill={color} />
+          <rect x={tx(10)} y={ty(1.5)} width={t(1.5)} height={t(3)} fill={color} />
+          <rect x={tx(4)} y={ty(8)} width={t(2)} height={t(2)} fill={color} />
+          <rect x={tx(7)} y={ty(8)} width={t(2)} height={t(2)} fill={color} />
+          <rect x={tx(10)} y={ty(8)} width={t(2)} height={t(2)} fill={color} />
+          <rect x={tx(4)} y={ty(11)} width={t(2)} height={t(2)} fill={color} />
+          <rect x={tx(7)} y={ty(11)} width={t(2)} height={t(2)} fill={color} />
+        </>
+      );
+    case 'github':
+      return (
+        <>
+          <circle cx={tx(8)} cy={ty(8)} r={t(6.5)} fill={color} />
+          <path d={`M ${tx(6)} ${ty(13)} L ${tx(6)} ${ty(11)} Q ${tx(4)} ${ty(11)} ${tx(4)} ${ty(9)} Q ${tx(4)} ${ty(7.5)} ${tx(5)} ${ty(7)} Q ${tx(5)} ${ty(5.5)} ${tx(5.5)} ${ty(5)} Q ${tx(6.5)} ${ty(5.2)} ${tx(7)} ${ty(5.8)} Q ${tx(8)} ${ty(5.5)} ${tx(9)} ${ty(5.8)} Q ${tx(9.5)} ${ty(5.2)} ${tx(10.5)} ${ty(5)} Q ${tx(11)} ${ty(5.5)} ${tx(11)} ${ty(7)} Q ${tx(12)} ${ty(7.5)} ${tx(12)} ${ty(9)} Q ${tx(12)} ${ty(11)} ${tx(10)} ${ty(11)} L ${tx(10)} ${ty(13)}`} fill="none" stroke={ink.white} strokeWidth={1.1} />
+        </>
+      );
+    case 'chart':
+      return (
+        <>
+          <rect x={tx(2)} y={ty(10)} width={t(2.5)} height={t(4)} fill={color} />
+          <rect x={tx(5.5)} y={ty(7)} width={t(2.5)} height={t(7)} fill={color} />
+          <rect x={tx(9)} y={ty(4)} width={t(2.5)} height={t(10)} fill={color} />
+          <rect x={tx(12.5)} y={ty(9)} width={t(2.5)} height={t(5)} fill={color} />
+        </>
+      );
+    case 'todo':
+      return (
+        <>
+          <rect x={tx(2)} y={ty(2)} width={t(4)} height={t(4)} fill="none" stroke={color} strokeWidth={1.3} />
+          <path d={`M ${tx(2.5)} ${ty(4.2)} L ${tx(4)} ${ty(5.5)} L ${tx(6)} ${ty(2.5)}`} stroke={color} strokeWidth={1.5} fill="none" />
+          <rect x={tx(8)} y={ty(3)} width={t(7)} height={t(1.5)} fill={color} />
+          <rect x={tx(2)} y={ty(8)} width={t(4)} height={t(4)} fill="none" stroke={color} strokeWidth={1.3} />
+          <rect x={tx(8)} y={ty(9)} width={t(7)} height={t(1.5)} fill={color} />
+        </>
+      );
+    case 'refresh':
+      return (
+        <>
+          <path d={`M ${tx(2)} ${ty(8)} A ${t(6)} ${t(6)} 0 1 1 ${tx(8)} ${ty(14)}`} fill="none" stroke={color} strokeWidth={1.6} />
+          <path d={`M ${tx(2)} ${ty(8)} L ${tx(5)} ${ty(5)} L ${tx(5)} ${ty(11)} Z`} fill={color} />
+        </>
+      );
+    case 'sleep':
+      return (
+        <>
+          <text x={tx(2)} y={ty(7)} fontSize={t(7)} fontWeight={900} fill={color} fontFamily="sans-serif">Z</text>
+          <text x={tx(6)} y={ty(11)} fontSize={t(5.5)} fontWeight={900} fill={color} fontFamily="sans-serif">z</text>
+          <text x={tx(10)} y={ty(14)} fontSize={t(4)} fontWeight={900} fill={color} fontFamily="sans-serif">z</text>
+        </>
+      );
+    case 'sparkles':
+      return (
+        <>
+          <path d={`M ${tx(8)} ${ty(1)} L ${tx(9.5)} ${ty(6.5)} L ${tx(15)} ${ty(8)} L ${tx(9.5)} ${ty(9.5)} L ${tx(8)} ${ty(15)} L ${tx(6.5)} ${ty(9.5)} L ${tx(1)} ${ty(8)} L ${tx(6.5)} ${ty(6.5)} Z`} fill={color} />
+        </>
+      );
+    case 'sun':
+      return (
+        <>
+          <circle cx={tx(8)} cy={ty(8)} r={t(3)} fill={color} />
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((a, i) => {
+            const rad = (a * Math.PI) / 180;
+            const x1 = tx(8) + t(5) * Math.cos(rad);
+            const y1 = ty(8) + t(5) * Math.sin(rad);
+            const x2 = tx(8) + t(7) * Math.cos(rad);
+            const y2 = ty(8) + t(7) * Math.sin(rad);
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={1.5} />;
+          })}
+        </>
+      );
+    case 'bolt':
+      return (
+        <path d={`M ${tx(9)} ${ty(1)} L ${tx(2)} ${ty(9)} L ${tx(7)} ${ty(9)} L ${tx(5)} ${ty(15)} L ${tx(13)} ${ty(7)} L ${tx(8)} ${ty(7)} Z`} fill={color} />
+      );
+    case 'button':
+      return (
+        <>
+          <circle cx={tx(8)} cy={ty(8)} r={t(6.5)} fill="none" stroke={color} strokeWidth={1.2} />
+          <circle cx={tx(8)} cy={ty(8)} r={t(4)} fill={color} />
+        </>
+      );
+    case 'usbc':
+      return (
+        <>
+          <rect x={tx(1.5)} y={ty(6)} width={t(13)} height={t(4)} rx={t(2)} fill="none" stroke={color} strokeWidth={1.2} />
+          <rect x={tx(3.5)} y={ty(7.2)} width={t(9)} height={t(1.6)} rx={t(0.8)} fill={color} />
+        </>
+      );
+    case 'antenna':
+      return (
+        <>
+          <rect x={tx(7.5)} y={ty(7)} width={t(1)} height={t(8)} fill={color} />
+          <path d={`M ${tx(8)} ${ty(7)} L ${tx(4)} ${ty(2)} M ${tx(8)} ${ty(7)} L ${tx(12)} ${ty(2)} M ${tx(8)} ${ty(7)} L ${tx(6)} ${ty(1)} M ${tx(8)} ${ty(7)} L ${tx(10)} ${ty(1)}`} stroke={color} strokeWidth={1.3} />
+          <circle cx={tx(8)} cy={ty(7)} r={t(1.2)} fill={color} />
+        </>
+      );
+    case 'flask':
+      return (
+        <>
+          <path d={`M ${tx(6)} ${ty(2)} L ${tx(6)} ${ty(7)} L ${tx(3)} ${ty(13)} Q ${tx(3)} ${ty(14.5)} ${tx(5)} ${ty(14.5)} L ${tx(11)} ${ty(14.5)} Q ${tx(13)} ${ty(14.5)} ${tx(13)} ${ty(13)} L ${tx(10)} ${ty(7)} L ${tx(10)} ${ty(2)} Z`} fill="none" stroke={color} strokeWidth={1.2} />
+          <path d={`M ${tx(4.5)} ${ty(10)} L ${tx(11.5)} ${ty(10)} L ${tx(13)} ${ty(13)} Q ${tx(13)} ${ty(14.5)} ${tx(11)} ${ty(14.5)} L ${tx(5)} ${ty(14.5)} Q ${tx(3)} ${ty(14.5)} ${tx(3)} ${ty(13)} Z`} fill={color} />
+          <rect x={tx(5)} y={ty(1)} width={t(6)} height={t(1.2)} fill={color} />
+        </>
+      );
+    case 'palette':
+      return (
+        <>
+          <path d={`M ${tx(8)} ${ty(2)} Q ${tx(14.5)} ${ty(2)} ${tx(14.5)} ${ty(8)} Q ${tx(14.5)} ${ty(11)} ${tx(11)} ${ty(11)} L ${tx(10)} ${ty(11)} Q ${tx(8.5)} ${ty(11)} ${tx(8.5)} ${ty(12.5)} Q ${tx(8.5)} ${ty(14.5)} ${tx(7)} ${ty(14.5)} Q ${tx(1.5)} ${ty(14.5)} ${tx(1.5)} ${ty(8)} Q ${tx(1.5)} ${ty(2)} ${tx(8)} ${ty(2)} Z`} fill={color} stroke={ink.black} strokeWidth={0.6} />
+          <circle cx={tx(4.5)} cy={ty(6)} r={t(1.1)} fill={ink.white} />
+          <circle cx={tx(7)} cy={ty(4)} r={t(1.1)} fill={ink.white} />
+          <circle cx={tx(10.5)} cy={ty(5)} r={t(1.1)} fill={ink.white} />
+          <circle cx={tx(11.5)} cy={ty(8.5)} r={t(1.1)} fill={ink.white} />
+        </>
+      );
+    case 'dot':
+      return <circle cx={tx(8)} cy={ty(8)} r={t(3)} fill={color} />;
     default:
       // M5GFX placeholder: filled square
       return <rect x={x} y={y} width={size} height={size} fill={color} />;
@@ -548,5 +768,6 @@ function PaperColorScreen({ tree, fontKey = 'firmware', inkKey = 'default', flas
 }
 
 window.PaperColorScreen = PaperColorScreen;
+window.IconGlyph = IconGlyph;
 window.SCREEN_W = SCREEN_W;
 window.SCREEN_H = SCREEN_H;

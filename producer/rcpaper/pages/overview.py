@@ -1,9 +1,9 @@
 """Compact "everything at a glance" page — shown first on boot.
 
-Six dense blocks across two columns: Claude 5h + 7d, Codex primary + weekly,
-next-event hero, and an open-todo count. Any source that fails to fetch is
-rendered as a dash placeholder so a transient outage doesn't blank the whole
-page.
+Single-column vertical layout: each block is a full-width row that the
+layout engine already handles cleanly (text + flex-hbar). Multi-column
+nested hstacks collapse to natural width on this engine, which would
+leave the right ~2/3 of the page empty — so we just stack everything.
 """
 
 from __future__ import annotations
@@ -27,136 +27,116 @@ def _pct_color(pct: float | None) -> str:
     return "green"
 
 
-def _kpi_block(
+def _usage_row(
     brand: str,
     brand_color: str,
-    primary_label: str,
+    icon_name: str,
     primary_pct: float | None,
+    primary_label: str,
     primary_reset: str,
-    secondary_label: str,
     secondary_pct: float | None,
-    secondary_reset: str,
+    secondary_label: str,
 ) -> dict:
-    """One brand's column: title chip, two stacked %+bar rows."""
+    """One full-width row: [BRAND chip] [primary % + flex hbar] [7D pct]."""
+    if primary_pct is None:
+        pct_text = "—"
+    else:
+        pct_text = f"{int(primary_pct)}%"
+    secondary_text = f"{int(secondary_pct)}%" if secondary_pct is not None else "—"
 
-    def row(lbl: str, pct: float | None, reset: str) -> dict:
-        pct_text = f"{int(pct)}%" if pct is not None else "—"
-        return vstack(
-            gap=2,
-            children=[
-                hstack(
-                    align="center",
-                    children=[
-                        text(lbl, size="sm", weight="bold"),
-                        spacer(),
-                        text(reset or "", size="sm"),
-                    ],
-                ),
-                hstack(
-                    gap=6,
-                    align="center",
-                    children=[
-                        text(pct_text, size="h2", color=_pct_color(pct), weight="bold"),
-                        hbar(pct=pct if pct is not None else 0, color=brand_color, height=12),
-                    ],
-                ),
-            ],
-        )
-
-    return vstack(
-        gap=6,
+    return hstack(
+        gap=8,
+        align="center",
         children=[
-            text(brand, size="sm", weight="bold", color="white", bg=brand_color, pad=4, align="center"),
-            row(primary_label, primary_pct, primary_reset),
-            row(secondary_label, secondary_pct, secondary_reset),
+            icon(icon_name, size=16, color=brand_color),
+            text(brand, size="sm", weight="bold", color="white", bg=brand_color, pad=4),
+            text(primary_label, size="sm", weight="bold"),
+            text(pct_text, size="h2", color=_pct_color(primary_pct), weight="bold"),
+            hbar(pct=primary_pct if primary_pct is not None else 0, color=brand_color, height=14),
+            text(f"{secondary_label} {secondary_text}", size="sm", weight="bold", color=_pct_color(secondary_pct)),
+            text(primary_reset or "", size="sm"),
         ],
     )
 
 
-def _next_event_block(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
+def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
     if cal is None:
-        return vstack(
-            gap=4,
+        return hstack(
+            gap=8,
+            align="center",
             children=[
-                text("NEXT EVENT", size="sm", weight="bold", color="white", bg="blue", pad=4, align="center"),
-                spacer(size=4),
-                text("—", size="h2", weight="bold", align="center"),
+                icon("calendar", size=16, color="blue"),
+                text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
+                text("—", size="body", weight="bold"),
+                spacer(),
             ],
         )
     upcoming = [e for e in cal.events if (e.is_all_day or e.end > now)]
     if not upcoming:
-        return vstack(
-            gap=4,
+        return hstack(
+            gap=8,
+            align="center",
             children=[
-                text("NEXT EVENT", size="sm", weight="bold", color="white", bg="blue", pad=4, align="center"),
-                spacer(size=4),
-                text("CLEAR", size="h2", weight="bold", color="green", align="center"),
-                text(f"{len(cal.events)} events today", size="sm", align="center"),
+                icon("calendar", size=16, color="blue"),
+                text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
+                text("CLEAR", size="body", weight="bold", color="green"),
+                spacer(),
+                text(f"{len(cal.events)} today", size="sm"),
             ],
         )
     nxt = upcoming[0]
     when = "ALL" if nxt.is_all_day else nxt.start.strftime("%H:%M")
-    if not nxt.is_all_day:
+    if nxt.is_all_day:
+        sub = "all day"
+    else:
         delta_min = max(0, int((nxt.start - now).total_seconds() // 60))
         if delta_min < 60:
             sub = f"in {delta_min}m"
         else:
             h, m = divmod(delta_min, 60)
             sub = f"in {h}h" if m == 0 else f"in {h}h {m}m"
-    else:
-        sub = "all day"
-    return vstack(
-        gap=4,
+    # Truncate event title at the source so the row stays single-line.
+    title = nxt.title
+    if len(title) > 24:
+        title = title[:23] + "…"
+    return hstack(
+        gap=8,
+        align="center",
         children=[
-            text("NEXT EVENT", size="sm", weight="bold", color="white", bg="blue", pad=4, align="center"),
-            hstack(
-                gap=8,
-                align="end",
-                children=[
-                    text(when, size="h2", color="blue", weight="bold"),
-                    vstack(
-                        gap=2,
-                        children=[
-                            text(nxt.title, size="sm", weight="bold", max_lines=1),
-                            text(sub, size="sm"),
-                        ],
-                    ),
-                ],
-            ),
+            icon("calendar", size=16, color="blue"),
+            text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
+            text(when, size="body", color="blue", weight="bold"),
+            text(title, size="body", weight="bold", max_lines=1),
+            spacer(),
+            text(sub, size="sm"),
         ],
     )
 
 
-def _todo_block(rem: TodaysReminders | None) -> dict:
+def _todos_row(rem: TodaysReminders | None) -> dict:
     if rem is None:
-        return vstack(
-            gap=4,
+        return hstack(
+            gap=8,
+            align="center",
             children=[
-                text("OPEN TODOS", size="sm", weight="bold", color="white", bg="black", pad=4, align="center"),
-                spacer(size=4),
-                text("—", size="h2", weight="bold", align="center"),
+                icon("todo", size=16, color="black"),
+                text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
+                text("—", size="body", weight="bold"),
+                spacer(),
             ],
         )
     count = rem.incomplete_total
     color = "red" if count >= 20 else "yellow" if count >= 5 else "green"
-    return vstack(
-        gap=4,
+    return hstack(
+        gap=8,
+        align="center",
         children=[
-            text("OPEN TODOS", size="sm", weight="bold", color="white", bg="black", pad=4, align="center"),
-            hstack(
-                gap=8,
-                align="end",
-                children=[
-                    text(str(count), size="h2", color=color, weight="bold"),
-                    vstack(
-                        gap=2,
-                        children=[
-                            text(rem.list_name, size="sm", weight="bold", max_lines=1),
-                            text("incomplete", size="sm"),
-                        ],
-                    ),
-                ],
-            ),
+            icon("todo", size=16, color="black"),
+            text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
+            text(str(count), size="h2", color=color, weight="bold"),
+            text("OPEN", size="sm", weight="bold"),
+            spacer(),
+            text(rem.list_name, size="sm"),
         ],
     )
 
@@ -169,7 +149,6 @@ def build_overview_page(
     reminders: TodaysReminders | None,
     now: dt.datetime,
 ) -> dict:
-    # Header — date stamp + masthead.
     header = hstack(
         align="center",
         children=[
@@ -179,60 +158,51 @@ def build_overview_page(
         ],
     )
 
-    claude_block = _kpi_block(
+    claude_row = _usage_row(
         brand="CLAUDE",
         brand_color="red",
-        primary_label="5H",
+        icon_name="claude",
         primary_pct=claude.five_hour_pct if claude else None,
+        primary_label="5H",
         primary_reset=claude.five_hour_reset if claude else "",
-        secondary_label="7D",
         secondary_pct=claude.seven_day_pct if claude else None,
-        secondary_reset=claude.seven_day_reset if claude else "",
+        secondary_label="7D",
     )
-    codex_block = _kpi_block(
+    codex_row = _usage_row(
         brand="CODEX",
         brand_color="green",
-        primary_label="5H",
+        icon_name="codex",
         primary_pct=codex.primary_pct if codex else None,
+        primary_label="5H",
         primary_reset=codex.primary_reset if codex else "",
-        secondary_label="7D",
         secondary_pct=codex.secondary_pct if codex else None,
-        secondary_reset=codex.secondary_reset if codex else "",
+        secondary_label="7D",
     )
 
     return vstack(
-        pad=14,
-        gap=10,
+        pad=16,
+        gap=12,
         children=[
             header,
             divider(color="black", thickness=2),
-            # Row 1: Claude | Codex
-            hstack(
-                gap=10,
-                children=[
-                    claude_block,
-                    codex_block,
-                ],
-            ),
+            spacer(size=4),
+            claude_row,
+            codex_row,
+            spacer(size=4),
             divider(color="black", thickness=1),
-            # Row 2: Next event | Open todos
-            hstack(
-                gap=10,
-                children=[
-                    _next_event_block(calendar, now),
-                    _todo_block(reminders),
-                ],
-            ),
+            spacer(size=4),
+            _next_event_row(calendar, now),
+            _todos_row(reminders),
             spacer(),
             divider(color="black", thickness=2),
             hstack(
                 align="center",
-                gap=8,
+                gap=6,
                 children=[
-                    icon("claude", size=12, color="red"),
-                    icon("codex", size=12, color="green"),
-                    icon("calendar", size=12, color="blue"),
-                    icon("todo", size=12, color="black"),
+                    icon("claude", size=16, color="red"),
+                    icon("codex", size=16, color="green"),
+                    icon("calendar", size=16, color="blue"),
+                    icon("todo", size=16, color="black"),
                     spacer(),
                     text("rcpaper · overview", size="sm", weight="bold"),
                 ],

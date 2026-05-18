@@ -136,7 +136,7 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
             align="center",
             gap=6,
             children=[
-                icon("calendar", size=14, color="blue"),
+                icon("calendar", size=16, color="blue"),
                 text(f"CALENDAR · {len(cal.events)} TODAY", size="sm", weight="bold"),
             ],
         ),

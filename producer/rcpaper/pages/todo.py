@@ -8,6 +8,7 @@ unicode checkbox + priority chips (no proposed primitives).
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
 from rcpaper.sources.reminders import Reminder, TodaysReminders
@@ -15,21 +16,59 @@ from rcpaper.sources.reminders import Reminder, TodaysReminders
 _URL_RE = re.compile(r"https?://\S+")
 
 
-def _clean_title(raw: str, *, limit: int = 36) -> str:
-    """Strip URLs and collapse whitespace so the row stays scannable.
+def _extract_hosts(raw: str) -> tuple[list[str], str]:
+    """Pull out hostnames + return (hosts, residual_text).
 
-    Many reminders are literally just URLs; replace each with a [link] sentinel
-    so the row still hints at content. Hard-cap chars (the firmware also
-    truncates with an ellipsis, but trimming at the source keeps Axiom events
-    small and gives the layout engine accurate row widths).
+    The residual is whatever non-URL words remained after stripping; the
+    caller decides whether to render it before or after the hostnames.
     """
-    cleaned = _URL_RE.sub("[link]", raw)
-    cleaned = " ".join(cleaned.split())
-    if not cleaned:
-        cleaned = "[link]"
-    if len(cleaned) > limit:
-        cleaned = cleaned[: limit - 1].rstrip() + "…"
-    return cleaned
+    hosts: list[str] = []
+
+    def _sub(m: re.Match[str]) -> str:
+        try:
+            h = urlparse(m.group(0)).hostname or ""
+        except ValueError:
+            h = ""
+        if h.startswith("www."):
+            h = h[4:]
+        if h:
+            hosts.append(h)
+        return ""  # remove URL from residual
+
+    residual = _URL_RE.sub(_sub, raw)
+    residual = " ".join(residual.split())
+    return hosts, residual
+
+
+def _trim(s: str, *, limit: int) -> str:
+    return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
+
+
+def render_item_children(item: Reminder, *, limit: int = 30) -> list[dict]:
+    """Build the right-hand side of a todo row.
+
+    URL-heavy reminders become `[icon] hostname` (+ residual text if any),
+    so a row that's literally `https://github.com/foo/bar` reads as
+    `🔗 github.com` rather than a wall of URL chars that the layout would
+    have to truncate.
+    """
+    hosts, residual = _extract_hosts(item.title)
+    nodes: list[dict] = []
+    if hosts:
+        # link icon + first hostname (matters most for scannability); show
+        # the second hostname inline if there's room.
+        nodes.append(icon("link", size=16, color="blue"))
+        head = hosts[0]
+        if len(hosts) > 1 and len(head) + 2 + len(hosts[1]) <= limit:
+            head = f"{head} · {hosts[1]}"
+        nodes.append(text(head, size="body", weight="bold", max_lines=1))
+        if residual:
+            tail = _trim(residual, limit=limit - len(head) - 2)
+            if tail:
+                nodes.append(text(f"— {tail}", size="sm", max_lines=1))
+    else:
+        nodes.append(text(_trim(residual or item.title, limit=limit), size="body", weight="bold", max_lines=1))
+    return nodes
 
 
 # EventKit priority buckets → palette + label.
@@ -55,7 +94,7 @@ def _item_row(item: Reminder) -> dict:
     else:
         # Reserve the priority slot so titles align across rows.
         children.append(spacer(size=10))
-    children.append(text(_clean_title(item.title), size="body", weight="bold", max_lines=1))
+    children.extend(render_item_children(item))
     return hstack(gap=8, align="center", children=children)
 
 
@@ -106,7 +145,7 @@ def build_todo_page(rem: TodaysReminders) -> dict:
             align="center",
             gap=6,
             children=[
-                icon("todo", size=14, color="black"),
+                icon("todo", size=16, color="black"),
                 text(f"TODO  ·  {rem.list_name}", size="sm", weight="bold"),
             ],
         ),

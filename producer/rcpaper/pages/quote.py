@@ -27,12 +27,25 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
         ],
     )
 
+    # Pick the largest font size whose longest line still fits the viewport
+    # width (540 px - 2*24 pad = 492 px usable). Approximate avg-bold-char
+    # widths in M5GFX FreeSansBold: h1≈22, h2≈16, body≈11 px. The renderer
+    # also truncates with an ellipsis as a safety net, but downgrading the
+    # font keeps every word visible — far better for a poster page.
+    longest = max((len(line) for line in quote.lines[:4]), default=0)
+    if longest <= 22:
+        line_size = "h1"
+    elif longest <= 30:
+        line_size = "h2"
+    else:
+        line_size = "body"
+
     body: list[dict] = [
-        text('"', size="h1", color="red", weight="bold"),
+        text('"', size=line_size, color="red", weight="bold"),
     ]
     for i, line in enumerate(quote.lines[:4]):
         body.append(
-            text(line, size="h1", weight="bold", color=_LINE_COLORS[i % len(_LINE_COLORS)]),
+            text(line, size=line_size, weight="bold", color=_LINE_COLORS[i % len(_LINE_COLORS)]),
         )
 
     children: list[dict] = [
@@ -58,7 +71,7 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
             align="center",
             gap=6,
             children=[
-                icon("quote", size=14, color="red"),
+                icon("quote", size=16, color="red"),
                 text("QUOTE OF THE DAY", size="sm", weight="bold"),
             ],
         ),

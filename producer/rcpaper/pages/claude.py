@@ -117,7 +117,7 @@ def build_claude_page(
             align="center",
             gap=6,
             children=[
-                icon("claude", size=14, color="red"),
+                icon("claude", size=16, color="red"),
                 text(f"CLAUDE  ·  {usage.plan}", size="sm", weight="bold"),
             ],
         ),
