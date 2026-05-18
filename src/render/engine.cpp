@@ -68,15 +68,32 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
   // First pass: measure each child's main and cross size; count flex spacers.
   std::vector<int16_t> child_main(n_children, 0);
   std::vector<int16_t> child_cross(n_children, 0);
+  std::vector<bool>    is_flex(n_children, false);
   int   flex_count  = 0;
   int16_t fixed_main = 0;
   int16_t max_cross  = 0;  // used as container row/col size for cross alignment
 
+  // HBar and Sparkline flex along the perpendicular of their own thickness:
+  // an HBar in an HStack wants to grow horizontally to fill remaining width,
+  // and its `height` property is the *cross-axis* thickness, not its main
+  // size. Same for Sparkline. (In a VStack these still report cross_avail as
+  // width and `height` as height, so the existing path still works.)
+  auto child_is_flex_main = [&](const LayoutNode& c) {
+    if (c.type == NodeType::Spacer && !c.as_spacer.has_size) return true;
+    if (!vertical && (c.type == NodeType::HBar || c.type == NodeType::Sparkline)) return true;
+    return false;
+  };
+
   for (int i = 0; i < n_children; ++i) {
     const auto& c = s.children[i];
 
-    if (c.type == NodeType::Spacer && !c.as_spacer.has_size) {
+    if (child_is_flex_main(c)) {
       flex_count++;
+      is_flex[i] = true;
+      // For HBar/Sparkline in HStack: cross-axis size = their thickness.
+      if (c.type == NodeType::HBar)       child_cross[i] = c.as_hbar.height;
+      if (c.type == NodeType::Sparkline)  child_cross[i] = c.as_sparkline.height;
+      if (child_cross[i] > 0) max_cross = std::max(max_cross, child_cross[i]);
       continue;  // main size determined later
     }
 
@@ -135,9 +152,14 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
 
     int16_t main_sz, cross_sz;
 
-    if (c.type == NodeType::Spacer && !c.as_spacer.has_size) {
+    if (is_flex[i]) {
       main_sz  = flex_each;
-      cross_sz = cross_avail;
+      // For HBar/Sparkline child_cross[i] is the thickness; for an invisible
+      // flex Spacer pin to max_cross (the largest fixed sibling). Using
+      // cross_avail blows up during the parent's probe pass — cross_avail is
+      // 0x7FFF when probing, so the spacer's rect.h would dominate the
+      // parent's used_main calculation and overflow int16.
+      cross_sz = child_cross[i] > 0 ? child_cross[i] : max_cross;
     } else {
       main_sz  = child_main[i];
       cross_sz = child_cross[i] > 0 ? child_cross[i] : cross_avail;
