@@ -15,8 +15,9 @@ struct BatteryReading {
 // ↔ 0/5/15/30/45/60/75/90/100 %. Out-of-range values clamp.
 uint8_t battery_mv_to_pct(uint16_t mv);
 
-// Reads battery voltage from M5PM1 and maps to percent. Device-only —
-// only compiled under ARDUINO.
+#ifdef ARDUINO
+// Device-only — only compiled and linked under the Arduino target.
 BatteryReading read_battery();
+#endif
 
 }  // namespace rcpaper

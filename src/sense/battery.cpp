@@ -11,6 +11,8 @@ namespace {
 constexpr uint16_t kAnchorMv[]  = {3000, 3300, 3500, 3650, 3750, 3850, 3950, 4050, 4200};
 constexpr uint8_t  kAnchorPct[] = {   0,    5,   15,   30,   45,   60,   75,   90,  100};
 constexpr int kN = sizeof(kAnchorPct) / sizeof(kAnchorPct[0]);
+static_assert(sizeof(kAnchorMv) / sizeof(kAnchorMv[0]) == kN,
+              "kAnchorMv and kAnchorPct must have the same length");
 }  // namespace
 
 uint8_t battery_mv_to_pct(uint16_t mv) {
