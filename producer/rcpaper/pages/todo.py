@@ -170,15 +170,6 @@ def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> 
                 text(f"{pct}%", size="sm", weight="bold"),
             ],
         ),
-        spacer(size=4),
-        hstack(
-            align="center",
-            gap=6,
-            children=[
-                icon("todo", size=16, color="black"),
-                text(f"TODO  ·  {rem.list_name}", size="sm", weight="bold"),
-            ],
-        ),
     ]
 
     return vstack(pad=16, gap=4, children=children)

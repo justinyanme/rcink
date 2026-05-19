@@ -10,10 +10,8 @@ plan + last-updated metadata footer.
 from __future__ import annotations
 
 from rcpaper.layout import (
-    divider,
     hbar,
     hstack,
-    icon,
     spacer,
     text,
     vstack,
@@ -104,23 +102,5 @@ def build_claude_page(
         children.append(spacer(size=10))
         children.append(text("USAGE · LAST 24H", size="sm", weight="bold"))
         children.append(spark(sparkline, color="blue", height=56))
-
-    # Flex spacer pushes the footer to the bottom of whatever room is left after
-    # the firmware indicator strip is subtracted from the page viewport.
-    # The firmware draws the page-rotation indicator strip + data/refresh
-    # timestamps in the bottom band; we just place the brand + plan footer
-    # above that strip.
-    children.append(spacer())
-    children.append(divider(color="black", thickness=1))
-    children.append(
-        hstack(
-            align="center",
-            gap=6,
-            children=[
-                icon("claude", size=16, color="red"),
-                text(f"CLAUDE  ·  {usage.plan}", size="sm", weight="bold"),
-            ],
-        ),
-    )
 
     return vstack(pad=14, gap=6, children=children)

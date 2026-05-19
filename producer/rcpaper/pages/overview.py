@@ -191,18 +191,5 @@ def build_overview_page(
             _next_event_row(calendar, now),
             _todos_row(reminders),
             spacer(),
-            divider(color="black", thickness=2),
-            hstack(
-                align="center",
-                gap=6,
-                children=[
-                    icon("claude", size=16, color="red"),
-                    icon("codex", size=16, color="green"),
-                    icon("calendar", size=16, color="blue"),
-                    icon("todo", size=16, color="black"),
-                    spacer(),
-                    text("rcpaper · overview", size="sm", weight="bold"),
-                ],
-            ),
         ],
     )

@@ -29,18 +29,16 @@ def test_header_is_red_knockout_title():
     assert header["bg"] == "red"
 
 
-def test_footer_includes_brand_and_plan():
+def test_no_brand_footer_row():
+    """Brand footer moved into the firmware-painted nav strip."""
     page = build_claude_page(make_usage(), sparkline=None)
-    footer_row = page["children"][-1]
-    assert footer_row["type"] == "hstack"
-    # Footer row is [icon('claude'), text('CLAUDE · Max')]. The firmware
-    # paints the data/refresh timestamps in its own bottom strip, so the
-    # producer footer no longer carries an "updated HH:MM" string.
-    icon_node, text_node = footer_row["children"]
-    assert icon_node["type"] == "icon" and icon_node["name"] == "claude"
-    assert text_node["type"] == "text"
-    assert "CLAUDE" in text_node["value"]
-    assert "Max" in text_node["value"]
+    # Last child should not be the brand icon row anymore.
+    last = page["children"][-1]
+    if last["type"] == "hstack" and len(last.get("children", [])) == 2:
+        first, second = last["children"]
+        assert not (first.get("type") == "icon" and first.get("name") == "claude"), (
+            "claude brand row should be deleted from the page footer"
+        )
 
 
 def test_sparkline_only_added_when_present():

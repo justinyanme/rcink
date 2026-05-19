@@ -9,10 +9,8 @@ indicator over the bottom 26 px.
 from __future__ import annotations
 
 from rcpaper.layout import (
-    divider,
     hbar,
     hstack,
-    icon,
     spacer,
     text,
     vstack,
@@ -117,20 +115,5 @@ def build_codex_page(
                 align="center",
             )
         )
-
-    # Firmware paints the page-rotation indicator + data/refresh timestamps
-    # in the bottom band; the footer here just shows the brand + plan above it.
-    children.append(spacer())
-    children.append(divider(color="black", thickness=1))
-    children.append(
-        hstack(
-            align="center",
-            gap=6,
-            children=[
-                icon("codex", size=16, color="green"),
-                text(f"CODEX  ·  {usage.plan}", size="sm", weight="bold"),
-            ],
-        ),
-    )
 
     return vstack(pad=14, gap=6, children=children)

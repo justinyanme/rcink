@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcpaper.layout import divider, hbar, hstack, spacer, text, vstack
 from rcpaper.sources.calendar import CalEvent, TodaysCalendar
 
 # Cycle of "ink" colors for event ticks in the UP NEXT list. Per-calendar
@@ -127,19 +127,5 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
                         ],
                     )
                 )
-
-    children += [
-        spacer(),
-        divider(color="black", thickness=2),
-        spacer(size=4),
-        hstack(
-            align="center",
-            gap=6,
-            children=[
-                icon("calendar", size=16, color="blue"),
-                text(f"CALENDAR · {len(cal.events)} TODAY", size="sm", weight="bold"),
-            ],
-        ),
-    ]
 
     return vstack(pad=18, gap=6, children=children)
