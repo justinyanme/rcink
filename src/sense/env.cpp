@@ -46,7 +46,8 @@ EnvReading read_sht40() {
     delay(12);  // High-precision conversion is ~8.2 ms per datasheet.
     uint8_t buf[6] = {0};
     if (!M5.In_I2C.start(kSht40Addr, true, kFreqHz)
-        || !M5.In_I2C.read(buf, sizeof(buf), true)
+        // last_nack=true: master NACKs the final byte per I2C protocol before stop.
+        || !M5.In_I2C.read(buf, sizeof(buf), /*last_nack=*/true)
         || !M5.In_I2C.stop()) {
       delay(5);
       continue;
