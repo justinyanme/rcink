@@ -9,46 +9,10 @@ plan + last-updated metadata footer.
 
 from __future__ import annotations
 
-from rcpaper.layout import (
-    hbar,
-    hstack,
-    spacer,
-    text,
-    vstack,
-)
-from rcpaper.layout import (
-    sparkline as spark,
-)
+from rcpaper.layout import hstack, spacer, text, vstack
+from rcpaper.layout import sparkline as spark
+from rcpaper.pages._common import kpi_row
 from rcpaper.sources.claude import ClaudeUsage
-
-
-def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
-    return vstack(
-        gap=2,
-        children=[
-            hstack(
-                align="center",
-                children=[
-                    text(label, size="sm", weight="bold"),
-                    spacer(),
-                    text(f"resets {reset}" if reset else "", size="sm"),
-                ],
-            ),
-            hstack(
-                gap=8,
-                align="center",
-                children=[
-                    text(
-                        f"{int(pct)}%" if pct is not None else "—",
-                        size="h1",
-                        color=color,
-                        weight="bold",
-                    ),
-                    hbar(pct=pct if pct is not None else 0, color=color, height=18),
-                ],
-            ),
-        ],
-    )
 
 
 def _model_cell(label: str, pct: float) -> dict:
@@ -83,9 +47,9 @@ def build_claude_page(
             weight="bold",
         ),
         spacer(size=8),
-        _kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "blue"),
+        kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "blue"),
         spacer(size=10),
-        _kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "green"),
+        kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "green"),
     ]
 
     model_cells = []

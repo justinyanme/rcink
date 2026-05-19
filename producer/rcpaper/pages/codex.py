@@ -8,16 +8,9 @@ indicator over the bottom 26 px.
 
 from __future__ import annotations
 
-from rcpaper.layout import (
-    hbar,
-    hstack,
-    spacer,
-    text,
-    vstack,
-)
-from rcpaper.layout import (
-    sparkline as spark,
-)
+from rcpaper.layout import spacer, text, vstack
+from rcpaper.layout import sparkline as spark
+from rcpaper.pages._common import kpi_row
 from rcpaper.sources.codex import CodexUsage
 
 
@@ -31,35 +24,6 @@ def _window_label(minutes: int | None) -> str:
     if minutes == 7 * 24 * 60:
         return "WEEKLY"
     return f"{minutes // (24 * 60)}D WINDOW"
-
-
-def _kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
-    return vstack(
-        gap=2,
-        children=[
-            hstack(
-                align="center",
-                children=[
-                    text(label, size="sm", weight="bold"),
-                    spacer(),
-                    text(f"resets {reset}" if reset else "", size="sm"),
-                ],
-            ),
-            hstack(
-                gap=8,
-                align="center",
-                children=[
-                    text(
-                        f"{int(pct)}%" if pct is not None else "—",
-                        size="h1",
-                        color=color,
-                        weight="bold",
-                    ),
-                    hbar(pct=pct if pct is not None else 0, color=color, height=18),
-                ],
-            ),
-        ],
-    )
 
 
 def build_codex_page(
@@ -78,7 +42,7 @@ def build_codex_page(
             weight="bold",
         ),
         spacer(size=8),
-        _kpi_row(
+        kpi_row(
             _window_label(usage.primary_window_min),
             usage.primary_pct,
             usage.primary_reset,
@@ -89,7 +53,7 @@ def build_codex_page(
     if usage.secondary_pct is not None:
         children.append(spacer(size=12))
         children.append(
-            _kpi_row(
+            kpi_row(
                 _window_label(usage.secondary_window_min),
                 usage.secondary_pct,
                 usage.secondary_reset,

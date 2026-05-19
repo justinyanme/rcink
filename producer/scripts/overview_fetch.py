@@ -8,62 +8,39 @@ dashes.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
+from typing import TypeVar
 
 import typer
 from loguru import logger
 from rcpaper.axiom import ingest
 from rcpaper.pages.overview import build_overview_page
+from rcpaper.sources.calendar import fetch_todays_events
+from rcpaper.sources.claude import fetch_claude_usage
+from rcpaper.sources.codex import fetch_codex_usage
+from rcpaper.sources.reminders import fetch_todays_reminders
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
+T = TypeVar("T")
 
-def _try_claude():
-    from rcpaper.sources.claude import fetch_claude_usage
 
+def _try(name: str, fn: Callable[[], T]) -> T | None:
+    """Run a source fetcher; log+degrade if it raises."""
     try:
-        return fetch_claude_usage()
+        return fn()
     except Exception as e:  # noqa: BLE001 — log + degrade
-        logger.warning(f"overview: claude fetch failed: {e}")
-        return None
-
-
-def _try_codex():
-    from rcpaper.sources.codex import fetch_codex_usage
-
-    try:
-        return fetch_codex_usage()
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"overview: codex fetch failed: {e}")
-        return None
-
-
-def _try_calendar(now: dt.datetime):
-    from rcpaper.sources.calendar import fetch_todays_events
-
-    try:
-        return fetch_todays_events(now=now)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"overview: calendar fetch failed: {e}")
-        return None
-
-
-def _try_reminders(now: dt.datetime):
-    from rcpaper.sources.reminders import fetch_todays_reminders
-
-    try:
-        return fetch_todays_reminders(now=now)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"overview: reminders fetch failed: {e}")
+        logger.warning(f"overview: {name} fetch failed: {e}")
         return None
 
 
 @app.command()
 def run() -> None:
     now = dt.datetime.now().astimezone()
-    claude = _try_claude()
-    codex = _try_codex()
-    cal = _try_calendar(now)
-    rem = _try_reminders(now)
+    claude = _try("claude", fetch_claude_usage)
+    codex = _try("codex", fetch_codex_usage)
+    cal = _try("calendar", lambda: fetch_todays_events(now=now))
+    rem = _try("reminders", lambda: fetch_todays_reminders(now=now))
     logger.info(
         f"overview: claude={'ok' if claude else 'NA'} "
         f"codex={'ok' if codex else 'NA'} "
