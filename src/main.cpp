@@ -11,6 +11,8 @@
 #include "net/axiom.h"
 #include "proto/parser.h"
 #include "render/engine.h"
+#include "render/icons_data.h"
+#include <cstring>
 #include "store/nvs.h"
 #include "power/sleep.h"
 #include "sense/battery.h"
@@ -86,6 +88,108 @@ static String format_local_hhmm(uint64_t epoch_s) {
   char buf[8];
   snprintf(buf, sizeof(buf), "%02d:%02d", tm.tm_hour, tm.tm_min);
   return String(buf);
+}
+
+static void blit_icon16(M5Canvas& canvas, int16_t x, int16_t y, const char* name) {
+  using rcpaper::icons::kGlyphs;
+  for (int i = 0; kGlyphs[i].name; ++i) {
+    if (strcmp(kGlyphs[i].name, name) == 0) {
+      const uint8_t* px = kGlyphs[i].glyph.px16;
+      for (int yy = 0; yy < 16; ++yy) {
+        uint16_t row = ((uint16_t)px[yy * 2] << 8) | px[yy * 2 + 1];
+        for (int xx = 0; xx < 16; ++xx) {
+          if (row & (0x8000 >> xx)) canvas.drawPixel(x + xx, y + yy, 0x000000);
+        }
+      }
+      return;
+    }
+  }
+}
+
+// Top strip: battery glyph + temp + humidity · data time + refresh time.
+// Painted after the page tree so the page can't clobber it. Reads from
+// g_battery, g_env, the current page's data_ts, and last_fetch_s.
+static void paint_status_bar(M5Canvas& canvas,
+                             const PageRecord& rec,
+                             const BatteryReading& batt,
+                             const EnvReading& env,
+                             uint64_t last_fetch_s) {
+  const int16_t W = canvas.width();
+  const int16_t y = 0;
+
+  canvas.fillRect(0, y, W, TOP_STRIP_H, 0xFFFFFF);
+  canvas.drawFastHLine(0, y + TOP_STRIP_H - 1, W, 0x000000);
+
+  canvas.setFont(&fonts::FreeSansBold9pt7b);
+  canvas.setTextColor(0x000000);
+
+  int16_t x = 6;
+  const int16_t y_text = y + 4;
+  const int16_t y_icon = y + 3;
+
+  // --- Battery glyph: outline 22x10 with 2x4 nipple, fill 0..18px wide. ---
+  const int16_t batt_w = 22, batt_h = 10;
+  const int16_t batt_y = y + (TOP_STRIP_H - batt_h) / 2;
+  uint32_t fill_c = 0x1EA84B;          // green (>=30%)
+  if (batt.pct < 30) fill_c = 0xF7C815; // yellow (>=10%)
+  if (batt.pct < 10) fill_c = 0xD92027; // red   (<10%)
+  canvas.drawRect(x, batt_y, batt_w, batt_h, 0x000000);
+  canvas.fillRect(x + batt_w, batt_y + 3, 2, 4, 0x000000);
+  if (batt.ok) {
+    int16_t fill_w = (int16_t)((batt_w - 4) * (int)batt.pct / 100);
+    if (fill_w > 0) canvas.fillRect(x + 2, batt_y + 2, fill_w, batt_h - 4, fill_c);
+  }
+  x += batt_w + 6;
+
+  char num[16];
+  if (batt.ok) snprintf(num, sizeof(num), "%d%%", (int)batt.pct);
+  else         snprintf(num, sizeof(num), "--");
+  canvas.setCursor(x, y_text);
+  canvas.print(num);
+  x += canvas.textWidth(num) + 8;
+
+  // Group separator
+  canvas.setCursor(x, y_text);
+  canvas.print("\xC2\xB7");  // UTF-8 '·'
+  x += 8;
+
+  // --- Temperature ---
+  blit_icon16(canvas, x, y_icon, "thermometer");
+  x += 18;
+  if (env.ok) snprintf(num, sizeof(num), "%d\xC2\xB0""C", (int)(env.temp_c + 0.5f));
+  else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
+  canvas.setCursor(x, y_text);
+  canvas.print(num);
+  x += canvas.textWidth(num) + 8;
+
+  // --- Humidity ---
+  blit_icon16(canvas, x, y_icon, "droplet");
+  x += 18;
+  if (env.ok) snprintf(num, sizeof(num), "%d%%", (int)(env.humidity_pct + 0.5f));
+  else        snprintf(num, sizeof(num), "--%%");
+  canvas.setCursor(x, y_text);
+  canvas.print(num);
+  x += canvas.textWidth(num) + 8;
+
+  // Group separator
+  canvas.setCursor(x, y_text);
+  canvas.print("\xC2\xB7");
+  x += 8;
+
+  // --- Data time (page's data_ts) ---
+  blit_icon16(canvas, x, y_icon, "download");
+  x += 18;
+  String s = format_local_hhmm(rec.data_ts);
+  canvas.setCursor(x, y_text);
+  canvas.print(s.c_str());
+  x += canvas.textWidth(s.c_str()) + 8;
+
+  // --- Refresh time (device last_fetch_s) ---
+  blit_icon16(canvas, x, y_icon, "refresh");
+  x += 18;
+  s = format_local_hhmm(last_fetch_s);
+  canvas.setCursor(x, y_text);
+  canvas.print(s.c_str());
 }
 
 static void paint_indicator(M5Canvas& canvas,
@@ -193,7 +297,7 @@ static void render_page(const PageRecord& rec, const LayoutNode& root, bool stal
   int16_t H = (int16_t)M5.Display.height();
   // Reserve the bottom strip for the page-rotation indicator (painted after
   // the page tree), so producer pages can't write into that band.
-  Rect vp{0, 0, W, (int16_t)(H - BOT_STRIP_H)};
+  Rect vp{0, (int16_t)TOP_STRIP_H, W, (int16_t)(H - TOP_STRIP_H - BOT_STRIP_H)};
   auto laid = run_layout(root, vp, m);
 
 #ifdef RCPAPER_DEV_NO_DRAW
@@ -229,7 +333,8 @@ static void render_page(const PageRecord& rec, const LayoutNode& root, bool stal
   canvas.fillSprite(0xFFFFFF);
   paint_layout(canvas, laid);
 
-  // Overlay the page-rotation indicator strip at the bottom of every page.
+  // Overlay the status bar at the top and page-rotation indicator at the bottom.
+  paint_status_bar(canvas, rec, g_battery, g_env, g_state.last_fetch_s);
   paint_indicator(canvas, g_state.pages, g_state.page_index);
 
   if (stale) {
