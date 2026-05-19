@@ -40,6 +40,11 @@ NAME_TO_SVG = {
     "github": "github-logo",
     # Generic fallbacks
     "external": "external-link",
+    # ---- new for top status bar ----
+    "thermometer": "thermometer",
+    "droplet": "droplet",
+    "download": "download",
+    "refresh": "refresh-cw",
 }
 
 SIZES = (16, 24)
