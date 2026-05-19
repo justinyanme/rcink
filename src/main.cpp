@@ -13,11 +13,17 @@
 #include "render/engine.h"
 #include "store/nvs.h"
 #include "power/sleep.h"
+#include "sense/battery.h"
+#include "sense/env.h"
 
 using namespace rcpaper;
 
 // Persistent across the dev-console loop. Loaded once in setup().
 static DeviceState g_state;
+
+// Transient — re-read every wake / refetch. Not persisted in NVS.
+static BatteryReading g_battery{};
+static EnvReading     g_env{};
 
 static void apply_local_tz() {
   setenv("TZ", LOCAL_TZ, 1);
@@ -299,6 +305,8 @@ static void render_error(const char* msg) {
 // ---- shared cycle steps ---------------------------------------------------
 
 static bool refetch_now() {
+  g_battery = read_battery();
+  g_env     = read_sht40();
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
     return false;
@@ -524,6 +532,12 @@ void setup() {
   // across esp_restart/deep-sleep cycles, so set it before any localtime_r()
   // call (e.g. on cache-only wakes that skip NTP).
   apply_local_tz();
+
+  g_battery = read_battery();
+  g_env     = read_sht40();
+  Serial.printf("[sense] batt=%u%% (%u mV) ok=%d  env=%.1fC %.0f%% ok=%d\n",
+                (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok,
+                g_env.temp_c, g_env.humidity_pct, g_env.ok);
 
   WakeReason wr = current_wake_reason();
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);
