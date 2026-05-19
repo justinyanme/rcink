@@ -39,12 +39,14 @@ uint8_t battery_mv_to_pct(uint16_t mv) {
 // which also pokes PM1 via M5.In_I2C without instantiating the M5PM1 lib.
 BatteryReading read_battery() {
   BatteryReading r{0, 0, false};
-  uint8_t lo = 0, hi = 0;
   constexpr uint8_t  kAddr   = 0x6E;
   constexpr uint32_t kFreqHz = 100000;
-  if (!M5.In_I2C.readRegister(kAddr, 0x22, &lo, 1, kFreqHz)) return r;
-  if (!M5.In_I2C.readRegister(kAddr, 0x23, &hi, 1, kFreqHz)) return r;
-  uint16_t mv = (uint16_t)lo | ((uint16_t)(hi & 0x0F) << 8);
+  // PM1 needs both VBAT bytes (0x22 lo, 0x23 hi) read in a single
+  // [start][write addr][write 0x22][restart][read 2 bytes][stop] transaction;
+  // splitting it into two single-byte reads returns 0 on this chip.
+  uint8_t buf[2] = {0, 0};
+  if (!M5.In_I2C.readRegister(kAddr, 0x22, buf, 2, kFreqHz)) return r;
+  uint16_t mv = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
   r.mv  = mv;
   r.pct = battery_mv_to_pct(mv);
   r.ok  = true;

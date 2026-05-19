@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <M5Unified.h>
 #include <WiFi.h>
+#include <esp_sntp.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -33,22 +34,38 @@ static void apply_local_tz() {
   tzset();
 }
 
-static void sync_ntp_once() {
+// Force SNTP to actually deliver a fresh sample, not just inherit whatever the
+// RTC chip holds. getLocalTime() returns success as soon as `tm_year >= 2017`,
+// which is true on the first wake when the RTC chip retains stale (often
+// local-time-treated-as-UTC) data from earlier flashes — so the firmware would
+// silently record a wrong `time(nullptr)` into last_fetch_s and the bottom
+// "refresh HH:MM" would render `+TZ` shifted from reality. Polling
+// sntp_get_sync_status() until COMPLETED guarantees the SNTP daemon got a
+// reply.
+static bool sync_ntp_once() {
   // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
   configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
   // Apply local TZ so subsequent localtime_r() calls (e.g. for the footer
   // HH:MM stamps) render in the user's wall-clock instead of UTC.
   apply_local_tz();
-  struct tm ti;
-  int i;
-  for (i = 0; i < 20 && !getLocalTime(&ti); ++i) delay(500);
-  if (i >= 20) {
-    Serial.println("[ntp] sync failed (timeout)");
-  } else {
-    Serial.printf("[ntp] synced after %d iters; now=%04d-%02d-%02d %02d:%02d:%02d (tz=%s)\n",
-                  i, ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
-                  ti.tm_hour, ti.tm_min, ti.tm_sec, LOCAL_TZ);
+  const uint32_t timeout_ms = 10000;
+  const uint32_t start = millis();
+  while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
+    if (millis() - start > timeout_ms) {
+      Serial.println("[ntp] sync timeout — SNTP did not deliver");
+      return false;
+    }
+    delay(100);
   }
+  time_t now;
+  struct tm ti;
+  time(&now);
+  localtime_r(&now, &ti);
+  Serial.printf("[ntp] synced in %u ms; now=%04d-%02d-%02d %02d:%02d:%02d (tz=%s)\n",
+                (unsigned)(millis() - start),
+                ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
+                ti.tm_hour, ti.tm_min, ti.tm_sec, LOCAL_TZ);
+  return true;
 }
 
 static const char* epd_mode_name(epd_mode_t m) {
@@ -408,15 +425,18 @@ static bool refetch_now() {
     Serial.println("[main] wifi failed");
     return false;
   }
-  sync_ntp_once();
+  bool ntp_ok = sync_ntp_once();
   std::vector<PageRecord> fresh;
   bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (ok) {
-    g_state.pages        = std::move(fresh);
-    g_state.last_fetch_s = (uint64_t)time(nullptr);
-    g_state.page_index   = 0;
+    g_state.pages      = std::move(fresh);
+    g_state.page_index = 0;
+    // Only stamp last_fetch_s when NTP genuinely synced — otherwise time() is
+    // RTC fallback (often stale or local-as-UTC) and would render wrong.
+    if (ntp_ok) g_state.last_fetch_s = (uint64_t)time(nullptr);
     nvs_save(g_state);
-    Serial.printf("[main] fetched %u pages, idx=0\n", (unsigned)g_state.pages.size());
+    Serial.printf("[main] fetched %u pages, idx=0 (last_fetch updated=%d)\n",
+                  (unsigned)g_state.pages.size(), ntp_ok ? 1 : 0);
   } else {
     Serial.println("[main] fetch failed; keeping cache");
   }
