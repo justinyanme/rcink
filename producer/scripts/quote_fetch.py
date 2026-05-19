@@ -21,7 +21,7 @@ def run() -> None:
 
     page = build_quote_page(quote, now=now)
     # Quote sits at the tail of the page rotation, after Claude (10) and Codex (20).
-    ingest(id="quote", layout=page, order=80, ttl_sec=24 * 3600)
+    ingest(id="quote", layout=page, order=80)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,6 @@ struct TextNode {
   Color    bg     = Color::White;
   bool     has_bg = false;
   int16_t  pad    = 0;
-  uint8_t  max_lines = 0;  // 0 = unlimited
 };
 
 struct StackNode {

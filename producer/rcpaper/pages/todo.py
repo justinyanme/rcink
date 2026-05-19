@@ -86,13 +86,13 @@ def render_item_children(item: Reminder, *, limit: int = 24) -> list[dict]:
         head = hosts[0]
         if len(hosts) > 1 and len(head) + 2 + len(hosts[1]) <= limit:
             head = f"{head} · {hosts[1]}"
-        nodes.append(text(head, size="body", weight="bold", max_lines=1))
+        nodes.append(text(head, size="body", weight="bold"))
         if residual:
             tail = _trim(residual, limit=limit - len(head) - 2)
             if tail:
-                nodes.append(text(f"— {tail}", size="sm", max_lines=1))
+                nodes.append(text(f"— {tail}", size="sm"))
     else:
-        nodes.append(text(_trim(residual or item.title, limit=limit), size="body", weight="bold", max_lines=1))
+        nodes.append(text(_trim(residual or item.title, limit=limit), size="body", weight="bold"))
     return nodes
 
 

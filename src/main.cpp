@@ -128,6 +128,11 @@ static void blit_icon16(M5Canvas& canvas, int16_t x, int16_t y, const char* name
 // Top strip: battery glyph + temp + humidity · data time + refresh time.
 // Painted after the page tree so the page can't clobber it. Reads from
 // g_battery, g_env, the current page's data_ts, and last_fetch_s.
+//
+// Each subsequent group (temp, humidity, data, refresh) checks its required
+// width against the panel before drawing; the first group that doesn't fit
+// logs once and stops the chain. Avoids silently running past the right edge
+// if a string grows (3-digit temp, longer locale).
 static void paint_status_bar(M5Canvas& canvas,
                              const PageRecord& rec,
                              const BatteryReading& batt,
@@ -135,6 +140,7 @@ static void paint_status_bar(M5Canvas& canvas,
                              uint64_t last_fetch_s) {
   const int16_t W = canvas.width();
   const int16_t y = 0;
+  const int16_t kRightMargin = 6;
 
   canvas.fillRect(0, y, W, TOP_STRIP_H, 0xFFFFFF);
   canvas.drawFastHLine(0, y + TOP_STRIP_H - 1, W, 0x000000);
@@ -145,6 +151,14 @@ static void paint_status_bar(M5Canvas& canvas,
   int16_t x = 6;
   const int16_t y_text = y + 4;
   const int16_t y_icon = y + 3;
+
+  // Reserve `need` px from the right edge. Logs once and returns false if no
+  // room; the caller chains `if (!fits(...)) return;` to stop drawing groups.
+  auto fits = [&](int16_t need) {
+    if (x + need + kRightMargin <= W) return true;
+    Serial.printf("[status] overflow at x=%d need=%d W=%d\n", x, need, W);
+    return false;
+  };
 
   // --- Battery glyph: outline 22x10 with 2x4 nipple, fill 0..18px wide. ---
   const int16_t batt_w = 22, batt_h = 10;
@@ -167,48 +181,40 @@ static void paint_status_bar(M5Canvas& canvas,
   canvas.print(num);
   x += canvas.textWidth(num) + 8;
 
-  // Group separator
-  canvas.setCursor(x, y_text);
-  canvas.print("\xC2\xB7");  // UTF-8 '·'
-  x += 8;
-
   // --- Temperature ---
-  blit_icon16(canvas, x, y_icon, "thermometer");
-  x += 18;
   if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
   else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
-  canvas.setCursor(x, y_text);
-  canvas.print(num);
+  int16_t temp_w = 8 + 18 + canvas.textWidth(num) + 8;
+  if (!fits(temp_w)) return;
+  canvas.setCursor(x, y_text); canvas.print("\xC2\xB7"); x += 8;
+  blit_icon16(canvas, x, y_icon, "thermometer"); x += 18;
+  canvas.setCursor(x, y_text); canvas.print(num);
   x += canvas.textWidth(num) + 8;
 
   // --- Humidity ---
-  blit_icon16(canvas, x, y_icon, "droplet");
-  x += 18;
   if (env.ok) snprintf(num, sizeof(num), "%d%%", (int)(env.humidity_pct + 0.5f));
   else        snprintf(num, sizeof(num), "--%%");
-  canvas.setCursor(x, y_text);
-  canvas.print(num);
+  int16_t humid_w = 18 + canvas.textWidth(num) + 8;
+  if (!fits(humid_w)) return;
+  blit_icon16(canvas, x, y_icon, "droplet"); x += 18;
+  canvas.setCursor(x, y_text); canvas.print(num);
   x += canvas.textWidth(num) + 8;
 
-  // Group separator
-  canvas.setCursor(x, y_text);
-  canvas.print("\xC2\xB7");
-  x += 8;
-
   // --- Data time (page's data_ts) ---
-  blit_icon16(canvas, x, y_icon, "download");
-  x += 18;
   String s = format_local_hhmm(rec.data_ts);
-  canvas.setCursor(x, y_text);
-  canvas.print(s.c_str());
+  int16_t data_w = 8 + 18 + canvas.textWidth(s.c_str()) + 8;
+  if (!fits(data_w)) return;
+  canvas.setCursor(x, y_text); canvas.print("\xC2\xB7"); x += 8;
+  blit_icon16(canvas, x, y_icon, "download"); x += 18;
+  canvas.setCursor(x, y_text); canvas.print(s.c_str());
   x += canvas.textWidth(s.c_str()) + 8;
 
   // --- Refresh time (device last_fetch_s) ---
-  blit_icon16(canvas, x, y_icon, "refresh");
-  x += 18;
   s = format_local_hhmm(last_fetch_s);
-  canvas.setCursor(x, y_text);
-  canvas.print(s.c_str());
+  int16_t refresh_w = 18 + canvas.textWidth(s.c_str());
+  if (!fits(refresh_w)) return;
+  blit_icon16(canvas, x, y_icon, "refresh"); x += 18;
+  canvas.setCursor(x, y_text); canvas.print(s.c_str());
 }
 
 static void paint_indicator(M5Canvas& canvas,
@@ -417,7 +423,13 @@ static void render_error(const char* msg) {
 }
 
 // ---- shared cycle steps ---------------------------------------------------
-
+//
+// WiFi lifecycle contract: refetch_now() connects and leaves wifi up so a
+// subsequent render_current() can pull remote images on the same wake.
+// render_current() additionally connects on-demand when refetch didn't run
+// but the page wants a remote image. The single cleanup site is the setup()
+// epilogue (and the console dispatch for 'f' / 'r') — do not disconnect
+// inside refetch_now() or render_current(), or remote images break.
 static bool refetch_now() {
   g_battery = read_battery();
   g_env     = read_sht40();

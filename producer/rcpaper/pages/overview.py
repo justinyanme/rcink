@@ -103,7 +103,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             icon("calendar", size=16, color="blue"),
             text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
             text(when, size="body", color="blue", weight="bold"),
-            text(title, size="body", weight="bold", max_lines=1),
+            text(title, size="body", weight="bold"),
             spacer(),
             text(sub, size="sm"),
         ],

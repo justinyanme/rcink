@@ -94,7 +94,7 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
                         vstack(
                             gap=2,
                             children=[
-                                text(nxt.title, size="body", weight="bold", max_lines=1),
+                                text(nxt.title, size="body", weight="bold"),
                                 text(
                                     f"{_fmt_duration(nxt.start, nxt.end, nxt.is_all_day)} · "
                                     f"{_next_in_label(nxt.start, now)}",
@@ -123,7 +123,7 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
                         children=[
                             text(_fmt_time(ev.start, ev.is_all_day), size="body", weight="bold", color=tick),
                             hbar(pct=100, color=tick, height=4),
-                            text(ev.title, size="sm", weight="bold", max_lines=1),
+                            text(ev.title, size="sm", weight="bold"),
                         ],
                     )
                 )

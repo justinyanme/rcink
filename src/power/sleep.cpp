@@ -34,8 +34,15 @@ WakeReason current_wake_reason() {
 void enter_deep_sleep_until(uint64_t epoch_seconds) {
   time_t now;
   time(&now);
-  int64_t delta = (int64_t)epoch_seconds - (int64_t)now;
-  if (delta < 10) delta = 10;  // floor at 10 s
+  int64_t delta_raw = (int64_t)epoch_seconds - (int64_t)now;
+  int64_t delta = delta_raw;
+  if (delta < 10) {
+    // Past-due target (corrupt RTC, stale last_fetch_s, or NTP skew).
+    // Log so the next wake at the 10-s floor is diagnosable from serial.
+    Serial.printf("[sleep] target past-due: target=%llu now=%lld delta=%lld, clamped to 10s\n",
+                  (unsigned long long)epoch_seconds, (long long)now, (long long)delta_raw);
+    delta = 10;
+  }
 
   // Put EPD controller in deep-sleep mode (M5GFX facade, sends cmd 0x07/0xA5).
   // Then cut the EPD power rail: PM1 GPIO0 is the EPD power enable pin; drive it

@@ -32,6 +32,6 @@ def build_image_page(
             text(title.upper(), size="h1", color="white", bg="black", pad=6, weight="bold"),
             image(url=url, format=format, width=width, height=height),
             spacer(),
-            text(footer, size="sm", weight="bold", max_lines=1),
+            text(footer, size="sm", weight="bold"),
         ],
     )

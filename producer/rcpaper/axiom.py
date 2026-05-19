@@ -25,7 +25,7 @@ def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def ingest(*, id: str, layout: dict[str, Any], order: int | None = None, ttl_sec: int = 3600) -> None:
+def ingest(*, id: str, layout: dict[str, Any], order: int | None = None) -> None:
     token = _env("AXIOM_TOKEN")
     dataset = _env("AXIOM_DATASET")
     now = dt.datetime.now(dt.timezone.utc)
@@ -37,7 +37,6 @@ def ingest(*, id: str, layout: dict[str, Any], order: int | None = None, ttl_sec
         "data_ts": int(now.timestamp()),
         "type": "rcpaper_page",
         "id": id,
-        "ttl_sec": ttl_sec,
         # Stringify the layout tree so Axiom stores it as one opaque field
         # instead of flattening it into layout.children / layout.gap / ...
         # The firmware does its own JSON parse on `layout_json`.

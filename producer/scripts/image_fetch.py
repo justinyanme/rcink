@@ -35,13 +35,12 @@ def run(
         None, "--format", help="png|jpg|bmp|qoi. Auto-inferred from the URL when omitted."
     ),
     order: int = typer.Option(60, "--order", help="Rotation order. Lower shows earlier."),
-    ttl_sec: int = typer.Option(86400, "--ttl-sec", help="Document producer freshness window."),
 ) -> None:
     image_format = format or _infer_format(url)
     if image_format is None:
         raise typer.BadParameter("could not infer image format from URL; pass --format png|jpg|bmp|qoi")
     page = build_image_page(url=url, title=title, caption=caption, format=image_format)
-    ingest(id=page_id, layout=page, order=order, ttl_sec=ttl_sec)
+    ingest(id=page_id, layout=page, order=order)
     logger.info(f"image page pushed: id={page_id!r} format={image_format} url={url}")
 
 

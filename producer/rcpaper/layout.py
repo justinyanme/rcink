@@ -48,7 +48,6 @@ def text(
     align: str | None = None,
     bg: str | None = None,
     pad: int | None = None,
-    max_lines: int | None = None,
 ) -> dict:
     return _node(
         "text",
@@ -59,7 +58,6 @@ def text(
         align=align,
         bg=bg,
         pad=pad,
-        max_lines=max_lines,
     )
 
 

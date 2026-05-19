@@ -84,7 +84,6 @@ LayoutNode parse_layout(JsonVariantConst v) {
       const char* bg      = v["bg"] | (const char*)nullptr;
       if (bg && *bg) { n.as_text.bg = color_from_token(bg); n.as_text.has_bg = true; }
       n.as_text.pad       = v["pad"] | 0;
-      n.as_text.max_lines = v["max_lines"] | 0;
       break;
     }
 

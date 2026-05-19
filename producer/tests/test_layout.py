@@ -25,7 +25,6 @@ def test_text_full():
         align="center",
         bg="red",
         pad=8,
-        max_lines=1,
     ) == {
         "type": "text",
         "value": "CLAUDE",
@@ -35,7 +34,6 @@ def test_text_full():
         "align": "center",
         "bg": "red",
         "pad": 8,
-        "max_lines": 1,
     }
 
 
