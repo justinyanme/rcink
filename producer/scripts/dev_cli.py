@@ -1,20 +1,21 @@
 """USB-CDC console helper for the rcpapercolor M5 PaperColor firmware.
 
-Forwards keystrokes to `main.cpp::console_dispatch` (enabled by the
+Forwards keystrokes to `dev/console.cpp::console_dispatch` (enabled by the
 `RCPAPER_DEV_CONSOLE` build flag in platformio.ini).
 
-    rcpaper-cli send f          # refetch + render
-    rcpaper-cli send r          # re-render current page
-    rcpaper-cli send n          # next page
-    rcpaper-cli send mmm        # cycle EPD mode 3 times
-    rcpaper-cli send s          # print state dump (read log via `rcpaper-cli log`)
-    rcpaper-cli send h          # show on-device help
+    uv run dev-cli send f        # refetch + render
+    uv run dev-cli send r        # re-render current page
+    uv run dev-cli send n        # next page
+    uv run dev-cli send mmm      # cycle EPD mode 3 times
+    uv run dev-cli send s        # print state dump (read log via `dev-cli log`)
+    uv run dev-cli send h        # show on-device help
 
-    rcpaper-cli log             # tail serial output until Ctrl-C
-    rcpaper-cli log --once      # read until next deep-sleep marker, then exit
+    uv run dev-cli log           # tail serial output until Ctrl-C
+    uv run dev-cli log --once    # read until next deep-sleep marker, then exit
 
-The device must be flashed with `-DRCPAPER_DEV_CONSOLE`; without it the
-firmware deep-sleeps right after the first render and the port drops.
+The device must be flashed with the dev env (`pio run -e m5stack-papercolor`);
+without RCPAPER_DEV_CONSOLE the firmware deep-sleeps right after the first
+render and the port drops.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ app = typer.Typer(add_completion=False, help=__doc__, no_args_is_help=True)
 
 @app.command("send")
 def cmd_send(
-    chars: str = typer.Argument(..., help="Char(s) to send. See main.cpp::console_dispatch."),
+    chars: str = typer.Argument(..., help="Char(s) to send. See dev/console.cpp::console_dispatch."),
     port: str = typer.Option(DEFAULT_PORT, "--port", "-p"),
     delay: float = typer.Option(0.2, "--delay", help="Inter-char delay (s)."),
 ) -> None:

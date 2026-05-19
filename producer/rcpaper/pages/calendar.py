@@ -1,8 +1,7 @@
 """Build the Calendar page — today's events in editorial style.
 
-Mirrors `buildCalendar` from the handoff: TODAY masthead, NEXT hero (red
-sticker + time + title + duration), an UP NEXT list with colored time
-ticks per calendar source, and a footer brand row. If today has no events,
+TODAY masthead, NEXT hero (red sticker + time + title + duration), UP NEXT
+list with colored time ticks per calendar source. If today has no events,
 the page degrades to a friendly empty state.
 """
 
@@ -15,8 +14,7 @@ from rcpaper.sources.calendar import CalEvent, TodaysCalendar
 
 # Cycle of "ink" colors for event ticks in the UP NEXT list. Per-calendar
 # coloring (mapping EKCalendar.color → palette) is overkill for a 7-color
-# E6 panel; cycling through saturated swatches keeps the list readable and
-# matches the editorial layout the handoff drew.
+# E6 panel; cycling through saturated swatches keeps the list readable.
 _TICK_COLORS = ("blue", "red", "green", "yellow")
 
 

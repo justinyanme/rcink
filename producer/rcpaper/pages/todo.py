@@ -1,8 +1,7 @@
 """Build the Todo page from macOS Reminders.
 
-Mirrors `buildTodo` in the handoff: TODO sticker header, count chip, checkbox
-list with priority badges, and a DONE progress bar. Within protocol — uses
-unicode checkbox + priority chips (no proposed primitives).
+TODO sticker header, count chip, checkbox list with priority badges,
+DONE progress bar at the foot.
 """
 
 from __future__ import annotations

@@ -1,10 +1,9 @@
 """Build a Claude usage page in the magazine style.
 
-Mirrors `buildClaudeMagazine` from the design canvas: knockout red header,
-KPI rows with hbars (height 18), BY MODEL · 7D, DAILY USAGE · LAST 7 sparkline,
-hairline + footer row. The firmware overlays the page-rotation indicator at
-the bottom 26 px, so this builder doesn't include prev/next/index — only the
-plan + last-updated metadata footer.
+Knockout red header, two KPI rows (hbar height 18), optional BY MODEL · 7D
+cells, optional USAGE · LAST 24H sparkline. The firmware overlays its own
+status bar at the top and nav strip at the bottom, so this builder doesn't
+include either.
 """
 
 from __future__ import annotations

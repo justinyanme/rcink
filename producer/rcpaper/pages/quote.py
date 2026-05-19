@@ -1,8 +1,7 @@
 """Build the Quote-of-the-day page in editorial poster style.
 
-Matches `buildQuote` from the design canvas: masthead row, body lines in h1 with
-alternating ink colors (black/blue/black/red), attribution flush-right at the
-bottom. Within protocol — no proposed primitives needed.
+Masthead row, body lines in h1 with alternating ink colors
+(black/blue/black/red), attribution flush-right at the bottom.
 """
 
 from __future__ import annotations
@@ -12,8 +11,7 @@ import datetime as dt
 from rcpaper.layout import divider, hstack, icon, spacer, text, vstack
 from rcpaper.sources.quotes import Quote
 
-# Color cycle for body lines. Index = line position. Picked to match the
-# design canvas's editorial direction.
+# Color cycle for body lines. Index = line position.
 _LINE_COLORS: tuple[str | None, ...] = (None, "blue", None, "red")
 
 

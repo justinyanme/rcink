@@ -1,9 +1,8 @@
 """Build a Codex usage page in the magazine style.
 
-Mirrors `buildCodexMagazine` from the design canvas: knockout green header,
-two KPI rows (hbar height 18), DAILY USAGE · LAST 7 sparkline, yellow CREDITS
-sticker, hairline + metadata footer. The firmware paints the page-rotation
-indicator over the bottom 26 px.
+Knockout green header, primary + optional secondary KPI rows (hbar height 18),
+optional USAGE · LAST 24H sparkline, optional yellow CREDITS sticker. The
+firmware overlays its own status bar at the top and nav strip at the bottom.
 """
 
 from __future__ import annotations
