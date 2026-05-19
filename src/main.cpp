@@ -58,25 +58,22 @@ static const char* epd_mode_name(epd_mode_t m) {
   }
 }
 
-// Two-row strip at the bottom of the canvas:
+// Single-row strip at the bottom of the canvas:
 //
 //   ─────────────────────────────────────────────
-//                  data 14:32 → refresh 14:45
-//   ◀ PREV-ID         ● ○ ○         NEXT-ID ▶
+//   ◀ PREV-ID         ● ○ ○  CURRENT-ID  NEXT-ID ▶
 //
-// Top row (TS_H px): producer build time vs. firmware fetch time, drawn from
-// the current page's data_ts and DeviceState::last_fetch_s.
-// Bottom row (NAV_H px): rotation cursor — filled dot is current, hollow others;
-// PREV-ID and NEXT-ID are the IDs reached by BtnB / BtnA. Sits flush against
-// the bottom of the visible panel; the M5PaperColor bezel clips a few pixels
-// below the dot row, so the nav row must be the lowest content.
+// Pagination cursor (filled dot = current, hollow others) plus PREV/NEXT
+// ids reachable via BtnB/BtnA. The current page name renders right of the
+// dot row. Sits flush against the bottom of the visible panel; the
+// M5PaperColor bezel clips a few pixels below the dot row, so the nav
+// row must be the lowest content.
 //
-// Drawn straight on the M5Canvas so it composes with the page tree underneath
-// — producers don't need to reserve space, but content drawn into the bottom
-// IND_STRIP_H pixels is covered.
-static constexpr int TS_H  = 14;
-static constexpr int NAV_H = 22;
-static constexpr int IND_STRIP_H = TS_H + NAV_H;
+// Drawn straight on the M5Canvas so it composes with the page tree
+// underneath — producers don't need to reserve space, but content drawn
+// into the bottom BOT_STRIP_H pixels is covered.
+static constexpr int BOT_STRIP_H = 22;  // single nav row; no more data/refresh row
+static constexpr int TOP_STRIP_H = 22;  // status bar — battery, env, freshness (painted by T6)
 
 static String format_local_hhmm(uint64_t epoch_s) {
   if (epoch_s == 0) return String("--:--");
@@ -92,20 +89,14 @@ static String format_local_hhmm(uint64_t epoch_s) {
 }
 
 static void paint_indicator(M5Canvas& canvas,
-                            const std::vector<PageRecord>& pages, uint8_t idx,
-                            uint64_t last_fetch_s) {
+                            const std::vector<PageRecord>& pages, uint8_t idx) {
   if (pages.empty()) return;
   const int16_t W = canvas.width();
   const int16_t H = canvas.height();
-  const int16_t y_strip = H - IND_STRIP_H;
-  // Timestamps on top of the strip so they sit above the bezel-clipped area;
-  // the nav row is flush with the bottom of the visible panel.
-  const int16_t y_ts    = y_strip;
-  const int16_t y_nav   = y_strip + TS_H;
+  const int16_t y_strip = H - BOT_STRIP_H;
 
-  // Solid white background + hairline top rule so the strip floats cleanly
-  // above any page content drawn behind it.
-  canvas.fillRect(0, y_strip, W, IND_STRIP_H, 0xFFFFFF);
+  // White background + hairline top rule
+  canvas.fillRect(0, y_strip, W, BOT_STRIP_H, 0xFFFFFF);
   canvas.drawFastHLine(0, y_strip, W, 0x000000);
 
   canvas.setFont(&fonts::FreeSansBold9pt7b);
@@ -122,49 +113,45 @@ static void paint_indicator(M5Canvas& canvas,
   };
   const String prev_id = upper(pages[prev_idx].id);
   const String next_id = upper(pages[next_idx].id);
+  const String curr_id = upper(pages[idx].id);
 
-  const int16_t nav_mid = y_nav + NAV_H / 2;
+  const int16_t y_text = y_strip + 4;
+  const int16_t y_mid  = y_strip + BOT_STRIP_H / 2;
 
-  // Left: ◀  PREV
+  // Left: ◀ PREV
   const int16_t lpad = 8;
-  canvas.fillTriangle(lpad,     nav_mid,
-                      lpad + 7, y_nav + 4,
-                      lpad + 7, y_nav + NAV_H - 4, 0x000000);
-  canvas.setCursor(lpad + 13, y_nav + 3);
+  canvas.fillTriangle(lpad,     y_mid,
+                      lpad + 7, y_strip + 5,
+                      lpad + 7, y_strip + BOT_STRIP_H - 5, 0x000000);
+  canvas.setCursor(lpad + 13, y_text);
   canvas.print(prev_id.c_str());
 
-  // Right: NEXT  ▶
+  // Right: NEXT ▶
   const int16_t rpad = 8;
   const int16_t arrow_x = W - rpad - 7;
-  canvas.fillTriangle(arrow_x,     y_nav + 4,
-                      arrow_x,     y_nav + NAV_H - 4,
-                      arrow_x + 7, nav_mid, 0x000000);
+  canvas.fillTriangle(arrow_x,     y_strip + 5,
+                      arrow_x,     y_strip + BOT_STRIP_H - 5,
+                      arrow_x + 7, y_mid, 0x000000);
   const int16_t next_w = canvas.textWidth(next_id.c_str());
-  canvas.setCursor(arrow_x - 5 - next_w, y_nav + 3);
+  canvas.setCursor(arrow_x - 5 - next_w, y_text);
   canvas.print(next_id.c_str());
 
-  // Center: dot pagination. Spacing chosen so even 8 pages stay comfortably
-  // within the middle gap between the prev/next labels.
-  const int16_t dot_gap = 12;
-  const int16_t dots_w = (int16_t)((n - 1) * dot_gap);
-  int16_t dx = W / 2 - dots_w / 2;
+  // Center: pagination dots + current page name.
+  // Layout: [dots]  [gap]  CURRENT
+  const int16_t dot_gap = 10;
+  const int16_t dots_w  = (n > 1) ? (int16_t)((n - 1) * dot_gap) : 0;
+  const int16_t curr_w  = canvas.textWidth(curr_id.c_str());
+  const int16_t group_w = dots_w + (n > 1 ? 12 : 0) + curr_w;
+  int16_t dx = (W - group_w) / 2;
   for (size_t i = 0; i < n; ++i) {
-    if (i == idx) canvas.fillCircle(dx, nav_mid, 3, 0x000000);
-    else          canvas.drawCircle(dx, nav_mid, 2, 0x000000);
+    if (i == idx) canvas.fillCircle(dx, y_mid, 3, 0x000000);
+    else          canvas.drawCircle(dx, y_mid, 2, 0x000000);
     dx += dot_gap;
   }
-
-  // Bottom row: data HH:MM → refresh HH:MM, centered.
-  const PageRecord& rec = pages[idx];
-  String line = "data ";
-  line += format_local_hhmm(rec.data_ts);
-  line += "  ->  refresh ";
-  line += format_local_hhmm(last_fetch_s);
-
-  canvas.setFont(&fonts::FreeSans9pt7b);
-  int16_t tw = canvas.textWidth(line.c_str());
-  canvas.setCursor((W - tw) / 2, y_ts + 1);
-  canvas.print(line.c_str());
+  // After dots, draw the current page name to the right.
+  int16_t name_x = (n > 1) ? (dx - dot_gap + 12) : (W - curr_w) / 2;
+  canvas.setCursor(name_x, y_text);
+  canvas.print(curr_id.c_str());
 }
 
 static bool layout_has_remote_image(const LayoutNode& node) {
@@ -202,7 +189,7 @@ static void render_page(const PageRecord& rec, const LayoutNode& root, bool stal
   int16_t H = (int16_t)M5.Display.height();
   // Reserve the bottom strip for the page-rotation indicator (painted after
   // the page tree), so producer pages can't write into that band.
-  Rect vp{0, 0, W, (int16_t)(H - IND_STRIP_H)};
+  Rect vp{0, 0, W, (int16_t)(H - BOT_STRIP_H)};
   auto laid = run_layout(root, vp, m);
 
 #ifdef RCPAPER_DEV_NO_DRAW
@@ -239,8 +226,7 @@ static void render_page(const PageRecord& rec, const LayoutNode& root, bool stal
   paint_layout(canvas, laid);
 
   // Overlay the page-rotation indicator strip at the bottom of every page.
-  paint_indicator(canvas, g_state.pages, g_state.page_index,
-                  g_state.last_fetch_s);
+  paint_indicator(canvas, g_state.pages, g_state.page_index);
 
   if (stale) {
     // "STALE" pill in the bottom-right
