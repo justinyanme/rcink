@@ -22,36 +22,35 @@ Sources:
    ```bash
    export AXIOM_TOKEN=xaat-...
    export AXIOM_DATASET=rcpapercolor
-   uv run claude-fetch
-   uv run codex-fetch
-   uv run image-fetch 'https://example.com/frame.png'
+   uv run fetch-all
+   uv run image-fetch 'https://example.com/frame.png'   # optional, ad-hoc image push
    ```
 
-   You should see two `kind=page` events appear in the Axiom dataset.
+   `fetch-all` runs every page fetcher in one process, logging one line per
+   page; individual failures degrade that page only. Each invocation should
+   write 6 `type=rcpaper_page` events to the Axiom dataset.
 
 ## Schedule with launchd
 
+One job runs the whole rotation every 15 minutes:
+
 ```bash
-# Copy and edit (one plist per fetcher)
-for kind in claude codex calendar todo; do
-  cp launchd/com.rocry.rcpaper.${kind}.plist.example \
-     ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
-  $EDITOR ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
-done
+cp launchd/com.rocry.rcpaper.all.plist.example \
+   ~/Library/LaunchAgents/com.rocry.rcpaper.all.plist
+$EDITOR ~/Library/LaunchAgents/com.rocry.rcpaper.all.plist   # fill in user, uv path, AXIOM_TOKEN
 
-# Load
-for kind in claude codex calendar todo; do
-  launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rocry.rcpaper.${kind}.plist
-done
-
-# Tail logs
-tail -f /tmp/rcpaper-{claude,codex,calendar,todo}.log
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.rocry.rcpaper.all.plist
+tail -f /tmp/rcpaper.log
 ```
 
-The `calendar-fetch` + `todo-fetch` jobs read from macOS Calendar/Reminders via
-EventKit. On first launch macOS prompts to grant Calendar and Reminders access
-to the `uv`/`python` binary; grant it. The default Reminders list (System
-Settings → Reminders → Default List) is the one rendered.
+The calendar + todo fetchers read from macOS Calendar/Reminders via EventKit.
+On first launch macOS prompts to grant Calendar and Reminders access to the
+`uv`/`python` binary; grant it. The default Reminders list (System Settings →
+Reminders → Default List) is the one rendered.
+
+Need a different cadence for one page, or want to skip one? Add or remove its
+entry in `scripts/fetch_all.py:FETCHERS`, or call the per-page script
+(`uv run claude-fetch`, etc.) from a separate job.
 
 ## Adding a new dashboard
 
@@ -60,7 +59,7 @@ Settings → Reminders → Default List) is the one rendered.
    returns a layout dict).
 3. Add an entry script in `scripts/<name>_fetch.py` that wires source → page →
    `ingest(id="<name>", layout=..., order=N)`.
-4. Add a launchd plist if you want it scheduled.
+4. Register it in `scripts/fetch_all.py:FETCHERS` so the unified job picks it up.
 
 The firmware will pick up the new page automatically on its next fetch (the
 APL query returns latest-per-id).

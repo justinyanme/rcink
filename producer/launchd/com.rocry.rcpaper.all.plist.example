@@ -4,15 +4,17 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.rocry.rcpaper.codex</string>
+  <string>com.rocry.rcpaper.all</string>
+
   <key>ProgramArguments</key>
   <array>
     <string>/Users/CHANGE_ME/.local/bin/uv</string>
     <string>run</string>
     <string>--directory</string>
     <string>/Users/CHANGE_ME/w/_hw/rcpapercolor/producer</string>
-    <string>codex-fetch</string>
+    <string>fetch-all</string>
   </array>
+
   <key>EnvironmentVariables</key>
   <dict>
     <key>AXIOM_TOKEN</key>
@@ -20,13 +22,16 @@
     <key>AXIOM_DATASET</key>
     <string>rocry</string>
   </dict>
+
   <key>StartInterval</key>
   <integer>900</integer>
+
   <key>RunAtLoad</key>
   <true/>
+
   <key>StandardOutPath</key>
-  <string>/tmp/rcpaper-codex.log</string>
+  <string>/tmp/rcpaper.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/rcpaper-codex.log</string>
+  <string>/tmp/rcpaper.log</string>
 </dict>
 </plist>
