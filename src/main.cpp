@@ -139,17 +139,21 @@ static void paint_indicator(M5Canvas& canvas,
   // Center: pagination dots + current page name.
   // Layout: [dots]  [gap]  CURRENT
   const int16_t dot_gap = 10;
+  const int16_t kNameGap = 12;   // gap between last dot and page name
   const int16_t dots_w  = (n > 1) ? (int16_t)((n - 1) * dot_gap) : 0;
   const int16_t curr_w  = canvas.textWidth(curr_id.c_str());
-  const int16_t group_w = dots_w + (n > 1 ? 12 : 0) + curr_w;
+  const int16_t group_w = dots_w + (n > 1 ? kNameGap : 0) + curr_w;
   int16_t dx = (W - group_w) / 2;
-  for (size_t i = 0; i < n; ++i) {
-    if (i == idx) canvas.fillCircle(dx, y_mid, 3, 0x000000);
-    else          canvas.drawCircle(dx, y_mid, 2, 0x000000);
-    dx += dot_gap;
+  // Only draw dots when there's more than one page; a single dot adds no info.
+  if (n > 1) {
+    for (size_t i = 0; i < n; ++i) {
+      if (i == idx) canvas.fillCircle(dx, y_mid, 3, 0x000000);
+      else          canvas.drawCircle(dx, y_mid, 2, 0x000000);
+      dx += dot_gap;
+    }
   }
   // After dots, draw the current page name to the right.
-  int16_t name_x = (n > 1) ? (dx - dot_gap + 12) : (W - curr_w) / 2;
+  int16_t name_x = (n > 1) ? (dx - dot_gap + kNameGap) : (W - curr_w) / 2;
   canvas.setCursor(name_x, y_text);
   canvas.print(curr_id.c_str());
 }
