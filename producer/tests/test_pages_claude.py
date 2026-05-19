@@ -32,11 +32,11 @@ def test_header_is_red_knockout_title():
 def test_no_brand_footer_row():
     """Brand footer moved into the firmware-painted nav strip."""
     page = build_claude_page(make_usage(), sparkline=None)
-    # Last child should not be the brand icon row anymore.
-    last = page["children"][-1]
-    if last["type"] == "hstack" and len(last.get("children", [])) == 2:
-        first, second = last["children"]
-        assert not (first.get("type") == "icon" and first.get("name") == "claude"), (
+    for child in page["children"]:
+        if child.get("type") != "hstack":
+            continue
+        inner = child.get("children") or []
+        assert not (inner and inner[0].get("type") == "icon" and inner[0].get("name") == "claude"), (
             "claude brand row should be deleted from the page footer"
         )
 
