@@ -12,6 +12,7 @@
 #include "proto/parser.h"
 #include "render/engine.h"
 #include "render/icons_data.h"
+#include <cmath>
 #include <cstring>
 #include "store/nvs.h"
 #include "power/sleep.h"
@@ -104,6 +105,7 @@ static void blit_icon16(M5Canvas& canvas, int16_t x, int16_t y, const char* name
       return;
     }
   }
+  Serial.printf("[blit_icon16] unknown icon: %s\n", name);
 }
 
 // Top strip: battery glyph + temp + humidity · data time + refresh time.
@@ -131,7 +133,7 @@ static void paint_status_bar(M5Canvas& canvas,
   const int16_t batt_w = 22, batt_h = 10;
   const int16_t batt_y = y + (TOP_STRIP_H - batt_h) / 2;
   uint32_t fill_c = 0x1EA84B;          // green (>=30%)
-  if (batt.pct < 30) fill_c = 0xF7C815; // yellow (>=10%)
+  if (batt.pct < 30) fill_c = 0xF7C815; // yellow (10..29%)
   if (batt.pct < 10) fill_c = 0xD92027; // red   (<10%)
   canvas.drawRect(x, batt_y, batt_w, batt_h, 0x000000);
   canvas.fillRect(x + batt_w, batt_y + 3, 2, 4, 0x000000);
@@ -156,7 +158,7 @@ static void paint_status_bar(M5Canvas& canvas,
   // --- Temperature ---
   blit_icon16(canvas, x, y_icon, "thermometer");
   x += 18;
-  if (env.ok) snprintf(num, sizeof(num), "%d\xC2\xB0""C", (int)(env.temp_c + 0.5f));
+  if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
   else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
   canvas.setCursor(x, y_text);
   canvas.print(num);
