@@ -81,7 +81,8 @@ LINK_DIRECTORIES(
         ${SDK_PREFIX}/proj_lib
 )
 
-SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -T${SDK_PREFIX}/boot.link")
+SET(CMAKE_EXE_LINKER_FLAGS
+        "${CMAKE_EXE_LINKER_FLAGS} -T${SDK_PREFIX}/boot.link -Wl,-u,parse_layout -Wl,-u,run_layout -Wl,-u,paint_layout -Wl,-u,draw_text -Wl,-u,draw_hbar -Wl,-u,palette_from_token")
 
 FILE(GLOB_RECURSE SOURCES1 *.c *.cpp *.S)
 

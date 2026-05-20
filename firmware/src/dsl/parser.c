@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define JSON_MAX_TOKENS 512
@@ -82,15 +81,24 @@ static bool token_number(parser_t *p, int idx, int32_t *out)
     if (n == 0 || n >= 16) {
         return false;
     }
-    char tmp[16];
-    memcpy(tmp, p->json + t->start, n);
-    tmp[n] = '\0';
-    char *end = NULL;
-    long v = strtol(tmp, &end, 10);
-    if (end == tmp || *end != '\0') {
+    const char *s = p->json + t->start;
+    bool neg = false;
+    size_t pos = 0;
+    if (s[pos] == '-') {
+        neg = true;
+        pos++;
+    }
+    if (pos >= n || s[pos] < '0' || s[pos] > '9') {
         return false;
     }
-    *out = (int32_t)v;
+    int32_t v = 0;
+    for (; pos < n; pos++) {
+        if (s[pos] < '0' || s[pos] > '9') {
+            return false;
+        }
+        v = (int32_t)(v * 10 + (s[pos] - '0'));
+    }
+    *out = neg ? -v : v;
     return true;
 }
 

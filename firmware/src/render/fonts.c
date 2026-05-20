@@ -26,31 +26,12 @@ static uint8_t needs_cjk(const char *s, uint8_t len)
 
 static GFXfont *font_for(text_size_t size, text_weight_t weight, const char *s, uint8_t len)
 {
+    (void)size;
     (void)weight;
     if (needs_cjk(s, len)) {
-        switch (size) {
-        case TS_H1:
-            return (GFXfont *)&WenQuanYi_Bitmap_Song_16px16pt8b;
-        case TS_H2:
-            return (GFXfont *)&WenQuanYi_Bitmap_Song_16px12pt8b;
-        case TS_SM:
-            return (GFXfont *)&WenQuanYi_Bitmap_Song_16px9pt8b;
-        case TS_BODY:
-        default:
-            return (GFXfont *)&WenQuanYi_Bitmap_Song_16px10pt8b;
-        }
+        return (GFXfont *)&Dialog_plain_16_zh;
     }
-    switch (size) {
-    case TS_H1:
-        return (GFXfont *)&Classic16x16;
-    case TS_H2:
-        return (GFXfont *)&Classic12x16;
-    case TS_SM:
-        return (GFXfont *)&Classic6x8;
-    case TS_BODY:
-    default:
-        return (GFXfont *)&Classic8x8;
-    }
+    return (GFXfont *)&Dialog_plain_16;
 }
 
 static int16_t firmware_line_height(text_size_t size)

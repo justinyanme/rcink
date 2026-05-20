@@ -2,6 +2,7 @@
 
 #include "icons_data.h"
 
+#include <stddef.h>
 #include <string.h>
 
 static const icon_def_t icons[] = {
