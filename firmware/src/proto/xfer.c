@@ -41,6 +41,7 @@ typedef struct {
 } xfer_ctx_t;
 
 static xfer_ctx_t g_xfer;
+static uint8_t g_adv_flags;
 
 static uint16_t get_le16(const uint8_t *p)
 {
@@ -62,11 +63,28 @@ static void emit_ack(uint16_t last_seq, xfer_code_t code)
     }
 }
 
+uint8_t xfer_adv_flags(void)
+{
+    return g_adv_flags;
+}
+
+static void mark_xfer_error(void)
+{
+    g_adv_flags |= 0x04u;
+    layout_refresh_adv_payload();
+}
+
+static void clear_xfer_error(void)
+{
+    g_adv_flags &= (uint8_t)~0x04u;
+}
+
 void xfer_init(ack_emit_fn ack)
 {
     memset(&g_xfer, 0, sizeof(g_xfer));
     g_xfer.state = XFER_IDLE;
     g_xfer.ack = ack;
+    g_adv_flags = 0;
 }
 
 void xfer_tick(uint32_t now_ms)
@@ -75,6 +93,7 @@ void xfer_tick(uint32_t now_ms)
     if (g_xfer.state == XFER_RECEIVING &&
         (uint32_t)(now_ms - g_xfer.last_progress_ms) > XFER_NO_PROGRESS_TIMEOUT_MS) {
         ringlog_append(XFER_ERR_BUSY, 0, 0, "watchdog 30s no chunk");
+        mark_xfer_error();
         g_xfer.state = XFER_IDLE;
     }
 }
@@ -139,6 +158,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
     switch (frame[0]) {
     case XFER_CTL_BEGIN:
         if (len < 14 || g_xfer.state != XFER_IDLE) {
+            mark_xfer_error();
             emit_ack(0, XFER_ERR_BUSY);
             return;
         }
@@ -149,11 +169,13 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         g_xfer.dsl_format = frame[13];
         if (battery_read_mv() < XFER_MIN_BATTERY_MV) {
             ringlog_append(XFER_ERR_LOW_BATT, 0, 0, xfer_error_message(XFER_ERR_LOW_BATT));
+            mark_xfer_error();
             emit_ack(0, XFER_ERR_LOW_BATT);
             return;
         }
         if (g_xfer.total_len > SLOT_MAX_PAYLOAD || g_xfer.total_chunks > 256 ||
             g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
+            mark_xfer_error();
             emit_ack(0, XFER_ERR_BUSY);
             return;
         }
@@ -173,11 +195,13 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
     case XFER_CTL_COMMIT:
         if (len < 5 || g_xfer.state != XFER_RECEIVING || get_le32(&frame[1]) != g_xfer.data_ver ||
             g_xfer.recv_offset != g_xfer.total_len) {
+            mark_xfer_error();
             emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_BUSY);
             return;
         }
         if (verify_staging_crc() != 0) {
             ringlog_append(XFER_ERR_CRC, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_CRC));
+            mark_xfer_error();
             g_xfer.state = XFER_IDLE;
             emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_CRC);
             return;
@@ -198,6 +222,7 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
     const uint16_t seq = get_le16(frame);
     const uint16_t payload_len = (uint16_t)(len - 2);
     if (seq != g_xfer.expected_seq) {
+        mark_xfer_error();
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_GAP);
         return;
     }
@@ -257,6 +282,7 @@ void xfer_run_pending_render(void)
     xfer_code_t result = render_staging(&uncompressed_len);
     if (result != XFER_OK_COMMIT) {
         ringlog_append((uint8_t)result, g_xfer.data_ver, 0, xfer_error_message(result));
+        mark_xfer_error();
         g_xfer.state = XFER_IDLE;
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), result);
         return;
@@ -279,11 +305,13 @@ void xfer_run_pending_render(void)
 
     if (slot_write_header(g_xfer.staging, &hdr) != 0) {
         ringlog_append(XFER_ERR_RENDER, g_xfer.data_ver, 0, "header write failed");
+        mark_xfer_error();
         g_xfer.state = XFER_IDLE;
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_RENDER);
         return;
     }
 
+    clear_xfer_error();
     publish_data_ver(g_xfer.data_ver);
     emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_OK_COMMIT);
     g_xfer.state = XFER_IDLE;

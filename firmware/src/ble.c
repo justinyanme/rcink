@@ -4,6 +4,7 @@
 #include "app_config.h"
 #include "stack/ble/ble.h"
 #include "ble_service.h"
+#include "proto/xfer.h"
 
 #include "ble.h"
 
@@ -343,6 +344,7 @@ void layout_refresh_adv_payload(void) {
     } else {
         flags |= 0x01;
     }
+    flags = (flags & (u8)~0x04) | (xfer_adv_flags() & 0x04);
     layout_status_buf[9] = flags;
     tbl_advData[28] = flags;
 }

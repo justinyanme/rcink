@@ -532,7 +532,8 @@ static int xfer_test(const char *scenario)
         g_host_battery_mv = 2300;
         send_begin(0xC0DEC004u, 16, 1, 0);
         if (g_ack_count != 1 || expect_ack(0, 0, XFER_ERR_LOW_BATT) != 0 ||
-            expect_ringlog(XFER_ERR_LOW_BATT, 0) != 0 || xfer_state() != XFER_IDLE) {
+            expect_ringlog(XFER_ERR_LOW_BATT, 0) != 0 || xfer_state() != XFER_IDLE ||
+            (xfer_adv_flags() & 0x04u) == 0) {
             fprintf(stderr, "low-batt scenario failed\n");
             return 1;
         }
