@@ -405,6 +405,14 @@ static void send_data(uint16_t seq, const uint8_t *payload, uint16_t len)
     xfer_handle_data(frame, (uint16_t)(len + 2));
 }
 
+static void send_commit(uint32_t data_ver)
+{
+    uint8_t frame[20] = {0};
+    frame[0] = 0x03;
+    put_le32(&frame[1], data_ver);
+    xfer_handle_ctl(frame, sizeof(frame));
+}
+
 static int expect_ack(uint8_t idx, uint16_t last_seq, uint8_t code)
 {
     if (idx >= g_ack_count) {
@@ -423,6 +431,36 @@ static int expect_ack(uint8_t idx, uint16_t last_seq, uint8_t code)
     return 0;
 }
 
+static int expect_last_ack(uint16_t last_seq, uint8_t code)
+{
+    if (g_ack_count == 0) {
+        fprintf(stderr, "no acks captured\n");
+        return 1;
+    }
+    return expect_ack((uint8_t)(g_ack_count - 1), last_seq, code);
+}
+
+static int expect_ringlog(uint8_t err, uint32_t data_ver)
+{
+    ringlog_record_t rec;
+    if (ringlog_count() != 1 || ringlog_read(0, &rec) != 0) {
+        fprintf(stderr, "ringlog record missing, count=%u\n", ringlog_count());
+        return 1;
+    }
+    if (rec.err_code != err || rec.data_ver != data_ver) {
+        fprintf(stderr, "ringlog mismatch: err=0x%02x data_ver=0x%08x\n", rec.err_code, rec.data_ver);
+        return 1;
+    }
+    return 0;
+}
+
+static void send_one_chunk_transfer(uint32_t data_ver, const uint8_t *payload, uint16_t len, uint32_t crc)
+{
+    send_begin(data_ver, len, 1, crc);
+    send_data(0, payload, len);
+    send_commit(data_ver);
+}
+
 static int xfer_test(const char *scenario)
 {
     host_xfer_reset();
@@ -439,6 +477,46 @@ static int xfer_test(const char *scenario)
             return 1;
         }
         puts("OK gap");
+        return 0;
+    }
+
+    if (strcmp(scenario, "crc-bad") == 0) {
+        static const uint8_t payload[] = {0x78, 0x9c, 0xcb, 0xcb, 0x2f, 0x51, 0xc8, 0x2a,
+                                          0xce, 0xcf, 0x03, 0x00, 0x0e, 0x26, 0x03, 0x2c};
+        send_one_chunk_transfer(0xC0DEC001u, payload, sizeof(payload), 0xDEADBEEFu);
+        if (expect_last_ack(0, XFER_ERR_CRC) != 0 || expect_ringlog(XFER_ERR_CRC, 0xC0DEC001u) != 0 ||
+            xfer_state() != XFER_IDLE) {
+            fprintf(stderr, "crc-bad scenario failed\n");
+            return 1;
+        }
+        puts("OK crc-bad");
+        return 0;
+    }
+
+    if (strcmp(scenario, "inflate-bad") == 0) {
+        static const uint8_t payload[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+        send_one_chunk_transfer(0xC0DEC002u, payload, sizeof(payload), crc32_zlib(payload, sizeof(payload)));
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_ERR_INFLATE) != 0 ||
+            expect_ringlog(XFER_ERR_INFLATE, 0xC0DEC002u) != 0 || xfer_state() != XFER_IDLE) {
+            fprintf(stderr, "inflate-bad scenario failed\n");
+            return 1;
+        }
+        puts("OK inflate-bad");
+        return 0;
+    }
+
+    if (strcmp(scenario, "parse-bad") == 0) {
+        static const uint8_t payload[] = {0x78, 0x9c, 0xcb, 0xcb, 0x2f, 0x51, 0xc8, 0x2a,
+                                          0xce, 0xcf, 0x03, 0x00, 0x0e, 0x26, 0x03, 0x2c};
+        send_one_chunk_transfer(0xC0DEC003u, payload, sizeof(payload), crc32_zlib(payload, sizeof(payload)));
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_ERR_PARSE) != 0 || expect_ringlog(XFER_ERR_PARSE, 0xC0DEC003u) != 0 ||
+            xfer_state() != XFER_IDLE) {
+            fprintf(stderr, "parse-bad scenario failed\n");
+            return 1;
+        }
+        puts("OK parse-bad");
         return 0;
     }
 

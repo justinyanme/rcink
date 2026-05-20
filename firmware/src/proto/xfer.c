@@ -1,13 +1,14 @@
 #include "xfer.h"
 
+#include "../proto/crc32.h"
 #include "../render/pipeline.h"
+#include "../store/ringlog.h"
 #include "../store/slot.h"
 
 #include <string.h>
 
 #define XFER_EPD_BUFFER_SIZE (300 * 128 / 8)
 
-uint32_t crc32_zlib(const uint8_t *data, unsigned int len);
 void epd_clear_buffer(void);
 void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh);
 void layout_refresh_adv_payload(void);
@@ -20,6 +21,7 @@ extern uint8_t layout_status_buf[16];
 
 extern uint8_t epd_buffer[XFER_EPD_BUFFER_SIZE];
 extern uint8_t epd_buffer_red[XFER_EPD_BUFFER_SIZE];
+extern void (*flash_read_page)(unsigned long addr, unsigned long len, unsigned char *buf);
 
 typedef struct {
     xfer_state_t state;
@@ -70,11 +72,37 @@ xfer_state_t xfer_state(void)
 
 static int verify_staging_crc(void)
 {
-    uint8_t compressed[SLOT_MAX_PAYLOAD];
-    if (slot_read_payload(slot_addr(g_xfer.staging), compressed, g_xfer.total_len) != 0) {
-        return -1;
+    uint8_t buf[256];
+    uint32_t crc = 0;
+    uint16_t off = 0;
+    while (off < g_xfer.total_len) {
+        uint16_t n = (uint16_t)(g_xfer.total_len - off);
+        if (n > sizeof(buf)) {
+            n = sizeof(buf);
+        }
+        flash_read_page(slot_addr(g_xfer.staging) + SLOT_HEADER_SIZE + off, n, buf);
+        crc = crc32_zlib_update(crc, buf, n);
+        off = (uint16_t)(off + n);
     }
-    return crc32_zlib(compressed, g_xfer.total_len) == g_xfer.crc32 ? 0 : -1;
+    crc = crc32_zlib_finalize(crc);
+    return crc == g_xfer.crc32 ? 0 : -1;
+}
+
+static const char *xfer_error_message(xfer_code_t code)
+{
+    switch (code) {
+    case XFER_ERR_GAP: return "seq gap";
+    case XFER_ERR_CRC: return "crc mismatch";
+    case XFER_ERR_INFLATE: return "inflate failed";
+    case XFER_ERR_PARSE: return "parse failed";
+    case XFER_ERR_RENDER: return "render failed";
+    case XFER_ERR_LOW_BATT: return "battery low";
+    case XFER_ERR_BUSY: return "busy";
+    case XFER_OK_PROGRESS:
+    case XFER_OK_BEGIN:
+    case XFER_OK_COMMIT:
+    default: return "xfer error";
+    }
 }
 
 static void publish_data_ver(uint32_t data_ver)
@@ -129,6 +157,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
             return;
         }
         if (verify_staging_crc() != 0) {
+            ringlog_append(XFER_ERR_CRC, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_CRC));
             g_xfer.state = XFER_IDLE;
             emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_CRC);
             return;
@@ -206,6 +235,7 @@ void xfer_run_pending_render(void)
     uint16_t uncompressed_len = 0;
     xfer_code_t result = render_staging(&uncompressed_len);
     if (result != XFER_OK_COMMIT) {
+        ringlog_append((uint8_t)result, g_xfer.data_ver, 0, xfer_error_message(result));
         g_xfer.state = XFER_IDLE;
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), result);
         return;
@@ -227,6 +257,7 @@ void xfer_run_pending_render(void)
     hdr.seq = next_seq;
 
     if (slot_write_header(g_xfer.staging, &hdr) != 0) {
+        ringlog_append(XFER_ERR_RENDER, g_xfer.data_ver, 0, "header write failed");
         g_xfer.state = XFER_IDLE;
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_RENDER);
         return;

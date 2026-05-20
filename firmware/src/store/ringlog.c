@@ -6,7 +6,6 @@
 extern uint32_t host_now_ms(void);
 #else
 #include "drivers.h"
-extern unsigned int sys_tick_per_us;
 #endif
 
 extern void flash_erase_sector(unsigned long addr);
@@ -82,11 +81,13 @@ void ringlog_append(uint8_t err_code, uint32_t data_ver, uint16_t partial_off, c
     rec.data_ver = data_ver;
     rec.partial_json_off = partial_off;
     if (message != NULL) {
-        size_t n = strlen(message);
-        if (n > sizeof(rec.message) - 1) {
-            n = sizeof(rec.message) - 1;
+        size_t n = 0;
+        while (n < sizeof(rec.message) - 1 && message[n] != '\0') {
+            n++;
         }
-        memcpy(rec.message, message, n);
+        if (n > 0) {
+            memcpy(rec.message, message, n);
+        }
     }
 
     flash_write_page(record_addr(g_write_idx), sizeof(rec), (uint8_t *)&rec);

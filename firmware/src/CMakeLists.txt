@@ -84,7 +84,7 @@ LINK_DIRECTORIES(
 SET(CMAKE_EXE_LINKER_FLAGS
         "${CMAKE_EXE_LINKER_FLAGS} -T${SDK_PREFIX}/boot.link -Wl,-u,parse_layout -Wl,-u,run_layout -Wl,-u,paint_layout -Wl,-u,draw_text -Wl,-u,draw_hbar -Wl,-u,palette_from_token")
 
-FILE(GLOB_RECURSE SOURCES1 *.c *.cpp *.S)
+FILE(GLOB_RECURSE SOURCES1 CONFIGURE_DEPENDS *.c *.cpp *.S)
 
 option(ENABLE_EPD_SCENE_TIME "Include the clock scene" ON)
 option(ENABLE_EPD_SCENE_LIST "Include the list scene" ON)
