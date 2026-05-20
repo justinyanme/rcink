@@ -7,6 +7,7 @@
 
 #include <battery.h>
 #include <log.h>
+#include <store/ringlog.h>
 
 #include "ble.h"
 #include "ble_service.h"
@@ -112,6 +113,7 @@ const u8 LAYOUT_CHAR_XFER_CTL_UUID[16]  = LAYOUT_CHAR_UUID(0x02);
 const u8 LAYOUT_CHAR_XFER_DATA_UUID[16] = LAYOUT_CHAR_UUID(0x03);
 const u8 LAYOUT_CHAR_XFER_ACK_UUID[16]  = LAYOUT_CHAR_UUID(0x04);
 const u8 LAYOUT_CHAR_META_UUID[16]      = LAYOUT_CHAR_UUID(0x05);
+const u8 LAYOUT_CHAR_RINGLOG_UUID[16]   = LAYOUT_CHAR_UUID(0x06);
 
 RAM u8 layout_status_buf[16];
 RAM u8 layout_meta_buf[32];
@@ -120,6 +122,7 @@ RAM u8 layout_xfer_data_scratch[182];
 static u8 layout_xfer_ack_buf[4];
 static u8 layout_xfer_ack_cccd[2];
 static u8 layout_status_cccd[2];
+static ringlog_record_t layout_ringlog_buf;
 
 static void layout_put_u16(u8 *dst, const u16 value)
 {
@@ -253,6 +256,22 @@ static const u8 layout_meta_char_val[19] = {
     LAYOUT_CHAR_UUID_BYTES(0x05)
 };
 
+static const u8 layout_ringlog_char_val[19] = {
+    CHAR_PROP_READ,
+    U16_LO(DP_H_LAYOUT_RINGLOG_VAL), U16_HI(DP_H_LAYOUT_RINGLOG_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x06)
+};
+
+static int layout_ringlog_read(void *p)
+{
+    (void)p;
+    if (ringlog_read(0, &layout_ringlog_buf) != 0) {
+        memset(&layout_ringlog_buf, 0, sizeof(layout_ringlog_buf));
+        layout_ringlog_buf.ts = RINGLOG_EMPTY_TS;
+    }
+    return 0;
+}
+
 static const attribute_t my_Attributes[] = {
     {ATT_END_H - 1, 0, 0, 0, 0, 0, 0, 0}, // total num of attribute
 
@@ -314,8 +333,8 @@ static const attribute_t my_Attributes[] = {
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(RxTxValueInCCC), (u8*)(&clientCharacterCfgUUID), (u8*)(RxTxValueInCCC), 0, 0}, //value
 
     ////////////////////////////////////// Layout service ////////////////////////////////////////////////////
-    // 0x1F20: STATUS, XFER_CTL, XFER_DATA, XFER_ACK, META
-    {13,ATT_PERMISSIONS_READ, 2, 16, (u8*)(&my_primaryServiceUUID), (u8*)(LAYOUT_SERVICE_UUID), 0, 0},
+    // 0x1F20: STATUS, XFER_CTL, XFER_DATA, XFER_ACK, META, RINGLOG
+    {15,ATT_PERMISSIONS_READ, 2, 16, (u8*)(&my_primaryServiceUUID), (u8*)(LAYOUT_SERVICE_UUID), 0, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_status_char_val), (u8*)(&my_characterUUID), (u8*)(layout_status_char_val), 0, 0},
     {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_status_buf), (u8*)(LAYOUT_CHAR_STATUS_UUID), (u8*)(layout_status_buf), 0, 0},
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_status_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_status_cccd), 0, 0},
@@ -328,6 +347,8 @@ static const attribute_t my_Attributes[] = {
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_xfer_ack_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_xfer_ack_cccd), 0, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_meta_char_val), (u8*)(&my_characterUUID), (u8*)(layout_meta_char_val), 0, 0},
     {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_meta_buf), (u8*)(LAYOUT_CHAR_META_UUID), (u8*)(layout_meta_buf), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_ringlog_char_val), (u8*)(&my_characterUUID), (u8*)(layout_ringlog_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_ringlog_buf), (u8*)(LAYOUT_CHAR_RINGLOG_UUID), (u8*)(&layout_ringlog_buf), 0, &layout_ringlog_read},
 };
 
 
@@ -335,6 +356,7 @@ static const attribute_t my_Attributes[] = {
  * @brief      Initialize the attribute table
  */
 void my_att_init(void) {
+    ringlog_init();
     layout_att_init_meta();
     layout_att_refresh_status(battery_read_mv(), 0, 0);
     log_debugf("set %d attributes", sizeof(my_Attributes) / sizeof(attribute_t) - 1);
