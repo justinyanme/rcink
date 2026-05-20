@@ -14,11 +14,7 @@ async def test_scan_captures_one_tag():
             adv = MagicMock(
                 manufacturer_data={
                     MANUFACTURER_ID: (
-                        bytes([0x02])
-                        + b"\x01\x00\x00\x00"
-                        + b"\x80\x0B"
-                        + b"\x14"
-                        + b"\x00"
+                        bytes([0x02]) + b"\x01\x00\x00\x00" + b"\x80\x0b" + b"\x14" + b"\x00"
                     )
                 },
                 rssi=-50,

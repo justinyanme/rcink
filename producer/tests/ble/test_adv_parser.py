@@ -5,11 +5,7 @@ from tlsr_layout.ble.uuids import MANUFACTURER_ID
 
 
 def test_parses_v2_payload():
-    raw = (
-        bytes([0x02])
-        + struct.pack("<IH", 0xDEADBEEF, 2950)
-        + bytes([-3 & 0xFF, 0x05])
-    )
+    raw = bytes([0x02]) + struct.pack("<IH", 0xDEADBEEF, 2950) + bytes([-3 & 0xFF, 0x05])
 
     assert parse({MANUFACTURER_ID: raw}) == Advertisement(
         data_ver=0xDEADBEEF,

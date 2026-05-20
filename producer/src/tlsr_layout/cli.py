@@ -1,5 +1,6 @@
-"""Phase 1 CLI: dry-run is the only working command."""
+"""Command-line interface for the tlsr-layout producer."""
 
+import asyncio
 import json
 import struct
 from collections.abc import Callable
@@ -8,6 +9,9 @@ from typing import Annotated
 
 import typer
 
+from .ble.central import PushError, push_page
+from .ble.discovery import scan
+from .ble.transport import Transport
 from .encode import chunk_payload, encode_page
 from .pages.example import example_page
 from .protocol import DSL_FORMAT_ZLIB_JSON_V1, build_begin, build_data_chunk
@@ -78,20 +82,52 @@ def dry_run(
 
 
 @app.command("devices")
-def devices() -> None:
-    """Scan for tlsr-layout tags (not implemented in Phase 1)."""
+def devices(
+    duration: Annotated[
+        float, typer.Option("--duration", help="BLE scan duration in seconds.")
+    ] = 10.0,
+) -> None:
+    """Scan for tlsr-layout tags."""
 
-    typer.echo("not implemented in Phase 1: BLE scan ships in Phase 6.")
+    async def _run() -> None:
+        found = await scan(duration_s=duration)
+        if not found:
+            typer.echo("no tags found")
+            return
+        for address, tag in sorted(found.items()):
+            typer.echo(
+                f"{address}  rssi={tag.rssi}  data_ver=0x{tag.adv.data_ver:08X}  "
+                f"batt={tag.adv.battery_mV}mV  temp={tag.adv.temp_c}C  "
+                f"flags={tag.adv.flags:#04x}"
+            )
+
+    asyncio.run(_run())
 
 
 @app.command("push")
 def push(
     page_name: Annotated[str, typer.Argument()],
-    device: Annotated[str | None, typer.Option("--device")] = None,
+    device: Annotated[str, typer.Option("--device", help="Target tag MAC address.")],
 ) -> None:
-    """Push a page to a tag (not implemented in Phase 1)."""
+    """Push a registered page to a tag."""
 
-    typer.echo("not implemented in Phase 1: BLE push ships in Phase 6.")
+    builder = PAGES.get(page_name)
+    if builder is None:
+        typer.echo(f"unknown page {page_name!r}; known: {sorted(PAGES)}", err=True)
+        raise typer.Exit(code=2)
+
+    async def _run() -> None:
+        from bleak import BleakClient
+
+        async with Transport(BleakClient(device)) as transport:
+            try:
+                encoded = await push_page(transport, builder())
+            except PushError as exc:
+                typer.echo(f"push failed: {exc}", err=True)
+                raise typer.Exit(code=3) from exc
+            typer.echo(f"push ok: data_ver=0x{encoded.data_ver:08X}")
+
+    asyncio.run(_run())
 
 
 @app.command("serve")

@@ -1,6 +1,7 @@
 import json
 import zlib
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
 
@@ -44,15 +45,17 @@ def test_dry_run_unknown_page(tmp_path: Path):
 
 
 def test_devices_stub():
-    result = runner.invoke(app, ["devices"])
+    with patch("tlsr_layout.cli.scan", AsyncMock(return_value={})):
+        result = runner.invoke(app, ["devices", "--duration", "0"])
+
     assert result.exit_code == 0
-    assert "not implemented" in result.output.lower()
+    assert "no tags found" in result.output
 
 
-def test_push_stub():
+def test_push_requires_device():
     result = runner.invoke(app, ["push", "example"])
-    assert result.exit_code == 0
-    assert "not implemented" in result.output.lower()
+    assert result.exit_code != 0
+    assert "Missing option" in result.output
 
 
 def test_serve_stub():
