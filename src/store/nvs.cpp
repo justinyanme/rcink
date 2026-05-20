@@ -13,8 +13,10 @@ DeviceState nvs_load() {
   DeviceState s;
   Preferences p;
   p.begin(NS, true);
-  s.page_index   = p.getUChar("idx", 0);
-  s.last_fetch_s = p.getULong64("last", 0);
+  s.page_index            = p.getUChar("idx", 0);
+  s.last_fetch_s          = p.getULong64("last", 0);
+  s.last_rendered_id      = p.getString("rid", "");
+  s.last_rendered_data_ts = p.getULong64("rts", 0);
   String blob = p.getString("pages", "");
   p.end();
 
@@ -63,6 +65,17 @@ void nvs_save_index(uint8_t idx) {
   Preferences p;
   p.begin(NS, false);
   p.putUChar("idx", idx);
+  p.end();
+}
+
+void nvs_save_render_marker(const String& id, uint64_t data_ts) {
+  // Tiny partial write — keep the render-dedup tuple cheap to update every
+  // render. Re-serializing the full pages blob (~15 KB) would defeat the
+  // savings we just gained by skipping the panel refresh.
+  Preferences p;
+  p.begin(NS, false);
+  p.putString("rid", id);
+  p.putULong64("rts", data_ts);
   p.end();
 }
 

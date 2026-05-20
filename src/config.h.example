@@ -13,7 +13,7 @@
 
 // Behavior
 #define FETCH_INTERVAL_SEC   900   // 15 min
-#define ROTATE_INTERVAL_SEC  120   //  2 min
+#define ROTATE_INTERVAL_SEC  300   //  5 min
 
 // Local time zone, in POSIX TZ string format. The footer formats HH:MM in
 // this zone after NTP sync. Examples:

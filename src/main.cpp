@@ -115,6 +115,19 @@ void render_current() {
     return;
   }
   const PageRecord& rec = g_state.pages[g_state.page_index];
+
+  // Skip the panel refresh when (id, data_ts) match what we drew last time.
+  // The Spectra 6 panel has no genuinely-faster refresh mode (epd_quality /
+  // epd_fast / epd_fastest all clock ~16.8 s on this hardware), and the image
+  // already on the panel is byte-equivalent to what we'd render — so skipping
+  // is invisible to the user and saves both wall-clock + panel-wear refreshes.
+  if (g_state.last_rendered_id == rec.id &&
+      g_state.last_rendered_data_ts == rec.data_ts) {
+    Serial.printf("[render] skip — id=%s data_ts=%llu unchanged\n",
+                  rec.id.c_str(), (unsigned long long)rec.data_ts);
+    return;
+  }
+
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
     render_error("layout_json parse failed");
@@ -129,6 +142,13 @@ void render_current() {
   }
   bool stale = (uint64_t)time(nullptr) - g_state.last_fetch_s > FETCH_INTERVAL_SEC;
   render_page(rec, root, stale, g_state, g_battery, g_env);
+
+  // Persist the render marker so the next wake (cold or warm) can compare and
+  // skip if nothing changed. Partial NVS write — see nvs_save_render_marker.
+  g_state.last_rendered_id      = rec.id;
+  g_state.last_rendered_data_ts = rec.data_ts;
+  nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+
   if (connected_here) {
     wifi_disconnect();
   }
