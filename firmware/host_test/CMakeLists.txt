@@ -16,6 +16,12 @@ add_executable(host_test
     ${FW}/src/dsl/parser.c
     ${FW}/src/engine/engine.c
     ${FW}/src/engine/measure.c
+    ${FW}/src/proto/uzlib/adler32.c
+    ${FW}/src/proto/uzlib/crc32.c
+    ${FW}/src/proto/uzlib/defl_static.c
+    ${FW}/src/proto/uzlib/tinfgzip.c
+    ${FW}/src/proto/uzlib/tinflate.c
+    ${FW}/src/proto/uzlib/tinfzlib.c
     ${FW}/src/render/palette.c
     ${FW}/src/render/icons.c
     ${FW}/src/render/primitives.c
@@ -27,6 +33,7 @@ target_include_directories(host_test PRIVATE
     ${FW}/src
     ${FW}/src/dsl
     ${FW}/src/engine
+    ${FW}/src/proto/uzlib
     ${FW}/src/render
 )
 

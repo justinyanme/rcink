@@ -3,6 +3,7 @@
 #include "../src/dsl/arena.h"
 #include "../src/dsl/parser.h"
 #include "../src/engine/engine.h"
+#include "../src/proto/uzlib/uzlib.h"
 #include "../src/render/paint.h"
 
 #include <stdio.h>
@@ -106,14 +107,70 @@ static const char *arg_value(int argc, char **argv, const char *name)
     return NULL;
 }
 
+static int uzlib_test(const char *path)
+{
+    size_t compressed_len = 0;
+    char *compressed = read_file(path, &compressed_len);
+    if (compressed == NULL) {
+        fprintf(stderr, "failed to read %s\n", path);
+        return 1;
+    }
+
+    uint8_t *out = malloc(65536);
+    if (out == NULL) {
+        free(compressed);
+        fprintf(stderr, "failed to allocate inflate buffer\n");
+        return 1;
+    }
+
+    struct uzlib_uncomp ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    uzlib_init();
+    uzlib_uncompress_init(&ctx, NULL, 0);
+    ctx.source = (const unsigned char *)compressed;
+    ctx.source_limit = (const unsigned char *)compressed + compressed_len;
+    ctx.source_read_cb = NULL;
+    ctx.dest_start = out;
+    ctx.dest = out;
+    ctx.dest_limit = out + 65536;
+
+    if (uzlib_zlib_parse_header(&ctx) < 0) {
+        free(out);
+        free(compressed);
+        fprintf(stderr, "zlib header parse failed\n");
+        return 1;
+    }
+    int rc = uzlib_uncompress_chksum(&ctx);
+    if (rc != TINF_DONE) {
+        free(out);
+        free(compressed);
+        fprintf(stderr, "inflate failed: %d\n", rc);
+        return 1;
+    }
+
+    const size_t out_len = (size_t)(ctx.dest - ctx.dest_start);
+    if (fwrite(out, 1, out_len, stdout) != out_len) {
+        free(out);
+        free(compressed);
+        fprintf(stderr, "stdout write failed\n");
+        return 1;
+    }
+    free(out);
+    free(compressed);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "version") == 0) {
         puts("tlsr-layout-host-test phase3");
         return 0;
     }
+    if (argc >= 3 && strcmp(argv[1], "uzlib-test") == 0) {
+        return uzlib_test(argv[2]);
+    }
     if (argc < 3) {
-        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png]\n");
+        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib>\n");
         return 1;
     }
 
