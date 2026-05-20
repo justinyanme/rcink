@@ -35,6 +35,7 @@
 
 #include "epd/epd.h"
 #include "log.h"
+#include "proto/xfer.h"
 
 /**
  * @brief		user initialization when MCU power on or wake_up from deepSleep mode
@@ -205,6 +206,7 @@ _attribute_no_inline_ void main_loop(void) {
     handle_time();
 
     battery_try_update();
+    xfer_run_pending_render();
 
 	const bool epd_trying_update = epd_try_update();
     const bool epd_is_updating = epd_check_is_updating();

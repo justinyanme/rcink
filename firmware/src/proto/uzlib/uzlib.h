@@ -35,9 +35,11 @@
 #ifndef UZLIB_H_INCLUDED
 #define UZLIB_H_INCLUDED
 
+#ifndef UZLIB_SKIP_STDLIB
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#endif
 
 #include "defl_static.h"
 

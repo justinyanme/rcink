@@ -15,6 +15,7 @@
 
 #include "etime.h"
 #include "compress.h"
+#include "proto/xfer.h"
 
 #define ATT_WRITE_HEADER_BYTES 3
 
@@ -80,12 +81,28 @@ static void fill_frame_tail(u8 *frame, const u16 frame_len, const bool is_red)
     }
 }
 
+static void layout_send_ack(uint16_t last_seq, uint8_t code, uint8_t flags)
+{
+    uint8_t buf[4];
+    buf[0] = last_seq & 0xFF;
+    buf[1] = (last_seq >> 8) & 0xFF;
+    buf[2] = code;
+    buf[3] = flags;
+    bls_att_pushNotifyData(DP_H_LAYOUT_XFER_ACK_VAL, buf, sizeof(buf));
+}
+
+void layout_xfer_service_init(void)
+{
+    xfer_init(layout_send_ack);
+}
+
 int layout_xfer_ctl_write(void *p)
 {
     if (p == NULL) {
         return 1;
     }
     rf_packet_att_write_t *req = (rf_packet_att_write_t*)p;
+    ble_note_user_activity();
     u16 len = req->l2capLen > ATT_WRITE_HEADER_BYTES ? req->l2capLen - ATT_WRITE_HEADER_BYTES : 0;
     if (len > sizeof(layout_xfer_ctl_scratch)) {
         len = sizeof(layout_xfer_ctl_scratch);
@@ -96,6 +113,7 @@ int layout_xfer_ctl_write(void *p)
     } else {
         log_debugf("LAYOUT XFER_CTL empty write");
     }
+    xfer_handle_ctl(layout_xfer_ctl_scratch, len);
     return 0;
 }
 
@@ -105,12 +123,14 @@ int layout_xfer_data_write(void *p)
         return 1;
     }
     rf_packet_att_write_t *req = (rf_packet_att_write_t*)p;
+    ble_note_user_activity();
     u16 len = req->l2capLen > ATT_WRITE_HEADER_BYTES ? req->l2capLen - ATT_WRITE_HEADER_BYTES : 0;
     if (len > sizeof(layout_xfer_data_scratch)) {
         len = sizeof(layout_xfer_data_scratch);
     }
     memcpy(layout_xfer_data_scratch, &req->value, len);
     log_debugf("LAYOUT XFER_DATA chunk len=%d", len);
+    xfer_handle_data(layout_xfer_data_scratch, len);
     return 0;
 }
 
@@ -143,16 +163,19 @@ int cmd_handler(void *p) {
     case CMD_T_LAYOUT_BEGIN:
         {
             log_debugf("CMD_T_LAYOUT_BEGIN len=%d", raw_payload_len);
+            xfer_handle_ctl(raw_payload, raw_payload_len);
             return 0;
         }
     case CMD_T_LAYOUT_ABORT:
         {
             log_debugf("CMD_T_LAYOUT_ABORT");
+            xfer_handle_ctl(raw_payload, raw_payload_len);
             return 0;
         }
     case CMD_T_LAYOUT_COMMIT:
         {
             log_debugf("CMD_T_LAYOUT_COMMIT len=%d", raw_payload_len);
+            xfer_handle_ctl(raw_payload, raw_payload_len);
             return 0;
         }
     case CMD_T_SYNC_TIME:

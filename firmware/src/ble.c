@@ -396,6 +396,7 @@ void init_ble(void) {
     blc_gap_peripheral_init();                            //gap initialization
     blc_l2cap_register_handler(blc_l2cap_packet_receive); //l2cap initialization
     my_att_init();                                        //gatt initialization
+    layout_xfer_service_init();
     blc_att_setRxMtuSize(MTU_SIZE_SETTING);               //set MTU size, default MTU is 23 if not call this API
 
     /* SMP Initialization may involve flash write/erase(when one sector stores too much information,
