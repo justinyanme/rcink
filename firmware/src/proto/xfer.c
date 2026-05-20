@@ -1,18 +1,10 @@
 #include "xfer.h"
 
-#include "../dsl/arena.h"
-#include "../dsl/parser.h"
-#include "../engine/engine.h"
-#include "../engine/measure.h"
-#include "../render/paint.h"
+#include "../render/pipeline.h"
 #include "../store/slot.h"
-#define UZLIB_SKIP_STDLIB 1
-#include "uzlib/uzlib.h"
 
 #include <string.h>
 
-#define XFER_EPD_WIDTH 250
-#define XFER_EPD_HEIGHT 128
 #define XFER_EPD_BUFFER_SIZE (300 * 128 / 8)
 
 uint32_t crc32_zlib(const uint8_t *data, unsigned int len);
@@ -61,35 +53,6 @@ static void emit_ack(uint16_t last_seq, xfer_code_t code)
         g_xfer.ack(last_seq, (uint8_t)code, 0);
     }
 }
-
-static size_t16_t device_text(const measurer_t *m, const text_node_t *t)
-{
-    (void)m;
-    return (size_t16_t){
-        (int16_t)(t->value_len * 7 + 2 * t->pad),
-        (int16_t)(layout_font_height(t->size) + 2 * t->pad),
-    };
-}
-
-static size_t16_t device_icon(const measurer_t *m, const icon_node_t *i)
-{
-    (void)m;
-    const int16_t s = i->size == 0 ? 16 : i->size;
-    return (size_t16_t){s, s};
-}
-
-static size_t16_t device_image(const measurer_t *m, const image_node_t *i)
-{
-    (void)m;
-    return (size_t16_t){(int16_t)i->width, (int16_t)i->height};
-}
-
-static const measurer_t measurer_device = {
-    .text = device_text,
-    .icon = device_icon,
-    .image = device_image,
-    .user = 0,
-};
 
 void xfer_init(ack_emit_fn ack)
 {
@@ -194,38 +157,26 @@ static xfer_code_t render_staging(uint16_t *out_uncompressed_len)
         return XFER_ERR_RENDER;
     }
 
-    struct uzlib_uncomp ctx;
-    memset(&ctx, 0, sizeof(ctx));
-    uzlib_init();
-    uzlib_uncompress_init(&ctx, NULL, 0);
-    ctx.source = compressed;
-    ctx.source_limit = compressed + g_xfer.total_len;
-    ctx.source_read_cb = NULL;
-    ctx.dest_start = inflate_buf;
-    ctx.dest = inflate_buf;
-    ctx.dest_limit = inflate_buf + sizeof(inflate_buf);
-    if (uzlib_zlib_parse_header(&ctx) < 0 || uzlib_uncompress_chksum(&ctx) != TINF_DONE) {
+    epd_clear_buffer();
+    pipeline_status_t status = pipeline_run(
+        compressed,
+        g_xfer.total_len,
+        sizeof(inflate_buf),
+        inflate_buf,
+        arena_buf,
+        out_uncompressed_len
+    );
+    if (status == PIPE_ERR_INFLATE) {
         return XFER_ERR_INFLATE;
     }
-    const uint16_t uncompressed_len = (uint16_t)(ctx.dest - ctx.dest_start);
-
-    arena_t arena;
-    arena_init(&arena, arena_buf, sizeof(arena_buf));
-    parse_result_t pr;
-    layout_node_t *root = parse_layout((const char *)inflate_buf, uncompressed_len, &arena, &pr);
-    if (root == NULL || pr.status != PARSE_OK) {
+    if (status == PIPE_ERR_PARSE) {
         return XFER_ERR_PARSE;
     }
-
-    laid_out_node_t *laid = run_layout(root, (rect_t){0, 0, XFER_EPD_WIDTH, XFER_EPD_HEIGHT}, &measurer_device, &arena);
-    if (laid == NULL) {
+    if (status != PIPE_OK) {
         return XFER_ERR_RENDER;
     }
 
-    epd_clear_buffer();
-    paint_layout(laid);
     EPD_Display(epd_buffer, epd_buffer_red, 1);
-    *out_uncompressed_len = uncompressed_len;
     return XFER_OK_COMMIT;
 }
 
