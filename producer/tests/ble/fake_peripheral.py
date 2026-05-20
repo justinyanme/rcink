@@ -33,6 +33,7 @@ class FakePeripheral:
     battery_mV: int = 2950
     forced_low_batt: bool = False
     forced_crc_error: bool = False
+    crc_errors_remaining: int = 0
     forced_inflate_error: bool = False
     drop_chunks: list[int] = field(default_factory=list)
 
@@ -123,9 +124,12 @@ class FakePeripheral:
             if len(self._staging) != self._begin["total_len"]:
                 self._ack(max(0, self._expected_seq - 1), ACK_ERR_GAP)
                 return
-            if self.forced_crc_error or (
-                zlib.crc32(self._staging) & 0xFFFFFFFF
-            ) != self._begin["crc32"]:
+            if (
+                self.forced_crc_error
+                or self.crc_errors_remaining > 0
+                or (zlib.crc32(self._staging) & 0xFFFFFFFF) != self._begin["crc32"]
+            ):
+                self.crc_errors_remaining = max(0, self.crc_errors_remaining - 1)
                 self._ack(0, ACK_ERR_CRC)
                 return
             if self.forced_inflate_error:
