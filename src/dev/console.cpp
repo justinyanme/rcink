@@ -115,14 +115,14 @@ void console_dispatch(char c) {
     case 'n':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
       g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
-      nvs_save_index(g_state.page_index);
+      nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
       Serial.printf("[console] n → idx=%u\n", g_state.page_index);
       render_current();
       break;
     case 'b':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
       g_state.page_index = (g_state.page_index + g_state.pages.size() - 1) % g_state.pages.size();
-      nvs_save_index(g_state.page_index);
+      nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
       Serial.printf("[console] b → idx=%u\n", g_state.page_index);
       render_current();
       break;

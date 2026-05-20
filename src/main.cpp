@@ -95,14 +95,16 @@ bool refetch_now() {
   std::vector<PageRecord> fresh;
   bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (ok) {
-    g_state.pages      = std::move(fresh);
-    g_state.page_index = 0;
+    g_state.pages = std::move(fresh);
+    // Preserve g_state.page_index: rotation continues across fetches. The
+    // page-rotate logic in setup() clamps idx if pages shrank.
     // Only stamp last_fetch_s when NTP genuinely synced — otherwise time() is
     // RTC fallback (often stale or local-as-UTC) and would render wrong.
     if (ntp_ok) g_state.last_fetch_s = (uint64_t)time(nullptr);
     nvs_save(g_state);
-    Serial.printf("[main] fetched %u pages, idx=0 (last_fetch updated=%d)\n",
-                  (unsigned)g_state.pages.size(), ntp_ok ? 1 : 0);
+    Serial.printf("[main] fetched %u pages, idx=%u (last_fetch updated=%d)\n",
+                  (unsigned)g_state.pages.size(),
+                  (unsigned)g_state.page_index, ntp_ok ? 1 : 0);
   } else {
     Serial.println("[main] fetch failed; keeping cache");
   }
@@ -165,11 +167,13 @@ void setup() {
   delay(50);
 
   auto cfg = M5.config();
-#ifdef RCPAPER_DEV_NO_DRAW
+  // clear_display would force a full ~17 s panel refresh to white at the
+  // start of every wake. Skip it: render_page always fillSprite + paint over
+  // the full canvas, and on wakes where render_current() decides to skip
+  // (same id + data_ts as last render) the panel correctly keeps showing
+  // the prior image. With clear_display=true a skipped wake left the panel
+  // stranded on the M5.begin white-out.
   cfg.clear_display = false;
-#else
-  cfg.clear_display = true;
-#endif
   cfg.output_power  = true;
   M5.begin(cfg);
   // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
@@ -193,27 +197,40 @@ void setup() {
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);
 
   g_state = nvs_load();
-  time_t now;
-  time(&now);
 
+  // Fetch cadence is gated on a deep-sleep-persistent wake counter, NOT on
+  // wall clock. time(nullptr) isn't reliably restored across wakes (M5.begin
+  // doesn't sync the BM8563 RTC chip into the system clock on this board),
+  // so a (now - last_fetch_s) comparison either underflows or overflows and
+  // fires every wake — wasting WiFi every 5 min instead of every 15.
+  constexpr uint16_t WAKES_PER_FETCH = FETCH_INTERVAL_SEC / ROTATE_INTERVAL_SEC;
   bool needs_fetch =
       g_state.pages.empty()
       || wr == WakeReason::ButtonC
-      || (uint64_t)now - g_state.last_fetch_s >= FETCH_INTERVAL_SEC;
+      || g_state.wakes_since_fetch + 1 >= WAKES_PER_FETCH;
 
   if (needs_fetch) {
-    refetch_now();
+    if (refetch_now()) {
+      g_state.wakes_since_fetch = 0;
+    } else {
+      g_state.wakes_since_fetch++;  // still counts as a wake even if fetch failed
+    }
+  } else {
+    g_state.wakes_since_fetch++;
   }
 
-  // Rotate based on wake reason
+  // Rotate based on wake reason. refetch_now() no longer resets idx, so
+  // rotation continues from where the last session left off — pages cycle
+  // visibly instead of getting pinned to the post-refetch idx=0.
   if (!g_state.pages.empty()) {
+    if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
     if (wr == WakeReason::ButtonA || wr == WakeReason::Timer) {
       g_state.page_index = (uint8_t)((g_state.page_index + 1) % g_state.pages.size());
     } else if (wr == WakeReason::ButtonB) {
       g_state.page_index = (uint8_t)((g_state.page_index + g_state.pages.size() - 1)
                                       % g_state.pages.size());
     }
-    nvs_save_index(g_state.page_index);
+    nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
   }
 
   render_current();
@@ -225,11 +242,9 @@ void setup() {
   dev::dev_buttons_init();
   Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
 #else
-  // Production path: compute next wake and deep sleep.
-  uint64_t next_fetch  = g_state.last_fetch_s + FETCH_INTERVAL_SEC;
-  uint64_t next_rotate = (uint64_t)time(nullptr) + ROTATE_INTERVAL_SEC;
-  uint64_t next_wake   = next_fetch < next_rotate ? next_fetch : next_rotate;
-  enter_deep_sleep_until(next_wake);
+  // Sleep for exactly one rotation interval — fetch cadence is decided by
+  // the wakes_since_fetch counter at wake-time, not the sleep duration.
+  enter_deep_sleep_until((uint64_t)time(nullptr) + ROTATE_INTERVAL_SEC);
 #endif
 }
 

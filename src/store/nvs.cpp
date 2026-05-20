@@ -2,23 +2,45 @@
 #include "store/nvs.h"
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <vector>
 
 namespace rcpaper {
 
 static const char* NS = "rcpaper";
+// NVS key for the serialized pages blob. Stored via putBytes/getBytes — the
+// Preferences string variants enforce a 4 KB cap (ESP_ERR_NVS_VALUE_TOO_LONG)
+// that our ~15 KB pages JSON exceeds. Bytes have no such cap.
+static const char* K_PAGES = "pages";
+// Custom NVS partition (see partitions.csv). The default "nvs" partition is
+// 20 KB — too tight for our pages blob plus wear-leveling slack. "rcdata" is
+// 128 KB, dedicated to this app.
+static const char* PART = "rcdata";
 
 void nvs_init() { /* nothing; Preferences auto-init on begin() */ }
 
 DeviceState nvs_load() {
   DeviceState s;
   Preferences p;
-  p.begin(NS, true);
+  bool opened = p.begin(NS, true, PART);
   s.page_index            = p.getUChar("idx", 0);
   s.last_fetch_s          = p.getULong64("last", 0);
+  s.wakes_since_fetch     = p.getUShort("wkcnt", 0);
   s.last_rendered_id      = p.getString("rid", "");
   s.last_rendered_data_ts = p.getULong64("rts", 0);
-  String blob = p.getString("pages", "");
+  size_t blob_len = p.getBytesLength(K_PAGES);
+  String blob;
+  if (blob_len > 0) {
+    std::vector<char> buf(blob_len + 1, 0);
+    p.getBytes(K_PAGES, buf.data(), blob_len);
+    blob = String(buf.data());
+  }
   p.end();
+  Serial.printf("[nvs] load opened=%d idx=%u last=%llu wkcnt=%u blob_len=%u rid=%s rts=%llu\n",
+                (int)opened, (unsigned)s.page_index,
+                (unsigned long long)s.last_fetch_s,
+                (unsigned)s.wakes_since_fetch,
+                (unsigned)blob_len, s.last_rendered_id.c_str(),
+                (unsigned long long)s.last_rendered_data_ts);
 
   if (blob.length() == 0) return s;
 
@@ -52,19 +74,33 @@ void nvs_save(const DeviceState& s) {
   serializeJson(doc, blob);
 
   Preferences p;
-  p.begin(NS, false);
-  p.putString("pages", blob);
+  p.begin(NS, false, PART);
+  // putBytes returns the number of bytes written; 0 means failure. The full
+  // pages blob is ~15 KB on this dashboard and putString would silently fail
+  // at the 4 KB NVS string ceiling — see K_PAGES comment above.
+  size_t written = p.putBytes(K_PAGES, blob.c_str(), blob.length());
   p.putUChar("idx", s.page_index);
   p.putULong64("last", s.last_fetch_s);
+  p.putUShort("wkcnt", s.wakes_since_fetch);
   p.end();
-  Serial.printf("[nvs] saved %u pages, blob=%u B, idx=%u\n",
-                (unsigned)s.pages.size(), blob.length(), s.page_index);
+  if (written != blob.length()) {
+    Serial.printf("[nvs] FAILED to save pages blob=%u B written=%u (idx=%u still saved)\n",
+                  (unsigned)blob.length(), (unsigned)written, (unsigned)s.page_index);
+  } else {
+    Serial.printf("[nvs] saved %u pages, blob=%u B, idx=%u\n",
+                  (unsigned)s.pages.size(), (unsigned)blob.length(),
+                  (unsigned)s.page_index);
+  }
 }
 
-void nvs_save_index(uint8_t idx) {
+void nvs_save_progress(uint8_t idx, uint16_t wakes_since_fetch) {
+  // Partial write of the two values that change on every Timer / button
+  // wake without forcing a new full pages-blob commit. Cheap (a couple of
+  // dozen bytes) so we can call it from setup() on every wake.
   Preferences p;
-  p.begin(NS, false);
+  p.begin(NS, false, PART);
   p.putUChar("idx", idx);
+  p.putUShort("wkcnt", wakes_since_fetch);
   p.end();
 }
 
@@ -73,7 +109,7 @@ void nvs_save_render_marker(const String& id, uint64_t data_ts) {
   // render. Re-serializing the full pages blob (~15 KB) would defeat the
   // savings we just gained by skipping the panel refresh.
   Preferences p;
-  p.begin(NS, false);
+  p.begin(NS, false, PART);
   p.putString("rid", id);
   p.putULong64("rts", data_ts);
   p.end();
