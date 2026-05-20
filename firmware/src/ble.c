@@ -72,7 +72,8 @@ _attribute_data_retention_ my_fifo_t blt_txfifo = {
  */
 RAM u8 tbl_advData[31] = {
     0x02, 0x01, 0x06,
-    0x0D, 0x09, 'T', 'L', 'a', 'y', '_', 'X', 'X', 'X', 'X', 'X', 'X',
+    // CompleteLocalName: len=0x0C (1 type byte + 11 chars), not 0x0D — off-by-one in earlier rev
+    0x0C, 0x09, 'T', 'L', 'a', 'y', '_', 'X', 'X', 'X', 'X', 'X', 'X',
     0x0B, 0xFF, 0xFF, 0xFF, 0x02,
     0x00, 0x00, 0x00, 0x00,  // data_ver
     0x00, 0x00,              // battery_mV
