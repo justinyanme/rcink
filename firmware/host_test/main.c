@@ -25,6 +25,7 @@ uint8_t epd_buffer_red[HOST_EPD_BUFFER_SIZE];
 uint8_t layout_status_buf[16];
 
 static uint32_t g_host_now_ms;
+static uint16_t g_host_battery_mv = 3000;
 
 typedef struct {
     uint16_t last_seq;
@@ -38,6 +39,11 @@ static uint8_t g_ack_count;
 uint32_t host_now_ms(void)
 {
     return g_host_now_ms;
+}
+
+uint16_t battery_read_mv(void)
+{
+    return g_host_battery_mv;
 }
 
 void epd_clear_buffer(void)
@@ -72,6 +78,7 @@ static void host_xfer_reset(void)
     memset(g_acks, 0, sizeof(g_acks));
     g_ack_count = 0;
     g_host_now_ms = 0;
+    g_host_battery_mv = 3000;
     ringlog_init();
     xfer_init(host_ack_emit);
 }
@@ -517,6 +524,18 @@ static int xfer_test(const char *scenario)
             return 1;
         }
         puts("OK parse-bad");
+        return 0;
+    }
+
+    if (strcmp(scenario, "low-batt") == 0) {
+        g_host_battery_mv = 2300;
+        send_begin(0xC0DEC004u, 16, 1, 0);
+        if (g_ack_count != 1 || expect_ack(0, 0, XFER_ERR_LOW_BATT) != 0 ||
+            expect_ringlog(XFER_ERR_LOW_BATT, 0) != 0 || xfer_state() != XFER_IDLE) {
+            fprintf(stderr, "low-batt scenario failed\n");
+            return 1;
+        }
+        puts("OK low-batt");
         return 0;
     }
 

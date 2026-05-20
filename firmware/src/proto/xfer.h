@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define XFER_MIN_BATTERY_MV 2400u
+
 typedef enum {
     XFER_IDLE,
     XFER_RECEIVING,

@@ -13,6 +13,7 @@ void epd_clear_buffer(void);
 void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh);
 void layout_refresh_adv_payload(void);
 extern uint8_t layout_status_buf[16];
+uint16_t battery_read_mv(void);
 
 #define XFER_CTL_BEGIN 0x01u
 #define XFER_CTL_ABORT 0x02u
@@ -133,6 +134,11 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         g_xfer.total_chunks = get_le16(&frame[7]);
         g_xfer.crc32 = get_le32(&frame[9]);
         g_xfer.dsl_format = frame[13];
+        if (battery_read_mv() < XFER_MIN_BATTERY_MV) {
+            ringlog_append(XFER_ERR_LOW_BATT, 0, 0, xfer_error_message(XFER_ERR_LOW_BATT));
+            emit_ack(0, XFER_ERR_LOW_BATT);
+            return;
+        }
         if (g_xfer.total_len > SLOT_MAX_PAYLOAD || g_xfer.total_chunks > 256 ||
             g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
             emit_ack(0, XFER_ERR_BUSY);
