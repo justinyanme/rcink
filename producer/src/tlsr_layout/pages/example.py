@@ -7,8 +7,8 @@ def example_page() -> dict:
     """A small dashboard page that exercises all common primitives."""
 
     return vstack(
-        pad=14,
-        gap=6,
+        pad=4,
+        gap=3,
         children=[
             text(
                 "CLAUDE",
@@ -19,8 +19,8 @@ def example_page() -> dict:
                 align="center",
                 weight="bold",
             ),
-            hbar(pct=42, color="blue", height=14),
-            sparkline([12, 18, 14, 22, 19, 28, 31], color="blue", height=40),
+            hbar(pct=42, color="black", height=14),
+            sparkline([12, 18, 14, 22, 19, 28, 31], color="red", height=32),
             spacer(),
             text("updated 14:32", size="sm", align="center"),
         ],

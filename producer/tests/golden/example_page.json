@@ -1,7 +1,7 @@
 {
   "type": "vstack",
-  "gap": 6,
-  "pad": 14,
+  "gap": 3,
+  "pad": 4,
   "children": [
     {
       "type": "text",
@@ -16,14 +16,14 @@
     {
       "type": "hbar",
       "pct": 42,
-      "color": "blue",
+      "color": "black",
       "height": 14
     },
     {
       "type": "sparkline",
       "values": [12, 18, 14, 22, 19, 28, 31],
-      "color": "blue",
-      "height": 40
+      "color": "red",
+      "height": 32
     },
     {
       "type": "spacer"
