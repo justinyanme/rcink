@@ -19,8 +19,20 @@ Output: `build/src/TLSR-LAYOUT.bin`.
 ## Phase status
 
 - [x] Phase 2 — fork, GATT service stubs, advertising format.
-- [ ] Phase 3 — host-shim render port from rcpapercolor primitives.
+- [x] Phase 3 — host-shim render port from rcpapercolor primitives.
 - [ ] Phase 4 — BEGIN/DATA/COMMIT transfer FSM.
 - [ ] Phase 5 — recovery + ring log.
 
 See `docs/superpowers/specs/2026-05-20-tlsr-layout-protocol-design.md`.
+
+## Host shim
+
+```bash
+cd host_test
+cmake -S . -B build && cmake --build build
+uv sync --all-extras
+uv run pytest -v
+```
+
+PNG outputs land in `host_test/out/` for visual review. They are not
+assertion-gated.
