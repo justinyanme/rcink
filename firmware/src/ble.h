@@ -15,5 +15,6 @@ void ble_note_user_activity(void);
 void ble_open_peek_window(void);
 
 // will update adv data and notify battery and temperature
+void layout_refresh_adv_payload(void);
 void update_adv_data(s16 temp, u16 battery_mv);
 void set_airtag_adv_data(void);

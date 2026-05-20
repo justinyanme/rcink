@@ -69,33 +69,22 @@ _attribute_data_retention_ my_fifo_t blt_txfifo = {
 /**
  * @brief	BLE Advertising data
  */
-RAM u8 tbl_advData[] = {
-    /*Description*/
-    16, 0x16, 0x1a, 0x18,
-    /*MAC [4-9]*/
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    /*Temp [10,11]*/
-    0xaa, 0xaa,
-    /*BatL [12]*/
-    0xcc,
-    /*BatM [13,14]*/
-    0xdd, 0xdd,
-    /*Counter*/
-    0x00,
-
-    // 5, DT_COMPLETE_LOCAL_NAME, 'V', 'H', 'I', 'D',
-    // 2, DT_FLAGS, 0x05,            // BLE limited discoverable mode and BR/EDR not supported
-    // 3, DT_APPEARANCE, 0x80, 0x01, // 384, Generic Remote Control, Generic category
-    // 5, DT_INCOMPLETE_LIST_16BIT_SERVICE_UUID, 0x12, 0x18, 0x0F, 0x18,
-    // incomplete list of service class UUIDs (0x1812, 0x180F)
+RAM u8 tbl_advData[31] = {
+    0x02, 0x01, 0x06,
+    0x0D, 0x09, 'T', 'L', 'a', 'y', '_', 'X', 'X', 'X', 'X', 'X', 'X',
+    0x0B, 0xFF, 0xFF, 0xFF, 0x02,
+    0x00, 0x00, 0x00, 0x00,  // data_ver
+    0x00, 0x00,              // battery_mV
+    0x00,                    // temp_c
+    0x00,                    // flags
 };
 
 /**
  * @brief	BLE Scan Response Packet data
  */
-RAM u8 ble_name[] = {
-    11, // length
-    DT_COMPLETE_LOCAL_NAME, 'T', 'P', 'T', '_',
+RAM u8 ble_name[13] = {
+    12, // length
+    DT_COMPLETE_LOCAL_NAME, 'T', 'L', 'a', 'y', '_',
     // 6 ~ 11: MAC address
     '0', '0', '0', '0', '0', '0'
 };
@@ -107,19 +96,6 @@ RAM u8 PUB_KEY[28] = {
     0x92,0x32,0x62,0xe4,0xd4,0xca,0x14,0xcf,
     0x92,0x07,0x3e,0x52,0x30,0x22,0x89,0xcb,
     0x50,0x80,0x4b,0x71,
-};
-
-RAM u8 air_tag_adv_data[31] = {
-    0x1e, /* Length (30) */
-    0xff, /* Manufacturer Specific Data (type 0xff) */
-    0x4c, 0x00, /* Company ID (Apple) */
-    0x12, 0x19, /* Offline Finding type and length */
-    0x00, /* State */
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, /* First two bits */
-    0x00, /* Hint (0x00) */
 };
 
 extern u8 my_tempVal[2];
@@ -336,21 +312,39 @@ int app_host_event_callback(u32 h, u8 *para, int n) {
 }
 
 ////////////////////////// Callback End //////////////////////////
-static void update_adv_data__mac(void) {
-    // reverse-copy the 6-byte MAC into the adv payload (BLE order)
-    for (int i = 0; i < 6; i++) {
-        tbl_advData[4 + i] = mac_public[5 - i];
-    }
-}
-
 static void update_ble_name__mac(void) {
     // append the last 3 MAC bytes as hex to the device name
     static const char hex_ascii[] = "0123456789ABCDEF";
     for (int i = 0; i < 3; i++) {
         const u8 b = mac_public[2 - i];
-        ble_name[6 + i * 2]     = hex_ascii[b >> 4];
-        ble_name[6 + i * 2 + 1] = hex_ascii[b & 0x0f];
+        ble_name[7 + i * 2]     = hex_ascii[b >> 4];
+        ble_name[7 + i * 2 + 1] = hex_ascii[b & 0x0f];
     }
+}
+
+extern u8 ble_sync_window_closed;
+
+void layout_refresh_adv_payload(void) {
+    static const char hex_ascii[] = "0123456789ABCDEF";
+    for (int i = 0; i < 3; i++) {
+        const u8 b = mac_public[2 - i];
+        tbl_advData[10 + i * 2]     = hex_ascii[b >> 4];
+        tbl_advData[10 + i * 2 + 1] = hex_ascii[b & 0x0f];
+    }
+
+    memcpy(&tbl_advData[21], &layout_status_buf[0], 4);
+    tbl_advData[25] = layout_status_buf[6];
+    tbl_advData[26] = layout_status_buf[7];
+    tbl_advData[27] = layout_status_buf[8];
+
+    u8 flags = layout_status_buf[9];
+    if (ble_sync_window_closed) {
+        flags &= ~0x01;
+    } else {
+        flags |= 0x01;
+    }
+    layout_status_buf[9] = flags;
+    tbl_advData[28] = flags;
 }
 
 #if AIRTAG_ENABLE
@@ -380,7 +374,6 @@ void init_ble(void) {
     tlkapi_send_string_data(APP_LOG_EN, "[APP][INI]Public Address", mac_public, 6);
 
     update_ble_name__mac();
-    update_adv_data__mac();
 
 #if(BLE_DEVICE_ADDRESS_TYPE == BLE_DEVICE_ADDRESS_PUBLIC)
     app_own_address_type = OWN_ADDRESS_PUBLIC;
@@ -501,14 +494,15 @@ void init_ble(void) {
         tlkapi_printf(APP_LOG_EN, "[APP][INI] ADV parameters error 0x%x!!!\n", adv_param_status);
     }
 
+    ble_sync_window_begin_tick = clock_time();
+    ble_sync_window_closed = 0;
+    latest_user_event_tick = ble_sync_window_begin_tick;
+    layout_refresh_adv_payload();
     ble_sts_t sts_set_adv = bls_ll_setAdvData((u8*)tbl_advData, sizeof(tbl_advData));
     if (sts_set_adv != BLE_SUCCESS) {
         log_debugf("[ERROR] set adv data failed: %d", sts_set_adv);
     }
     bls_ll_setScanRspData((u8*)ble_name, sizeof(ble_name));
-    ble_sync_window_begin_tick = clock_time();
-    ble_sync_window_closed = 0;
-    latest_user_event_tick = ble_sync_window_begin_tick;
     bls_ll_setAdvEnable(BLC_ADV_ENABLE); //ADV enable
 
     /* set RF power index, user must set it after every suspend wake_up, because relative setting will be reset in suspend */
@@ -632,22 +626,17 @@ _attribute_ram_code_ void ble_notify_battery(u8 battery_level) {
 }
 
 _attribute_ram_code_ void update_adv_data(s16 temp, u16 battery_mv) {
-    tbl_advData[10] = temp >> 8;
-    tbl_advData[11] = temp & 0xff;
-
-    u8 battery_level = mv_to_battery_level(battery_mv);
-    tbl_advData[12] = battery_level;
-
-    tbl_advData[13] = battery_mv >> 8;
-    tbl_advData[14] = battery_mv & 0xff;
-
-    tbl_advData[15]++;
+    const s8 temp_c = (s8)(temp / 10);
+    const u8 flags = layout_status_buf[9];
+    layout_att_refresh_status(battery_mv, temp_c, flags);
+    layout_refresh_adv_payload();
 
     ble_sts_t sts_set_adv = bls_ll_setAdvData((u8*)tbl_advData, sizeof(tbl_advData));
     if (sts_set_adv != BLE_SUCCESS) {
         log_debugf("[ERROR] set adv data failed: %d", sts_set_adv);
     }
 
+    u8 battery_level = mv_to_battery_level(battery_mv);
     ble_notify_battery(battery_level);
     ble_notify_temp(temp);
 
@@ -655,11 +644,5 @@ _attribute_ram_code_ void update_adv_data(s16 temp, u16 battery_mv) {
 }
 
 _attribute_ram_code_ void set_airtag_adv_data() {
-#if AIRTAG_ENABLE
-    memcpy(&air_tag_adv_data[7], &PUB_KEY[6], 22);
-    air_tag_adv_data[29] = PUB_KEY[0] >> 6;
-
-    bls_ll_setAdvData((u8 *)air_tag_adv_data, sizeof(air_tag_adv_data));
-    log_verbosef("set_airtag_adv_data");
-#endif
+    log_verbosef("AIRTAG_ENABLE is disabled");
 }
