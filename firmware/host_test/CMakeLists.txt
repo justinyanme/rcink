@@ -18,6 +18,7 @@ add_executable(host_test
     ${FW}/src/engine/engine.c
     ${FW}/src/engine/measure.c
     ${FW}/src/proto/crc32.c
+    ${FW}/src/proto/xfer.c
     ${FW}/src/proto/uzlib/adler32.c
     ${FW}/src/proto/uzlib/crc32.c
     ${FW}/src/proto/uzlib/defl_static.c

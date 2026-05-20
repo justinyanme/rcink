@@ -7,6 +7,7 @@
 #include "../src/render/paint.h"
 #include "../src/render/pipeline.h"
 #include "../src/proto/crc32.h"
+#include "../src/proto/xfer.h"
 #include "../src/store/ringlog.h"
 #include "../src/store/slot.h"
 
@@ -17,11 +18,62 @@
 extern const measurer_t host_measurer;
 extern void host_flash_reset(void);
 
+#define HOST_EPD_BUFFER_SIZE (300 * 128 / 8)
+
+uint8_t epd_buffer[HOST_EPD_BUFFER_SIZE];
+uint8_t epd_buffer_red[HOST_EPD_BUFFER_SIZE];
+uint8_t layout_status_buf[16];
+
 static uint32_t g_host_now_ms;
+
+typedef struct {
+    uint16_t last_seq;
+    uint8_t code;
+    uint8_t flags;
+} host_ack_t;
+
+static host_ack_t g_acks[16];
+static uint8_t g_ack_count;
 
 uint32_t host_now_ms(void)
 {
     return g_host_now_ms;
+}
+
+void epd_clear_buffer(void)
+{
+    memset(epd_buffer, 0xFF, sizeof(epd_buffer));
+    memset(epd_buffer_red, 0x00, sizeof(epd_buffer_red));
+}
+
+void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh)
+{
+    (void)image;
+    (void)red_image;
+    (void)requested_full_refresh;
+}
+
+void layout_refresh_adv_payload(void)
+{
+}
+
+static void host_ack_emit(uint16_t last_seq, uint8_t code, uint8_t flags)
+{
+    if (g_ack_count >= sizeof(g_acks) / sizeof(g_acks[0])) {
+        return;
+    }
+    g_acks[g_ack_count++] = (host_ack_t){last_seq, code, flags};
+}
+
+static void host_xfer_reset(void)
+{
+    host_flash_reset();
+    memset(layout_status_buf, 0, sizeof(layout_status_buf));
+    memset(g_acks, 0, sizeof(g_acks));
+    g_ack_count = 0;
+    g_host_now_ms = 0;
+    ringlog_init();
+    xfer_init(host_ack_emit);
 }
 
 static const char *kind_name(layout_kind_t kind)
@@ -319,6 +371,81 @@ static int ringlog_test(const char *scenario)
     return 1;
 }
 
+static void put_le16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v & 0xFF);
+    p[1] = (uint8_t)(v >> 8);
+}
+
+static void put_le32(uint8_t *p, uint32_t v)
+{
+    p[0] = (uint8_t)(v & 0xFF);
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+
+static void send_begin(uint32_t data_ver, uint16_t total_len, uint16_t total_chunks, uint32_t crc)
+{
+    uint8_t frame[20] = {0};
+    frame[0] = 0x01;
+    put_le32(&frame[1], data_ver);
+    put_le16(&frame[5], total_len);
+    put_le16(&frame[7], total_chunks);
+    put_le32(&frame[9], crc);
+    frame[13] = 0x01;
+    xfer_handle_ctl(frame, sizeof(frame));
+}
+
+static void send_data(uint16_t seq, const uint8_t *payload, uint16_t len)
+{
+    uint8_t frame[184];
+    put_le16(frame, seq);
+    memcpy(&frame[2], payload, len);
+    xfer_handle_data(frame, (uint16_t)(len + 2));
+}
+
+static int expect_ack(uint8_t idx, uint16_t last_seq, uint8_t code)
+{
+    if (idx >= g_ack_count) {
+        fprintf(stderr, "missing ack %u, count=%u\n", idx, g_ack_count);
+        return 1;
+    }
+    if (g_acks[idx].last_seq != last_seq || g_acks[idx].code != code || g_acks[idx].flags != 0) {
+        fprintf(stderr,
+                "ack %u mismatch: last_seq=%u code=0x%02x flags=0x%02x\n",
+                idx,
+                g_acks[idx].last_seq,
+                g_acks[idx].code,
+                g_acks[idx].flags);
+        return 1;
+    }
+    return 0;
+}
+
+static int xfer_test(const char *scenario)
+{
+    host_xfer_reset();
+
+    if (strcmp(scenario, "gap") == 0) {
+        const uint8_t a[] = {1, 2};
+        const uint8_t b[] = {3, 4};
+        send_begin(0xAABBCCDDu, 6, 3, 0);
+        send_data(0, a, sizeof(a));
+        send_data(2, b, sizeof(b));
+        if (g_ack_count != 2 || expect_ack(0, 0, XFER_OK_BEGIN) != 0 ||
+            expect_ack(1, 0, XFER_ERR_GAP) != 0 || xfer_state() != XFER_RECEIVING) {
+            fprintf(stderr, "gap scenario failed\n");
+            return 1;
+        }
+        puts("OK gap");
+        return 0;
+    }
+
+    fprintf(stderr, "unknown xfer-test scenario: %s\n", scenario);
+    return 1;
+}
+
 static uint8_t *read_stdin(size_t *len)
 {
     size_t cap = 4096;
@@ -415,11 +542,14 @@ int main(int argc, char **argv)
     if (argc >= 3 && strcmp(argv[1], "ringlog-test") == 0) {
         return ringlog_test(argv[2]);
     }
+    if (argc >= 3 && strcmp(argv[1], "xfer-test") == 0) {
+        return xfer_test(argv[2]);
+    }
     if (argc >= 2 && strcmp(argv[1], "pipeline-e2e") == 0) {
         return pipeline_e2e(argc, argv);
     }
     if (argc < 3) {
-        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario> | ringlog-test <scenario> | pipeline-e2e --uncompressed-len n --png out.png\n");
+        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario> | ringlog-test <scenario> | xfer-test <scenario> | pipeline-e2e --uncompressed-len n --png out.png\n");
         return 1;
     }
 

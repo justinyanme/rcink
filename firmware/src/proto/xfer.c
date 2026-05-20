@@ -148,7 +148,11 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
     }
     const uint16_t seq = get_le16(frame);
     const uint16_t payload_len = (uint16_t)(len - 2);
-    if (seq != g_xfer.expected_seq || payload_len > g_xfer.total_len - g_xfer.recv_offset) {
+    if (seq != g_xfer.expected_seq) {
+        emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_GAP);
+        return;
+    }
+    if (payload_len > g_xfer.total_len - g_xfer.recv_offset) {
         return;
     }
     if (slot_write_payload(g_xfer.staging, g_xfer.recv_offset, &frame[2], payload_len) != 0) {
