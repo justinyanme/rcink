@@ -19,6 +19,7 @@ uint16_t battery_read_mv(void);
 #define XFER_CTL_ABORT 0x02u
 #define XFER_CTL_COMMIT 0x03u
 #define XFER_DSL_FORMAT_ZLIB_JSON_V1 0x01u
+#define XFER_NO_PROGRESS_TIMEOUT_MS 30000u
 
 extern uint8_t epd_buffer[XFER_EPD_BUFFER_SIZE];
 extern uint8_t epd_buffer_red[XFER_EPD_BUFFER_SIZE];
@@ -35,6 +36,8 @@ typedef struct {
     uint8_t dsl_format;
     uint16_t recv_offset;
     uint16_t expected_seq;
+    uint32_t now_ms;
+    uint32_t last_progress_ms;
 } xfer_ctx_t;
 
 static xfer_ctx_t g_xfer;
@@ -64,6 +67,16 @@ void xfer_init(ack_emit_fn ack)
     memset(&g_xfer, 0, sizeof(g_xfer));
     g_xfer.state = XFER_IDLE;
     g_xfer.ack = ack;
+}
+
+void xfer_tick(uint32_t now_ms)
+{
+    g_xfer.now_ms = now_ms;
+    if (g_xfer.state == XFER_RECEIVING &&
+        (uint32_t)(now_ms - g_xfer.last_progress_ms) > XFER_NO_PROGRESS_TIMEOUT_MS) {
+        ringlog_append(XFER_ERR_BUSY, 0, 0, "watchdog 30s no chunk");
+        g_xfer.state = XFER_IDLE;
+    }
 }
 
 xfer_state_t xfer_state(void)
@@ -148,6 +161,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         slot_erase(g_xfer.staging);
         g_xfer.recv_offset = 0;
         g_xfer.expected_seq = 0;
+        g_xfer.last_progress_ms = g_xfer.now_ms;
         g_xfer.state = XFER_RECEIVING;
         emit_ack(0, XFER_OK_BEGIN);
         return;
@@ -195,6 +209,7 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
     }
     g_xfer.recv_offset = (uint16_t)(g_xfer.recv_offset + payload_len);
     g_xfer.expected_seq++;
+    g_xfer.last_progress_ms = g_xfer.now_ms;
     if ((seq & 0x7u) == 0x7u || g_xfer.recv_offset == g_xfer.total_len) {
         emit_ack(seq, XFER_OK_PROGRESS);
     }

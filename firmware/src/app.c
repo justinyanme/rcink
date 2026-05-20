@@ -206,6 +206,7 @@ _attribute_no_inline_ void main_loop(void) {
     handle_time();
 
     battery_try_update();
+    xfer_tick(clock_time() / (sys_tick_per_us * 1000u));
     xfer_run_pending_render();
 
 	const bool epd_trying_update = epd_try_update();

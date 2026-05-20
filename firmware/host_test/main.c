@@ -81,6 +81,7 @@ static void host_xfer_reset(void)
     g_host_battery_mv = 3000;
     ringlog_init();
     xfer_init(host_ack_emit);
+    xfer_tick(g_host_now_ms);
 }
 
 static const char *kind_name(layout_kind_t kind)
@@ -536,6 +537,21 @@ static int xfer_test(const char *scenario)
             return 1;
         }
         puts("OK low-batt");
+        return 0;
+    }
+
+    if (strcmp(scenario, "watchdog") == 0) {
+        const uint8_t a[] = {1, 2};
+        send_begin(0xC0DEC005u, 4, 2, 0);
+        send_data(0, a, sizeof(a));
+        g_host_now_ms = 35000;
+        xfer_tick(g_host_now_ms);
+        if (xfer_state() != XFER_IDLE || g_ack_count != 1 || expect_ack(0, 0, XFER_OK_BEGIN) != 0 ||
+            expect_ringlog(XFER_ERR_BUSY, 0) != 0) {
+            fprintf(stderr, "watchdog scenario failed\n");
+            return 1;
+        }
+        puts("OK watchdog");
         return 0;
     }
 

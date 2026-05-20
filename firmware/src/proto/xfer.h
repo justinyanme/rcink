@@ -30,6 +30,7 @@ void xfer_init(ack_emit_fn ack);
 void xfer_handle_ctl(const uint8_t *frame, uint16_t len);
 void xfer_handle_data(const uint8_t *frame, uint16_t len);
 void xfer_run_pending_render(void);
+void xfer_tick(uint32_t now_ms);
 xfer_state_t xfer_state(void);
 
 #endif
