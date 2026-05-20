@@ -2,8 +2,8 @@
 
 import asyncio
 import json
+import logging
 import struct
-from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -13,14 +13,12 @@ from .ble.central import PushError, push_page
 from .ble.discovery import scan
 from .ble.transport import Transport
 from .encode import chunk_payload, encode_page
-from .pages.example import example_page
+from .pages.registry import build_page, page_names
 from .protocol import DSL_FORMAT_ZLIB_JSON_V1, build_begin, build_data_chunk
+from .serve import ServeConfig
+from .serve import serve as serve_daemon
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
-
-PAGES: dict[str, Callable[[], dict]] = {
-    "example": example_page,
-}
 
 # Phase 1 uses the conservative MTU; firmware will negotiate up later.
 DEFAULT_CHUNK_PAYLOAD = 180
@@ -38,13 +36,13 @@ def dry_run(
 ) -> None:
     """Build a page, encode it, write JSON + compressed bytes + chunk frames to disk."""
 
-    builder = PAGES.get(page_name)
-    if builder is None:
-        typer.echo(f"unknown page {page_name!r}; known: {sorted(PAGES)}", err=True)
-        raise typer.Exit(code=2)
+    try:
+        page = build_page(page_name)
+    except KeyError as exc:
+        typer.echo(f"unknown page {page_name!r}; known: {page_names()}", err=True)
+        raise typer.Exit(code=2) from exc
 
     out.mkdir(parents=True, exist_ok=True)
-    page = builder()
     encoded = encode_page(page)
 
     (out / f"{page_name}.json").write_bytes(encoded.canonical_json)
@@ -111,17 +109,18 @@ def push(
 ) -> None:
     """Push a registered page to a tag."""
 
-    builder = PAGES.get(page_name)
-    if builder is None:
-        typer.echo(f"unknown page {page_name!r}; known: {sorted(PAGES)}", err=True)
-        raise typer.Exit(code=2)
+    try:
+        page = build_page(page_name)
+    except KeyError as exc:
+        typer.echo(f"unknown page {page_name!r}; known: {page_names()}", err=True)
+        raise typer.Exit(code=2) from exc
 
     async def _run() -> None:
         from bleak import BleakClient
 
         async with Transport(BleakClient(device)) as transport:
             try:
-                encoded = await push_page(transport, builder())
+                encoded = await push_page(transport, page)
             except PushError as exc:
                 typer.echo(f"push failed: {exc}", err=True)
                 raise typer.Exit(code=3) from exc
@@ -131,10 +130,19 @@ def push(
 
 
 @app.command("serve")
-def serve(
-    interval: Annotated[str, typer.Option("--interval")] = "60s",
+def serve_cmd(
     device_filter: Annotated[str | None, typer.Option("--device-filter")] = None,
+    rotation: Annotated[
+        list[str] | None,
+        typer.Option("--page", help="Repeatable. Default: all registered pages."),
+    ] = None,
+    log_level: Annotated[str, typer.Option("--log-level")] = "INFO",
 ) -> None:
-    """Long-running daemon (not implemented in Phase 1)."""
+    """Run the long-lived scan + push daemon."""
 
-    typer.echo("not implemented in Phase 1: serve ships in Phase 7.")
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper(), logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    config = ServeConfig(device_filter=device_filter, rotation=rotation)
+    asyncio.run(serve_daemon(config))

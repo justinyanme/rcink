@@ -59,6 +59,8 @@ def test_push_requires_device():
 
 
 def test_serve_stub():
-    result = runner.invoke(app, ["serve"])
-    assert result.exit_code == 0
-    assert "not implemented" in result.output.lower()
+    with patch("tlsr_layout.cli.serve_daemon", AsyncMock()) as serve:
+        result = runner.invoke(app, ["serve"])
+
+    assert result.exit_code == 0, result.output
+    serve.assert_awaited_once()
