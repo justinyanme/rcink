@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app_config.h"
+#include "types.h"
 
 ///////////////////////////////////// ATT  HANDLER define ///////////////////////////////////////
 typedef enum {
@@ -66,9 +67,31 @@ typedef enum {
     RxTx_CMD_OUT_DP_H,   //UUID: RxTx uuid,  VALUE: RxTxData
     RxTx_CMD_OUT_DESC_H, //UUID: 2901, 	VALUE: RxTxName
 
+    //// Layout service ////
+    /**********************************************************************************************/
+    DP_H_LAYOUT_SERVICE,
+    DP_H_LAYOUT_STATUS_DECL,
+    DP_H_LAYOUT_STATUS_VAL,
+    DP_H_LAYOUT_STATUS_CCCD,
+    DP_H_LAYOUT_XFER_CTL_DECL,
+    DP_H_LAYOUT_XFER_CTL_VAL,
+    DP_H_LAYOUT_XFER_DATA_DECL,
+    DP_H_LAYOUT_XFER_DATA_VAL,
+    DP_H_LAYOUT_XFER_ACK_DECL,
+    DP_H_LAYOUT_XFER_ACK_VAL,
+    DP_H_LAYOUT_XFER_ACK_CCCD,
+    DP_H_LAYOUT_META_DECL,
+    DP_H_LAYOUT_META_VAL,
+
     ATT_END_H,
 } ATT_HANDLE;
 
+extern u8 layout_status_buf[16];
+extern u8 layout_meta_buf[32];
+extern u8 layout_xfer_ctl_scratch[20];
+extern u8 layout_xfer_data_scratch[182];
+
+void layout_att_refresh_status(u16 battery_mv, s8 temp_c, u8 flags);
 
 /**
  * @brief      Initialize the attribute table

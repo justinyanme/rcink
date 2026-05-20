@@ -3,9 +3,15 @@
 #include "stack/ble/ble.h"
 #include "app_att.h"
 
+#include <string.h>
+
+#include <battery.h>
 #include <log.h>
 
 #include "ble.h"
+#include "ble_service.h"
+#include "epd/epd.h"
+#include "time_config.h"
 
 typedef struct {
     /** Minimum value for the connection event (interval. 0x0006 - 0x0C80 * 1.25 ms) */
@@ -87,6 +93,70 @@ static const u16 my_RxTxUUID = EPD_RXTX_UUID;
 static u8 my_RxTx_Data = 0x00;
 static u8 RxTxValueInCCC[2];
 
+// Layout service — see spec §5 for the UUID derivation.
+// Base: 6F636172-1F20-44E0-9B6C-7A_xxxxxxxx_20.
+// Bytes in TLSR SDK are LSB-first.
+const u8 LAYOUT_SERVICE_UUID[16] = {
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x7A, 0x6C, 0x9B,
+    0xE0, 0x44, 0x20, 0x1F, 0x72, 0x61, 0x63, 0x6F,
+};
+
+#define LAYOUT_CHAR_UUID_BYTES(slot)                                   \
+    0x20, (slot), 0x00, 0x00, 0x00, 0x7A, 0x6C, 0x9B,                  \
+    0xE0, 0x44, 0x20, 0x1F, 0x72, 0x61, 0x63, 0x6F
+
+#define LAYOUT_CHAR_UUID(slot) { LAYOUT_CHAR_UUID_BYTES(slot) }
+
+const u8 LAYOUT_CHAR_STATUS_UUID[16]    = LAYOUT_CHAR_UUID(0x01);
+const u8 LAYOUT_CHAR_XFER_CTL_UUID[16]  = LAYOUT_CHAR_UUID(0x02);
+const u8 LAYOUT_CHAR_XFER_DATA_UUID[16] = LAYOUT_CHAR_UUID(0x03);
+const u8 LAYOUT_CHAR_XFER_ACK_UUID[16]  = LAYOUT_CHAR_UUID(0x04);
+const u8 LAYOUT_CHAR_META_UUID[16]      = LAYOUT_CHAR_UUID(0x05);
+
+RAM u8 layout_status_buf[16];
+RAM u8 layout_meta_buf[32];
+RAM u8 layout_xfer_ctl_scratch[20];
+RAM u8 layout_xfer_data_scratch[182];
+static u8 layout_xfer_ack_buf[4];
+static u8 layout_xfer_ack_cccd[2];
+static u8 layout_status_cccd[2];
+
+static void layout_put_u16(u8 *dst, const u16 value)
+{
+    dst[0] = value & 0xFF;
+    dst[1] = (value >> 8) & 0xFF;
+}
+
+static void layout_put_u32(u8 *dst, const u32 value)
+{
+    dst[0] = value & 0xFF;
+    dst[1] = (value >> 8) & 0xFF;
+    dst[2] = (value >> 16) & 0xFF;
+    dst[3] = (value >> 24) & 0xFF;
+}
+
+void layout_att_refresh_status(const u16 battery_mv, const s8 temp_c, const u8 flags)
+{
+    layout_put_u32(&layout_status_buf[0], 0xFFFFFFFFUL);
+    layout_status_buf[4] = 0x00; // flash_state: no page yet
+    layout_status_buf[5] = 0x00; // last_err
+    layout_put_u16(&layout_status_buf[6], battery_mv);
+    layout_status_buf[8] = (u8)temp_c;
+    layout_status_buf[9] = flags;
+}
+
+static void layout_att_init_meta(void)
+{
+    memset(layout_meta_buf, 0, sizeof(layout_meta_buf));
+    layout_put_u16(&layout_meta_buf[0], 0x0001);
+    layout_put_u32(&layout_meta_buf[2], BUILD_UNIX_TIMESTAMP);
+    layout_put_u16(&layout_meta_buf[6], EPD_WIDTH);
+    layout_put_u16(&layout_meta_buf[8], EPD_HEIGHT);
+    layout_meta_buf[10] = 2;
+    layout_put_u16(&layout_meta_buf[11], 0x0007);
+    layout_put_u32(&layout_meta_buf[13], 131072UL);
+    layout_put_u16(&layout_meta_buf[17], 185);
+}
 
 //// GAP attribute values
 static const u8 my_devNameCharVal[5] = {
@@ -152,6 +222,37 @@ static const u8 my_RxTxCharVal[5] = {
     U16_LO(EPD_RXTX_UUID), U16_HI(EPD_RXTX_UUID)
 };
 
+//// Layout attribute values
+static const u8 layout_status_char_val[19] = {
+    CHAR_PROP_READ | CHAR_PROP_NOTIFY,
+    U16_LO(DP_H_LAYOUT_STATUS_VAL), U16_HI(DP_H_LAYOUT_STATUS_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x01)
+};
+
+static const u8 layout_xfer_ctl_char_val[19] = {
+    CHAR_PROP_WRITE,
+    U16_LO(DP_H_LAYOUT_XFER_CTL_VAL), U16_HI(DP_H_LAYOUT_XFER_CTL_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x02)
+};
+
+static const u8 layout_xfer_data_char_val[19] = {
+    CHAR_PROP_WRITE_WITHOUT_RSP,
+    U16_LO(DP_H_LAYOUT_XFER_DATA_VAL), U16_HI(DP_H_LAYOUT_XFER_DATA_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x03)
+};
+
+static const u8 layout_xfer_ack_char_val[19] = {
+    CHAR_PROP_NOTIFY,
+    U16_LO(DP_H_LAYOUT_XFER_ACK_VAL), U16_HI(DP_H_LAYOUT_XFER_ACK_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x04)
+};
+
+static const u8 layout_meta_char_val[19] = {
+    CHAR_PROP_READ,
+    U16_LO(DP_H_LAYOUT_META_VAL), U16_HI(DP_H_LAYOUT_META_VAL),
+    LAYOUT_CHAR_UUID_BYTES(0x05)
+};
+
 static const attribute_t my_Attributes[] = {
     {ATT_END_H - 1, 0, 0, 0, 0, 0, 0, 0}, // total num of attribute
 
@@ -211,6 +312,22 @@ static const attribute_t my_Attributes[] = {
     {0,ATT_PERMISSIONS_READ, 2, sizeof(my_RxTxCharVal), (u8*)(&my_characterUUID), (u8*)(my_RxTxCharVal), 0, 0},       //prop
     {0,ATT_PERMISSIONS_WRITE, 2, sizeof(my_RxTx_Data), (u8*)(&my_RxTxUUID), (&my_RxTx_Data), &RxTxWrite, 0},          //value
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(RxTxValueInCCC), (u8*)(&clientCharacterCfgUUID), (u8*)(RxTxValueInCCC), 0, 0}, //value
+
+    ////////////////////////////////////// Layout service ////////////////////////////////////////////////////
+    // 0x1F20: STATUS, XFER_CTL, XFER_DATA, XFER_ACK, META
+    {13,ATT_PERMISSIONS_READ, 2, 16, (u8*)(&my_primaryServiceUUID), (u8*)(LAYOUT_SERVICE_UUID), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_status_char_val), (u8*)(&my_characterUUID), (u8*)(layout_status_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_status_buf), (u8*)(LAYOUT_CHAR_STATUS_UUID), (u8*)(layout_status_buf), 0, 0},
+    {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_status_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_status_cccd), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_ctl_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_ctl_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_WRITE, 16, sizeof(layout_xfer_ctl_scratch), (u8*)(LAYOUT_CHAR_XFER_CTL_UUID), (u8*)(layout_xfer_ctl_scratch), &layout_xfer_ctl_write, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_data_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_data_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_WRITE, 16, sizeof(layout_xfer_data_scratch), (u8*)(LAYOUT_CHAR_XFER_DATA_UUID), (u8*)(layout_xfer_data_scratch), &layout_xfer_data_write, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_ack_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_ack_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_xfer_ack_buf), (u8*)(LAYOUT_CHAR_XFER_ACK_UUID), (u8*)(layout_xfer_ack_buf), 0, 0},
+    {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_xfer_ack_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_xfer_ack_cccd), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_meta_char_val), (u8*)(&my_characterUUID), (u8*)(layout_meta_char_val), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_meta_buf), (u8*)(LAYOUT_CHAR_META_UUID), (u8*)(layout_meta_buf), 0, 0},
 };
 
 
@@ -218,6 +335,8 @@ static const attribute_t my_Attributes[] = {
  * @brief      Initialize the attribute table
  */
 void my_att_init(void) {
+    layout_att_init_meta();
+    layout_att_refresh_status(battery_read_mv(), 0, 0);
     log_debugf("set %d attributes", sizeof(my_Attributes) / sizeof(attribute_t) - 1);
     bls_att_setAttributeTable((u8*)my_Attributes);
 }

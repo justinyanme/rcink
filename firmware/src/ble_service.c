@@ -80,6 +80,40 @@ static void fill_frame_tail(u8 *frame, const u16 frame_len, const bool is_red)
     }
 }
 
+int layout_xfer_ctl_write(void *p)
+{
+    if (p == NULL) {
+        return 1;
+    }
+    rf_packet_att_write_t *req = (rf_packet_att_write_t*)p;
+    u16 len = req->l2capLen > ATT_WRITE_HEADER_BYTES ? req->l2capLen - ATT_WRITE_HEADER_BYTES : 0;
+    if (len > sizeof(layout_xfer_ctl_scratch)) {
+        len = sizeof(layout_xfer_ctl_scratch);
+    }
+    memcpy(layout_xfer_ctl_scratch, &req->value, len);
+    if (len > 0) {
+        log_debugf("LAYOUT XFER_CTL cmd=0x%x len=%d", req->value, len);
+    } else {
+        log_debugf("LAYOUT XFER_CTL empty write");
+    }
+    return 0;
+}
+
+int layout_xfer_data_write(void *p)
+{
+    if (p == NULL) {
+        return 1;
+    }
+    rf_packet_att_write_t *req = (rf_packet_att_write_t*)p;
+    u16 len = req->l2capLen > ATT_WRITE_HEADER_BYTES ? req->l2capLen - ATT_WRITE_HEADER_BYTES : 0;
+    if (len > sizeof(layout_xfer_data_scratch)) {
+        len = sizeof(layout_xfer_data_scratch);
+    }
+    memcpy(layout_xfer_data_scratch, &req->value, len);
+    log_debugf("LAYOUT XFER_DATA chunk len=%d", len);
+    return 0;
+}
+
 int cmd_handler(void *p) {
     if (p == NULL) {
         return 1;

@@ -31,3 +31,5 @@ typedef enum {
 } COMPRESS_ALGORITHM;
 
 int cmd_handler(void *p);
+int layout_xfer_ctl_write(void *p);
+int layout_xfer_data_write(void *p);
