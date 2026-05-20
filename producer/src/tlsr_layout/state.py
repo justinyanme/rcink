@@ -65,9 +65,7 @@ def save(store: Store) -> None:
             for mac, tag in sorted(store.tags.items())
         },
     }
-    (config_dir / "state.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
-    )
+    (config_dir / "state.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
 
 def get_or_create(store: Store, mac: str) -> TagState:

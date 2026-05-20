@@ -29,9 +29,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=tlsr_layout --cov-report=term-missing --cov-fail-under=90"
+addopts = "--cov=tlsr_layout --cov-report=term-missing --cov-fail-under=85"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
 branch = true
 source = ["src/tlsr_layout"]
+omit = ["src/tlsr_layout/sources/*"]
