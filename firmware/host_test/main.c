@@ -5,12 +5,15 @@
 #include "../src/engine/engine.h"
 #include "../src/proto/uzlib/uzlib.h"
 #include "../src/render/paint.h"
+#include "../src/proto/crc32.h"
+#include "../src/store/slot.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 extern const measurer_t host_measurer;
+extern void host_flash_reset(void);
 
 static const char *kind_name(layout_kind_t kind)
 {
@@ -160,6 +163,81 @@ static int uzlib_test(const char *path)
     return 0;
 }
 
+static int write_slot_fixture(slot_id_t slot, const uint8_t *payload, uint16_t len, uint32_t seq, uint32_t crc)
+{
+    slot_erase(slot);
+    if (slot_write_payload(slot, 0, payload, len) != 0) {
+        return 1;
+    }
+    slot_header_t hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.magic = SLOT_MAGIC_BE;
+    hdr.data_ver = 0xA0000000u | seq;
+    hdr.uncompressed_len = len;
+    hdr.compressed_len = len;
+    hdr.crc32 = crc;
+    hdr.seq = seq;
+    if (slot_write_header(slot, &hdr) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int slot_test(const char *scenario)
+{
+    static const uint8_t payload_a[] = {1, 2, 3, 4, 5};
+    static const uint8_t payload_b[] = {9, 8, 7, 6};
+    host_flash_reset();
+
+    if (strcmp(scenario, "roundtrip") == 0) {
+        const uint32_t crc = crc32_zlib(payload_a, sizeof(payload_a));
+        if (write_slot_fixture(SLOT_A, payload_a, sizeof(payload_a), 1, crc) != 0) {
+            return 1;
+        }
+        slot_header_t hdr;
+        uint8_t out[sizeof(payload_a)];
+        if (slot_active(&hdr) != SLOT_A || hdr.seq != 1 ||
+            slot_read_payload(SLOT_A_ADDR, out, sizeof(out)) != 0 ||
+            memcmp(out, payload_a, sizeof(out)) != 0) {
+            fprintf(stderr, "roundtrip failed\n");
+            return 1;
+        }
+        puts("OK roundtrip");
+        return 0;
+    }
+
+    if (strcmp(scenario, "highest-seq") == 0) {
+        if (write_slot_fixture(SLOT_A, payload_a, sizeof(payload_a), 1, crc32_zlib(payload_a, sizeof(payload_a))) != 0 ||
+            write_slot_fixture(SLOT_B, payload_b, sizeof(payload_b), 2, crc32_zlib(payload_b, sizeof(payload_b))) != 0) {
+            return 1;
+        }
+        slot_header_t hdr;
+        if (slot_active(&hdr) != SLOT_B || hdr.seq != 2) {
+            fprintf(stderr, "highest-seq failed\n");
+            return 1;
+        }
+        puts("OK highest-seq");
+        return 0;
+    }
+
+    if (strcmp(scenario, "invalid-crc") == 0) {
+        if (write_slot_fixture(SLOT_A, payload_a, sizeof(payload_a), 1, crc32_zlib(payload_a, sizeof(payload_a))) != 0 ||
+            write_slot_fixture(SLOT_B, payload_b, sizeof(payload_b), 2, 0xDEADBEEFu) != 0) {
+            return 1;
+        }
+        slot_header_t hdr;
+        if (slot_active(&hdr) != SLOT_A || hdr.seq != 1) {
+            fprintf(stderr, "invalid-crc fallback failed\n");
+            return 1;
+        }
+        puts("OK invalid-crc");
+        return 0;
+    }
+
+    fprintf(stderr, "unknown slot-test scenario: %s\n", scenario);
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "version") == 0) {
@@ -169,8 +247,11 @@ int main(int argc, char **argv)
     if (argc >= 3 && strcmp(argv[1], "uzlib-test") == 0) {
         return uzlib_test(argv[2]);
     }
+    if (argc >= 3 && strcmp(argv[1], "slot-test") == 0) {
+        return slot_test(argv[2]);
+    }
     if (argc < 3) {
-        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib>\n");
+        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario>\n");
         return 1;
     }
 
