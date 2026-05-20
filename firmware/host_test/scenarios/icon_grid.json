@@ -1,0 +1,12 @@
+{"type":"vstack","pad":6,"gap":6,"children":[
+  {"type":"hstack","gap":8,"children":[
+    {"type":"icon","name":"cpu","size":16,"color":"black"},
+    {"type":"icon","name":"wifi","size":16,"color":"red"},
+    {"type":"icon","name":"battery","size":16,"color":"black"}
+  ]},
+  {"type":"hstack","gap":8,"children":[
+    {"type":"icon","name":"clock","size":16,"color":"black"},
+    {"type":"icon","name":"check","size":16,"color":"red"},
+    {"type":"icon","name":"cross","size":16,"color":"black"}
+  ]}
+]}

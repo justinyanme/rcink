@@ -1,0 +1,4 @@
+{"type":"vstack","pad":8,"gap":6,"children":[
+  {"type":"text","value":"Battery","size":"sm","color":"black"},
+  {"type":"hbar","pct":72,"height":16,"color":"red","label_left":"72","label_right":"OK"}
+]}

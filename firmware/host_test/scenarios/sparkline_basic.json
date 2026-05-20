@@ -1,0 +1,4 @@
+{"type":"vstack","pad":6,"gap":4,"children":[
+  {"type":"text","value":"Load","size":"body","color":"black"},
+  {"type":"sparkline","height":34,"color":"black","values":[8,12,18,15,27,33,25,40,38,44,39,50]}
+]}
