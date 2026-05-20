@@ -5,6 +5,7 @@
 #include "../src/engine/engine.h"
 #include "../src/proto/uzlib/uzlib.h"
 #include "../src/render/paint.h"
+#include "../src/render/pipeline.h"
 #include "../src/proto/crc32.h"
 #include "../src/store/slot.h"
 
@@ -102,7 +103,7 @@ static int load_and_layout(const char *path, arena_t *parse_arena, arena_t *layo
 
 static const char *arg_value(int argc, char **argv, const char *name)
 {
-    for (int i = 3; i + 1 < argc; i++) {
+    for (int i = 2; i + 1 < argc; i++) {
         if (strcmp(argv[i], name) == 0) {
             return argv[i + 1];
         }
@@ -238,6 +239,87 @@ static int slot_test(const char *scenario)
     return 1;
 }
 
+static uint8_t *read_stdin(size_t *len)
+{
+    size_t cap = 4096;
+    size_t used = 0;
+    uint8_t *buf = malloc(cap);
+    if (buf == NULL) {
+        return NULL;
+    }
+    for (;;) {
+        if (used == cap) {
+            size_t next_cap = cap * 2;
+            uint8_t *next = realloc(buf, next_cap);
+            if (next == NULL) {
+                free(buf);
+                return NULL;
+            }
+            buf = next;
+            cap = next_cap;
+        }
+        size_t got = fread(buf + used, 1, cap - used, stdin);
+        used += got;
+        if (got == 0) {
+            if (ferror(stdin)) {
+                free(buf);
+                return NULL;
+            }
+            break;
+        }
+    }
+    *len = used;
+    return buf;
+}
+
+static int pipeline_e2e(int argc, char **argv)
+{
+    const char *len_s = arg_value(argc, argv, "--uncompressed-len");
+    const char *png = arg_value(argc, argv, "--png");
+    if (len_s == NULL || png == NULL) {
+        fprintf(stderr, "pipeline-e2e requires --uncompressed-len and --png\n");
+        return 1;
+    }
+
+    unsigned long uncompressed_len = strtoul(len_s, NULL, 10);
+    if (uncompressed_len == 0 || uncompressed_len > 4096) {
+        fprintf(stderr, "invalid uncompressed length: %lu\n", uncompressed_len);
+        return 1;
+    }
+
+    size_t compressed_len = 0;
+    uint8_t *compressed = read_stdin(&compressed_len);
+    if (compressed == NULL || compressed_len > 65535) {
+        free(compressed);
+        fprintf(stderr, "failed to read compressed stdin\n");
+        return 1;
+    }
+
+    uint8_t inflate_buf[4096];
+    uint8_t arena_buf[4096];
+    uint16_t actual_len = 0;
+    host_canvas_init(250, 128);
+    host_canvas_clear(1);
+    pipeline_status_t status = pipeline_run(
+        compressed,
+        (uint16_t)compressed_len,
+        sizeof(inflate_buf),
+        inflate_buf,
+        arena_buf,
+        &actual_len
+    );
+    free(compressed);
+    if (status != PIPE_OK || actual_len != (uint16_t)uncompressed_len) {
+        fprintf(stderr, "pipeline failed: status=%d actual_len=%u\n", status, actual_len);
+        return 1;
+    }
+    if (host_canvas_write_png(png) != 0) {
+        fprintf(stderr, "failed to write %s\n", png);
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "version") == 0) {
@@ -250,8 +332,11 @@ int main(int argc, char **argv)
     if (argc >= 3 && strcmp(argv[1], "slot-test") == 0) {
         return slot_test(argv[2]);
     }
+    if (argc >= 2 && strcmp(argv[1], "pipeline-e2e") == 0) {
+        return pipeline_e2e(argc, argv);
+    }
     if (argc < 3) {
-        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario>\n");
+        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario> | pipeline-e2e --uncompressed-len n --png out.png\n");
         return 1;
     }
 

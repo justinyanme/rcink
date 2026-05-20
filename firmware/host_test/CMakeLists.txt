@@ -29,6 +29,7 @@ add_executable(host_test
     ${FW}/src/render/primitives.c
     ${FW}/src/render/placeholder.c
     ${FW}/src/render/paint.c
+    ${FW}/src/render/pipeline.c
     ${FW}/src/store/slot.c
 )
 
