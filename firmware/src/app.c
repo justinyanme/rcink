@@ -35,7 +35,6 @@
 
 #include "epd/epd.h"
 #include "log.h"
-#include "runtime_quotes.h"
 
 /**
  * @brief		user initialization when MCU power on or wake_up from deepSleep mode
@@ -59,7 +58,6 @@ _attribute_no_inline_ void user_init_normal(void) {
 
     /* attention that this function must be called after "blc_readFlashSize_autoConfigCustomFlashSector" !!!*/
     blc_app_loadCustomizedParameters_normal();
-    runtime_quotes_init();
 
 
 #if (APP_FLASH_PROTECTION_ENABLE)

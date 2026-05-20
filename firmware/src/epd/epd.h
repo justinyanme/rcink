@@ -27,9 +27,8 @@ typedef enum
     EPD_SCENE_TIME = 0, // default
     EPD_SCENE_LIST,     // display text list, like reminders
     EPD_SCENE_IMAGE,    // display image
-    EPD_SCENE_QUOTE,    // display random quote
 
-    EPD_SCENE_DEFAULT = EPD_SCENE_QUOTE,
+    EPD_SCENE_DEFAULT = EPD_SCENE_TIME,
 } EPD_SCENE;
 
 typedef enum {

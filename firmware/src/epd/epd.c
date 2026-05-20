@@ -247,7 +247,7 @@ void set_force_refresh_when_available(const EPD_REFRESH_MODE mode) {
 
 void change_scene(const EPD_SCENE scene) {
     if (scene != EPD_SCENE_TIME && scene != EPD_SCENE_LIST &&
-        scene != EPD_SCENE_IMAGE && scene != EPD_SCENE_QUOTE)
+        scene != EPD_SCENE_IMAGE)
     {
         log_debugf("invalid scene: %d", scene);
         return;
@@ -321,17 +321,12 @@ void _epd_display_with_scene(const struct date_time _time, const uint16_t batter
     case EPD_SCENE_IMAGE:
         // static image, already displayed, do nothing when tick
         break;
-    case EPD_SCENE_QUOTE:
-        epd_display_quote(_time, battery_mv, temperature, full_refresh);
-        break;
     default:
         log_debugf("warning: unknown scene %d", _scene);
 #if EPD_HAS_SCENE_TIME
         epd_display_time_with_date(_time, battery_mv, temperature, full_refresh);
 #elif EPD_HAS_SCENE_LIST
         epd_display_list(text, temperature, _time, full_refresh);
-#else
-        epd_display_quote(_time, battery_mv, temperature, full_refresh);
 #endif
         break;
     }

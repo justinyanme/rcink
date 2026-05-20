@@ -15,26 +15,14 @@
 
 #include "etime.h"
 #include "compress.h"
-#include "runtime_quotes.h"
 
 #define ATT_WRITE_HEADER_BYTES 3
 
 extern char text[MAX_TEXT_SIZE];
 
 static u16 buffer_cursor = 0;
-static u16 quote_payload_expected_len = 0;
-static u8 quote_payload_expected_count = 0;
-static bool quote_payload_open = false;
 static u8 buffer[EPD_BUFFER_SIZE];
 extern u8 epd_buffer[EPD_BUFFER_SIZE];
-
-static void quote_upload_reset(void)
-{
-    quote_payload_expected_len = 0;
-    quote_payload_expected_count = 0;
-    quote_payload_open = false;
-    buffer_cursor = 0;
-}
 
 static bool refresh_mode_is_valid(const u8 mode)
 {
@@ -48,7 +36,7 @@ static bool color_is_valid(const u8 color)
 
 static bool scene_is_valid(const u8 scene)
 {
-    return scene <= EPD_SCENE_QUOTE;
+    return scene <= EPD_SCENE_IMAGE;
 }
 
 static bool read_refresh_mode(
@@ -116,30 +104,21 @@ int cmd_handler(void *p) {
     const u8 *payload = raw_payload + 1;
     const u16 payload_len = raw_payload_len - 1;
 
-    if (quote_payload_open && typ != CMD_T_QUOTE_DATA && typ != CMD_T_QUOTE_COMMIT) {
-        log_debugf("runtime quote upload aborted by command: %d", typ);
-        quote_upload_reset();
-    }
-
     switch (typ) {
     case CMD_T_NONE: return 0;
-    case CMD_T_CLEAR:
+    case CMD_T_LAYOUT_BEGIN:
         {
-            if (payload_len > 0 && !color_is_valid(payload[0])) {
-                log_debugf("invalid clear color: %d", payload[0]);
-                return 1;
-            }
-            const EPD_COLOR color = payload_len > 0 ? (EPD_COLOR)payload[0] : EPD_COLOR_WHITE;
-            EPD_SPI_Hard_Reset();
-            EPD_Display_setup(TRUE);
-            epd_fill_ram(color);
-            EPD_Trigger_Display(TRUE);
+            log_debugf("CMD_T_LAYOUT_BEGIN len=%d", raw_payload_len);
             return 0;
         }
-    case CMD_T_RESET:
+    case CMD_T_LAYOUT_ABORT:
         {
-            EPD_SPI_Hard_Reset();
-            EPD_Display_setup(TRUE);
+            log_debugf("CMD_T_LAYOUT_ABORT");
+            return 0;
+        }
+    case CMD_T_LAYOUT_COMMIT:
+        {
+            log_debugf("CMD_T_LAYOUT_COMMIT len=%d", raw_payload_len);
             return 0;
         }
     case CMD_T_SYNC_TIME:
@@ -255,102 +234,6 @@ int cmd_handler(void *p) {
                 return 1;
             }
             EPD_Trigger_Display(mode);
-            return 0;
-        }
-    case CMD_T_QUOTE_BEGIN:
-        {
-            if (payload_len != 3) {
-                log_debugf("runtime quote begin requires len/count payload");
-                quote_upload_reset();
-                return 1;
-            }
-            quote_payload_expected_len = (u16)payload[0] | ((u16)payload[1] << 8);
-            quote_payload_expected_count = payload[2];
-            if (quote_payload_expected_len == 0 ||
-                quote_payload_expected_len > RUNTIME_QUOTES_MAX_PAYLOAD_BYTES ||
-                quote_payload_expected_len > EPD_BUFFER_SIZE ||
-                quote_payload_expected_count == 0 ||
-                quote_payload_expected_count > RUNTIME_QUOTES_MAX_COUNT) {
-                log_debugf(
-                    "invalid runtime quote begin: len=%d count=%d",
-                    quote_payload_expected_len, quote_payload_expected_count
-                );
-                quote_upload_reset();
-                return 1;
-            }
-            buffer_cursor = 0;
-            quote_payload_open = true;
-            log_debugf(
-                "runtime quote upload begin: len=%d count=%d",
-                quote_payload_expected_len, quote_payload_expected_count
-            );
-            return 0;
-        }
-    case CMD_T_QUOTE_DATA:
-        {
-            if (!quote_payload_open) {
-                log_debugf("runtime quote data received before begin");
-                return 1;
-            }
-            if (payload_len == 0) {
-                log_debugf("empty runtime quote data chunk");
-                quote_upload_reset();
-                return 1;
-            }
-            if (buffer_cursor > quote_payload_expected_len ||
-                payload_len > quote_payload_expected_len - buffer_cursor) {
-                log_debugf(
-                    "runtime quote data overflow: cursor=%d chunk=%d expected=%d",
-                    buffer_cursor, payload_len, quote_payload_expected_len
-                );
-                quote_upload_reset();
-                return 1;
-            }
-            memcpy(&buffer[buffer_cursor], payload, payload_len);
-            buffer_cursor += payload_len;
-            return 0;
-        }
-    case CMD_T_QUOTE_COMMIT:
-        {
-            if (!quote_payload_open) {
-                log_debugf("runtime quote commit received before begin");
-                return 1;
-            }
-            if (buffer_cursor != quote_payload_expected_len) {
-                log_debugf(
-                    "runtime quote commit length mismatch: got=%d expected=%d",
-                    buffer_cursor, quote_payload_expected_len
-                );
-                quote_upload_reset();
-                return 1;
-            }
-            EPD_REFRESH_MODE refresh_mode = EPD_RM_FULL;
-            if (!read_refresh_mode(payload, payload_len, EPD_RM_FULL, &refresh_mode)) {
-                quote_upload_reset();
-                return 1;
-            }
-            const bool ok = runtime_quotes_write_payload(
-                buffer, quote_payload_expected_len, quote_payload_expected_count
-            );
-            quote_upload_reset();
-            if (!ok) {
-                return 1;
-            }
-            change_scene(EPD_SCENE_QUOTE);
-            set_force_refresh_when_available(refresh_mode);
-            return 0;
-        }
-    case CMD_T_QUOTE_CLEAR:
-        {
-            EPD_REFRESH_MODE refresh_mode = EPD_RM_FULL;
-            if (!read_refresh_mode(payload, payload_len, EPD_RM_FULL, &refresh_mode)) {
-                return 1;
-            }
-            if (!runtime_quotes_clear()) {
-                return 1;
-            }
-            change_scene(EPD_SCENE_QUOTE);
-            set_force_refresh_when_available(refresh_mode);
             return 0;
         }
     default:

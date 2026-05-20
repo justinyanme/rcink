@@ -29,14 +29,3 @@ void epd_display_list(
     struct date_time _time, bool full_refresh
 );
 #endif
-void epd_display_quote(
-    struct date_time _time, uint16_t battery_mv, int16_t temperature,
-    bool full_refresh
-);
-bool epd_quote_render_preview(
-    int16_t quote_index,
-    struct date_time _time,
-    uint16_t battery_mv,
-    int16_t temperature,
-    bool full_refresh
-);
