@@ -20,7 +20,7 @@ Output: `build/src/TLSR-LAYOUT.bin`.
 
 - [x] Phase 2 — fork, GATT service stubs, advertising format.
 - [x] Phase 3 — host-shim render port from rcpapercolor primitives.
-- [ ] Phase 4 — BEGIN/DATA/COMMIT transfer FSM.
+- [x] Phase 4 — BEGIN/DATA/COMMIT transfer FSM.
 - [ ] Phase 5 — recovery + ring log.
 
 See `docs/superpowers/specs/2026-05-20-tlsr-layout-protocol-design.md`.
