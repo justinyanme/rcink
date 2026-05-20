@@ -104,7 +104,7 @@ typedef struct layout_node {
         image_node_t image;
         sparkline_node_t sparkline;
         marker_node_t marker;
-    };
+    } data;
 } layout_node_t;
 
 #endif
