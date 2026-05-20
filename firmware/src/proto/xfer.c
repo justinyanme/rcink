@@ -10,6 +10,8 @@
 uint32_t crc32_zlib(const uint8_t *data, unsigned int len);
 void epd_clear_buffer(void);
 void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh);
+void layout_refresh_adv_payload(void);
+extern uint8_t layout_status_buf[16];
 
 #define XFER_CTL_BEGIN 0x01u
 #define XFER_CTL_ABORT 0x02u
@@ -73,6 +75,17 @@ static int verify_staging_crc(void)
         return -1;
     }
     return crc32_zlib(compressed, g_xfer.total_len) == g_xfer.crc32 ? 0 : -1;
+}
+
+static void publish_data_ver(uint32_t data_ver)
+{
+    layout_status_buf[0] = data_ver & 0xFF;
+    layout_status_buf[1] = (data_ver >> 8) & 0xFF;
+    layout_status_buf[2] = (data_ver >> 16) & 0xFF;
+    layout_status_buf[3] = (data_ver >> 24) & 0xFF;
+    layout_status_buf[4] = 0x01;
+    layout_status_buf[5] = 0x00;
+    layout_refresh_adv_payload();
 }
 
 void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
@@ -215,6 +228,7 @@ void xfer_run_pending_render(void)
         return;
     }
 
+    publish_data_ver(g_xfer.data_ver);
     emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_OK_COMMIT);
     g_xfer.state = XFER_IDLE;
 }
