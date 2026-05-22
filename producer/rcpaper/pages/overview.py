@@ -15,7 +15,60 @@ from rcpaper.palette import ColorToken
 from rcpaper.sources.calendar import TodaysCalendar
 from rcpaper.sources.claude import ClaudeUsage
 from rcpaper.sources.codex import CodexUsage
+from rcpaper.sources.github import GitHubActivity
+from rcpaper.sources.quotes import Quote
 from rcpaper.sources.reminders import TodaysReminders
+
+# Soft cap on the quote string when it sits in the header. Past this we
+# truncate with an ellipsis so the row still shows *something* alongside the
+# date stamp. Calibrated for VT323 body-bold + sm-bold on a 400-px panel.
+_HEADER_QUOTE_MAX = 30
+
+
+def _quote_inline(q: Quote | None) -> str | None:
+    """Flatten a multi-line Quote into a single header string, truncating
+    with `…` if it would push the date off the row. None means hide it."""
+    if q is None:
+        return None
+    joined = " ".join(line.strip() for line in q.lines if line.strip())
+    if not joined:
+        return None
+    if len(joined) > _HEADER_QUOTE_MAX:
+        return joined[: _HEADER_QUOTE_MAX - 1].rstrip(" ,.") + "…"
+    return joined
+
+
+def _github_row(gh: GitHubActivity | None) -> dict:
+    """One row mirroring the CLAUDE / CODEX rhythm:
+    [github icon] [GITHUB chip] [N today] [Md streak] [pr_open/pr_review PRs]."""
+    if gh is None:
+        return hstack(
+            gap=8,
+            align="center",
+            children=[
+                icon("github", size=16, color="black"),
+                text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+                text("—", size="body", weight="bold"),
+                spacer(),
+            ],
+        )
+    # Today color matches the CLAUDE/CODEX usage palette: 0=green low, scales up.
+    today_color: ColorToken = "green" if gh.today_commits > 0 else "black"
+    streak_color: ColorToken = "red" if gh.streak >= 7 else "yellow" if gh.streak >= 3 else "green"
+    return hstack(
+        gap=8,
+        align="center",
+        children=[
+            icon("github", size=16, color="black"),
+            text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+            text(str(gh.today_commits), size="h2", color=today_color, weight="bold"),
+            text("today", size="sm", weight="bold"),
+            text(f"{gh.streak}d", size="h2", color=streak_color, weight="bold"),
+            text("streak", size="sm", weight="bold"),
+            spacer(),
+            text(f"{gh.pr_open}/{gh.pr_review} PRs", size="sm", weight="bold"),
+        ],
+    )
 
 
 def _pct_color(pct: float | None) -> ColorToken:
@@ -145,16 +198,29 @@ def build_overview_page(
     codex: CodexUsage | None,
     calendar: TodaysCalendar | None,
     reminders: TodaysReminders | None,
+    github: GitHubActivity | None = None,
+    quote: Quote | None = None,
     now: dt.datetime,
 ) -> dict:
-    header = hstack(
-        align="center",
-        children=[
-            text("OVERVIEW", size="h1", weight="bold"),
-            spacer(),
-            text(now.strftime("%a · %b %d").upper(), size="sm", weight="bold"),
-        ],
-    )
+    date_label = text(now.strftime("%a · %b %d").upper(), size="sm", weight="bold")
+    # Inline quote replaces the old OVERVIEW h1 sticker when it fits. The
+    # header always shows the date stamp on the right; when no quote is
+    # available the left side just stays empty so the date floats right.
+    inline = _quote_inline(quote)
+    if inline:
+        header = hstack(
+            align="center",
+            children=[
+                text(f'"{inline}"', size="body", weight="bold"),
+                spacer(),
+                date_label,
+            ],
+        )
+    else:
+        header = hstack(
+            align="center",
+            children=[spacer(), date_label],
+        )
 
     claude_row = _usage_row(
         brand="CLAUDE",
@@ -176,16 +242,18 @@ def build_overview_page(
         secondary_pct=codex.secondary_pct if codex else None,
         secondary_label="7D",
     )
+    github_row = _github_row(github)
 
     return vstack(
         pad=16,
-        gap=12,
+        gap=10,
         children=[
             header,
             divider(color="black", thickness=2),
             spacer(size=4),
             claude_row,
             codex_row,
+            github_row,
             spacer(size=4),
             divider(color="black", thickness=1),
             spacer(size=4),

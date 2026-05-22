@@ -10,11 +10,15 @@ Sources:
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
 - **GitHub** — today's commits, current streak, open + review-requested PRs,
-  and a 14-week contribution heatmap via the GitHub GraphQL API. Reads
-  `GITHUB_TOKEN` + `GITHUB_USERNAME` from env; the token needs `read:user`
-  and `repo` scopes.
-- **Quote** — one of a curated set, rotated by date ordinal.
+  and a 14-week contribution heatmap via the GitHub GraphQL API. Needs
+  `GITHUB_TOKEN` + `GITHUB_USERNAME` — see [docs/setup/github.md](docs/setup/github.md).
+- **Quote** — one of a curated set, rotated by date ordinal; inlined in the
+  overview header, no standalone page.
 - **Image** — one-off remote image URL pages pushed manually with `uv run image-fetch ...`.
+
+Per-service setup notes live under [`docs/setup/`](docs/setup/):
+- [github.md](docs/setup/github.md) — PAT scopes, env, verification
+- [axiom.md](docs/setup/axiom.md) — token, dataset, launchd, schema
 
 ## One-time setup
 

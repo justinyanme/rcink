@@ -36,7 +36,7 @@ TTF_PATH = HERE / "VT323-Regular.ttf"
 TTF_URL = "https://github.com/google/fonts/raw/main/ofl/vt323/VT323-Regular.ttf"
 
 DPI = 141  # matches Adafruit fontconvert default
-SIZES_PT = [9, 12, 18, 24]
+SIZES_PT = [11, 14, 18, 24]
 FIRST = 0x20
 LAST = 0x7E  # printable ASCII; CJK comes from the bundled efontCN_*
 

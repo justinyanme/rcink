@@ -19,15 +19,15 @@ from scripts.claude_fetch import run as run_claude
 from scripts.codex_fetch import run as run_codex
 from scripts.github_fetch import run as run_github
 from scripts.overview_fetch import run as run_overview
-from scripts.quote_fetch import run as run_quote
 from scripts.todo_fetch import run as run_todo
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
 # Ordered to match the on-device page rotation (overview=5, claude=10, codex=20,
-# calendar=30, todo=40, github=50, quote=80). Order doesn't affect correctness
-# — each fetcher writes an independent Axiom event — it just keeps the log
-# readable.
+# calendar=30, todo=40, github=50). The standalone quote page is gone — the
+# day's quote is now inlined in the overview header (see pages.overview).
+# Order doesn't affect correctness — each fetcher writes an independent Axiom
+# event — it just keeps the log readable.
 FETCHERS: list[tuple[str, Callable[[], None]]] = [
     ("claude", run_claude),
     ("codex", run_codex),
@@ -35,7 +35,6 @@ FETCHERS: list[tuple[str, Callable[[], None]]] = [
     ("todo", run_todo),
     ("github", run_github),
     ("overview", run_overview),
-    ("quote", run_quote),
 ]
 
 

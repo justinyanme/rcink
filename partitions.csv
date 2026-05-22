@@ -1,20 +1,19 @@
-# Custom partition table for rcpapercolor.
+# Custom partition table for rcpapercolor — 8MB layout (no OTA).
 #
-# Default layout from arduino-esp32's default_16MB.csv, plus a 128 KB "rcdata"
-# NVS partition carved from the SPIFFS tail. We can't enlarge the system "nvs"
-# partition without moving app0 past 0x10000 — and PlatformIO's esptool flashes
-# the firmware at a hardcoded 0x10000 offset regardless of the partition table,
-# so any app0 shift creates a boot loop. A second NVS partition sidesteps that.
+# The M5PaperColor (ESP32-S3-PICO-1) on hand has 8MB embedded flash. We drop
+# the dual-app OTA scheme; a full re-flash over USB is always available and
+# simpler than maintaining two 3MB app slots that would overflow the current
+# ~3.4MB image anyway. `otadata` is kept (Arduino-ESP32 references it during
+# boot) but never points anywhere meaningful with a single app0 slot.
 #
-# nvs.cpp opens "rcpaper" namespace from the "rcdata" partition explicitly via
-# Preferences::begin(name, readOnly, "rcdata") so the 15 KB pages blob has
-# room (default nvs is 20 KB total — far too tight after wear-leveling slack).
+# `rcdata` keeps its own 128KB NVS partition — nvs.cpp opens "rcpaper"
+# namespace there via Preferences::begin(name, readOnly, "rcdata") so the
+# pages blob has room (default nvs is 20KB total).
 
 # Name,   Type, SubType, Offset,   Size,     Flags
 nvs,      data, nvs,     0x9000,   0x5000,
 otadata,  data, ota,     0xe000,   0x2000,
-app0,     app,  ota_0,   0x10000,  0x640000,
-app1,     app,  ota_1,   0x650000, 0x640000,
-spiffs,   data, spiffs,  0xc90000, 0x340000,
-rcdata,   data, nvs,     0xfd0000, 0x20000,
-coredump, data, coredump,0xff0000, 0x10000,
+app0,     app,  ota_0,   0x10000,  0x500000,
+spiffs,   data, spiffs,  0x510000, 0x2C0000,
+rcdata,   data, nvs,     0x7D0000, 0x20000,
+coredump, data, coredump,0x7F0000, 0x10000,

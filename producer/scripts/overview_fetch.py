@@ -18,6 +18,8 @@ from rcpaper.pages.overview import build_overview_page
 from rcpaper.sources.calendar import fetch_todays_events
 from rcpaper.sources.claude import fetch_claude_usage
 from rcpaper.sources.codex import fetch_codex_usage
+from rcpaper.sources.github import fetch_github_activity
+from rcpaper.sources.quotes import pick_quote
 from rcpaper.sources.reminders import fetch_todays_reminders
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -41,20 +43,28 @@ def run() -> None:
     codex = _try("codex", fetch_codex_usage)
     cal = _try("calendar", lambda: fetch_todays_events(now=now))
     rem = _try("reminders", lambda: fetch_todays_reminders(now=now))
+    github = _try("github", fetch_github_activity)
+    # pick_quote is deterministic + offline; never expected to raise, so call
+    # it directly. The header drops it gracefully if the joined string is too
+    # long to share the row with the date stamp.
+    quote = pick_quote(now.date())
     logger.info(
         f"overview: claude={'ok' if claude else 'NA'} "
         f"codex={'ok' if codex else 'NA'} "
         f"calendar={len(cal.events) if cal else 'NA'} "
-        f"reminders={rem.incomplete_total if rem else 'NA'}"
+        f"reminders={rem.incomplete_total if rem else 'NA'} "
+        f"github={'ok' if github else 'NA'}"
     )
     page = build_overview_page(
         claude=claude,
         codex=codex,
         calendar=cal,
         reminders=rem,
+        github=github,
+        quote=quote,
         now=now,
     )
-    # order=5 → shown first, before claude (10) / codex (20) / calendar (30) / todo (40) / quote (80).
+    # order=5 → shown first, before claude (10) / codex (20) / calendar (30) / todo (40) / github (50).
     ingest(id="overview", layout=page, order=5)
 
 
