@@ -103,9 +103,16 @@ bool refetch_now() {
     g_state.pages = std::move(fresh);
     // Preserve g_state.page_index: scheduled refreshes update content without
     // changing pages. setup() clamps idx if the producer shrank the page list.
-    // Only stamp last_fetch_s when NTP genuinely synced — otherwise time() is
-    // RTC fallback (often stale or local-as-UTC) and would render wrong.
-    if (ntp_ok) g_state.last_fetch_s = (uint64_t)time(nullptr);
+    // Stamp last_fetch_s: prefer NTP-synced wall clock; fall back to the max
+    // data_ts across fetched pages (server-authoritative UTC) so the refresh
+    // indicator always advances on a successful fetch even when NTP is down.
+    if (ntp_ok) {
+      g_state.last_fetch_s = (uint64_t)time(nullptr);
+    } else {
+      uint64_t max_data_ts = 0;
+      for (const auto& p : g_state.pages) max_data_ts = std::max(max_data_ts, p.data_ts);
+      if (max_data_ts > g_state.last_fetch_s) g_state.last_fetch_s = max_data_ts;
+    }
     nvs_save(g_state);
     Serial.printf("[main] fetched %u pages, idx=%u (last_fetch updated=%d)\n",
                   (unsigned)g_state.pages.size(),
