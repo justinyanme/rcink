@@ -92,9 +92,8 @@ void paint_status_bar(M5Canvas& canvas,
   // --- Temperature ---
   if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
   else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
-  int16_t temp_w = 8 + 18 + canvas.textWidth(num) + 8;
+  int16_t temp_w = 18 + canvas.textWidth(num) + 8;
   if (!fits(temp_w)) return;
-  canvas.setCursor(x, y_text); canvas.print("\xC2\xB7"); x += 8;
   blit_icon16(canvas, x, y_icon, "thermometer"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(num);
   x += canvas.textWidth(num) + 8;
@@ -110,18 +109,26 @@ void paint_status_bar(M5Canvas& canvas,
 
   // --- Data time (page's data_ts) ---
   String s = format_local_hhmm(rec.data_ts);
-  int16_t data_w = 8 + 18 + canvas.textWidth(s.c_str()) + 8;
+  int16_t data_w = 18 + canvas.textWidth(s.c_str()) + 8;
   if (!fits(data_w)) return;
-  canvas.setCursor(x, y_text); canvas.print("\xC2\xB7"); x += 8;
   blit_icon16(canvas, x, y_icon, "download"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(s.c_str());
   x += canvas.textWidth(s.c_str()) + 8;
 
-  // --- Refresh time (device last_fetch_s) ---
+  // --- Last refresh time (device last_fetch_s) ---
   s = format_local_hhmm(last_fetch_s);
-  int16_t refresh_w = 18 + canvas.textWidth(s.c_str());
+  int16_t refresh_w = 18 + canvas.textWidth(s.c_str()) + 8;
   if (!fits(refresh_w)) return;
   blit_icon16(canvas, x, y_icon, "refresh"); x += 18;
+  canvas.setCursor(x, y_text); canvas.print(s.c_str());
+  x += canvas.textWidth(s.c_str()) + 8;
+
+  // --- Next refresh time (last_fetch_s + FETCH_INTERVAL_SEC) ---
+  uint64_t next_s = last_fetch_s ? last_fetch_s + FETCH_INTERVAL_SEC : 0;
+  s = format_local_hhmm(next_s);
+  int16_t next_w = 18 + canvas.textWidth(s.c_str());
+  if (!fits(next_w)) return;
+  blit_icon16(canvas, x, y_icon, "clock"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(s.c_str());
 }
 
