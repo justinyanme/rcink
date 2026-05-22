@@ -27,6 +27,8 @@ bool g_task_started = false;
 bool g_warned_unavailable = false;
 LedState g_state = LedState::Off;
 uint32_t g_state_start_ms = 0;
+Rgb      g_overlay_rgb{0, 0, 0};
+uint32_t g_overlay_until_ms = 0;
 rmt_obj_t* g_rmt = nullptr;
 portMUX_TYPE g_lock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -105,26 +107,53 @@ void led_task(void*) {
   LedState last_state = LedState::Off;
   bool last_on = false;
   bool first = true;
+  bool last_overlay_active = false;
+  Rgb  last_overlay_rgb{0, 0, 0};
 
   for (;;) {
     LedState state;
     uint32_t started_ms;
+    Rgb      overlay_rgb;
+    uint32_t overlay_until;
     portENTER_CRITICAL(&g_lock);
-    state = g_state;
-    started_ms = g_state_start_ms;
+    state         = g_state;
+    started_ms    = g_state_start_ms;
+    overlay_rgb   = g_overlay_rgb;
+    overlay_until = g_overlay_until_ms;
     portEXIT_CRITICAL(&g_lock);
 
-    const Pattern p = pattern_for(state);
-    bool on = false;
-    if (p.period_ms > 0 && p.on_ms > 0) {
-      on = (millis() - started_ms) % p.period_ms < p.on_ms;
-    }
+    uint32_t now = millis();
+    bool overlay_active = (int32_t)(overlay_until - now) > 0;
 
-    if (first || state != last_state || on != last_on) {
-      write_pattern(p, on);
-      first = false;
-      last_state = state;
-      last_on = on;
+    if (overlay_active) {
+      if (first || !last_overlay_active || overlay_rgb.r != last_overlay_rgb.r ||
+          overlay_rgb.g != last_overlay_rgb.g || overlay_rgb.b != last_overlay_rgb.b) {
+        rmt_data_t led_data[kRgbLedCount * 24];
+        rmt_data_t* out = led_data;
+        for (size_t i = 0; i < kRgbLedCount; ++i) write_pixel(out, overlay_rgb);
+        if (g_ready && g_rmt != nullptr) {
+          rmtWriteBlocking(g_rmt, led_data, kRgbLedCount * 24);
+        }
+        last_overlay_active = true;
+        last_overlay_rgb    = overlay_rgb;
+        first               = false;
+        // Force a heartbeat redraw when the overlay clears.
+        last_state          = LedState::Off;
+        last_on             = false;
+      }
+    } else {
+      const Pattern p = pattern_for(state);
+      bool on = false;
+      if (p.period_ms > 0 && p.on_ms > 0) {
+        on = (now - started_ms) % p.period_ms < p.on_ms;
+      }
+      if (first || last_overlay_active || state != last_state || on != last_on) {
+        write_pattern(p, on);
+        first               = false;
+        last_state          = state;
+        last_on             = on;
+        last_overlay_active = false;
+      }
     }
 
     vTaskDelay(pdMS_TO_TICKS(20));
@@ -185,5 +214,25 @@ void led_status_show(LedState state) {
 }
 
 void led_status_tick() {}
+
+void led_status_pulse(uint8_t r, uint8_t g, uint8_t b, uint16_t duration_ms) {
+  if (duration_ms == 0) return;
+  Rgb color{r, g, b};
+  uint32_t until = millis() + duration_ms;
+  portENTER_CRITICAL(&g_lock);
+  g_overlay_rgb      = color;
+  g_overlay_until_ms = until;
+  portEXIT_CRITICAL(&g_lock);
+
+  // Push the color immediately so the user sees the flash even if the
+  // led_task is mid-vTaskDelay. The task takes over for the remainder of
+  // the overlay window.
+  if (g_ready && g_rmt != nullptr) {
+    rmt_data_t led_data[kRgbLedCount * 24];
+    rmt_data_t* out = led_data;
+    for (size_t i = 0; i < kRgbLedCount; ++i) write_pixel(out, color);
+    rmtWriteBlocking(g_rmt, led_data, kRgbLedCount * 24);
+  }
+}
 
 }  // namespace rcpaper
