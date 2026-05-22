@@ -29,9 +29,9 @@ should require zero firmware changes — drop a new producer script, that's it.
 ```
 ┌──────────────────────────┐    ingest     ┌─────────────────┐   APL POST     ┌────────────────────┐
 │ Producers (Mac/launchd)  │ ─────────────►│ Axiom dataset   │◄──────────────│ Firmware (ESP32-S3)│
-│  • claude_fetch.py       │  one event    │ "rcpapercolor"  │  every 15 min  │ wakes from sleep   │
+│  • claude_fetch.py       │  one event    │ "rcpapercolor"  │  every 30 min  │ wakes from sleep   │
 │  • codex_fetch.py        │  per page     │ kind=page       │                │ render + sleep     │
-│  • (future scripts)      │  every 15min  │ id=<provider>   │                └────────────────────┘
+│  • (future scripts)      │  periodic     │ id=<provider>   │                └────────────────────┘
 └──────────────────────────┘               │ layout=<tree>   │
                                            └─────────────────┘
 ```
@@ -176,13 +176,11 @@ on wake:
       if pages.ok:
           state.cached_pages_blob = serialize(pages)
           state.last_fetch_ts     = now
-          state.page_index        = 0
           nvs_save(state)
 
   switch reason:
       case BUTTON_A:   state.page_index = (state.page_index + 1) % len(pages)
       case BUTTON_B:   state.page_index = (state.page_index - 1) % len(pages)
-      case RTC_ALARM:  state.page_index = (state.page_index + 1) % len(pages)
       default:         /* keep current */
 
   stale = (now - state.last_fetch_ts) > FETCH_INTERVAL
@@ -190,8 +188,7 @@ on wake:
   nvs_save(state)
 
   enable_button_wake(A, B, C)
-  next = min(state.last_fetch_ts + FETCH_INTERVAL, now + ROTATE_INTERVAL)
-  esp_deep_sleep_until(next)
+  esp_deep_sleep_until(now + FETCH_INTERVAL)
 ```
 
 ### Render engine
@@ -336,8 +333,7 @@ later page kind can be entirely different (clock face, weather, calendar).
 #define AXIOM_APL_QUERY      "['rcpapercolor'] | where kind == 'page' and _time > ago(1h) | summarize arg_max(_time, *) by id | project id, order, layout | order by order asc nulls last, id asc"
 
 // Behavior
-#define FETCH_INTERVAL_SEC   900   // 15 min
-#define ROTATE_INTERVAL_SEC  120   //  2 min
+#define FETCH_INTERVAL_SEC   1800  // 30 min scheduled refresh
 #define ROOT_CA_AXIOM        R"(-----BEGIN CERTIFICATE-----\n...)"
 ```
 
@@ -379,10 +375,10 @@ rcpapercolor/
 
 | Knob               | Default          | Notes                                          |
 |--------------------|------------------|------------------------------------------------|
-| Fetch interval     | 15 min           | Per device wake; APL POST + JSON parse + NVS  |
-| Rotate interval    |  2 min           | Page-index ++ on each timer wake              |
+| Fetch interval     | 30 min           | Timer wake; APL POST + JSON parse + NVS       |
+| Rotate interval    | none             | Page index changes only on button wake        |
 | Buttons            | A=next, B=prev, C=force fetch | Wakes from deep sleep via ext1   |
-| Wake budget/day    | ~816 (96 fetch + 720 rotate) | Battery est. ~6 d on 1250 mAh     |
+| Wake budget/day    | ~48 scheduled + button wakes | Battery est. depends on manual use |
 | Cached pages cap   | ~16 KB JSON     | NVS blob; reject oversized                    |
 | TLS root           | Axiom chain only | One PEM in config.h                           |
 | NVS namespace      | `rcpaper`        | Keys: `pages_blob`, `page_index`, `last_ts`   |

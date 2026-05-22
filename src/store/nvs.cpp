@@ -24,7 +24,6 @@ DeviceState nvs_load() {
   bool opened = p.begin(NS, true, PART);
   s.page_index            = p.getUChar("idx", 0);
   s.last_fetch_s          = p.getULong64("last", 0);
-  s.wakes_since_fetch     = p.getUShort("wkcnt", 0);
   s.last_rendered_id      = p.getString("rid", "");
   s.last_rendered_data_ts = p.getULong64("rts", 0);
   size_t blob_len = p.getBytesLength(K_PAGES);
@@ -35,10 +34,9 @@ DeviceState nvs_load() {
     blob = String(buf.data());
   }
   p.end();
-  Serial.printf("[nvs] load opened=%d idx=%u last=%llu wkcnt=%u blob_len=%u rid=%s rts=%llu\n",
+  Serial.printf("[nvs] load opened=%d idx=%u last=%llu blob_len=%u rid=%s rts=%llu\n",
                 (int)opened, (unsigned)s.page_index,
                 (unsigned long long)s.last_fetch_s,
-                (unsigned)s.wakes_since_fetch,
                 (unsigned)blob_len, s.last_rendered_id.c_str(),
                 (unsigned long long)s.last_rendered_data_ts);
 
@@ -81,7 +79,6 @@ void nvs_save(const DeviceState& s) {
   size_t written = p.putBytes(K_PAGES, blob.c_str(), blob.length());
   p.putUChar("idx", s.page_index);
   p.putULong64("last", s.last_fetch_s);
-  p.putUShort("wkcnt", s.wakes_since_fetch);
   p.end();
   if (written != blob.length()) {
     Serial.printf("[nvs] FAILED to save pages blob=%u B written=%u (idx=%u still saved)\n",
@@ -93,14 +90,12 @@ void nvs_save(const DeviceState& s) {
   }
 }
 
-void nvs_save_progress(uint8_t idx, uint16_t wakes_since_fetch) {
-  // Partial write of the two values that change on every Timer / button
-  // wake without forcing a new full pages-blob commit. Cheap (a couple of
-  // dozen bytes) so we can call it from setup() on every wake.
+void nvs_save_progress(uint8_t idx) {
+  // Partial write for button-driven page navigation without forcing a full
+  // pages-blob commit.
   Preferences p;
   p.begin(NS, false, PART);
   p.putUChar("idx", idx);
-  p.putUShort("wkcnt", wakes_since_fetch);
   p.end();
 }
 

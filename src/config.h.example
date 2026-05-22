@@ -12,8 +12,7 @@
 #define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json'], ['data_ts']) by ['id'] | project ['id'], ['order'], ['layout_json'], ['data_ts'] | order by ['order'] asc nulls last, ['id'] asc"
 
 // Behavior
-#define FETCH_INTERVAL_SEC   900   // 15 min
-#define ROTATE_INTERVAL_SEC  300   //  5 min
+#define FETCH_INTERVAL_SEC   1800  // 30 min scheduled refresh
 
 // Local time zone, in POSIX TZ string format. The footer formats HH:MM in
 // this zone after NTP sync. Examples:

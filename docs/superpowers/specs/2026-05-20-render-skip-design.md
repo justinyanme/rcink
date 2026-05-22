@@ -1,4 +1,4 @@
-# Skip-when-unchanged render + rotate cadence
+# Skip-when-unchanged render + button-only navigation
 
 The Spectra 6 panel on the M5PaperColor runs the same waveform regardless of
 which M5GFX `epd_mode_t` we select — measured 16.7–16.8 s for `epd_quality`,
@@ -20,22 +20,21 @@ is to **not refresh when nothing changed**.
    `nvs_save_render_marker()` partial write that touches only the two
    marker keys.
 
-3. **Halve the rotation cadence.** Bump `ROTATE_INTERVAL_SEC` from 120 → 300.
-   The panel now refreshes 12×/hour instead of 30×/hour on idle. With 6
-   pages, each page is still visited ~1.5×/hour. This is unrelated to skip
-   logic but lands in the same change because both target panel wear.
+3. **Remove timer-driven rotation.** Timer wakes are scheduled refreshes only.
+   `FETCH_INTERVAL_SEC = 1800` wakes the device every 30 min; BtnA/BtnB are the
+   only page navigation path. If the current page's `(id, data_ts)` is unchanged
+   after a scheduled fetch, the render skip keeps the panel untouched.
 
 ## Where skip actually helps
 
 - **`r` re-render command** (dev console) → always skips after the first
   render of a page. Cuts the cost of debugging cycles in half.
-- **Boot replay** (cold start with cached pages, no rotation, no new fetch
-  in 15-min window) → the panel already shows the same image; skip saves
+- **Scheduled refresh with unchanged data** → the panel already shows the same
+  image; skip saves
   one full refresh on every undisturbed wake.
 - **Forced refetch (`f` / ButtonC) where producer didn't update**
-  `data_ts` → idx resets to 0 but the page content is identical; skip.
-- **Timer rotation** still triggers a render (different page → different
-  id → no skip).
+  `data_ts` → current page content is identical; skip.
+- **Button navigation** renders because the selected page id changes.
 
 ## Cross-session migration
 

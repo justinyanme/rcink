@@ -2,8 +2,9 @@
 
 Battery-powered colour e-ink dashboard for the M5Stack PaperColor that renders
 a generic JSON layout-tree fetched from Axiom. Producers run on macOS and push
-one event per dashboard page; the device wakes every 15 min, fetches, renders,
-and deep-sleeps.
+one event per dashboard page; the device wakes every 30 min for scheduled
+refresh, renders only changed content, and deep-sleeps. Page changes are
+button-only.
 
 Two halves of one repo:
 
@@ -44,8 +45,7 @@ PaperColor RGB LEDs are low-duty heartbeats: brief pulse, off between pulses.
 - cyan/blue heartbeat — NTP or Axiom sync
 - amber/red heartbeat — sync/fetch failed, cache kept
 - amber heartbeat — panel refresh/render
-- slow green heartbeat — idle with WiFi up
-- slow blue heartbeat — WiFi disconnected and idle
+- idle states — LEDs off
 - off — entering deep sleep
 
 ## Buttons

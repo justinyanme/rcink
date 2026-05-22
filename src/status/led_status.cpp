@@ -43,8 +43,8 @@ Pattern pattern_for(LedState state) {
     case LedState::Syncing:          return {{0, 48, 48},  {0, 24, 72},  700,  80};
     case LedState::SyncFailed:       return {{72, 32, 0},  {72, 0, 0},   900,  120};
     case LedState::Refreshing:       return {{72, 52, 0},  {72, 52, 0},  1200, 80};
-    case LedState::Idle:             return {{8, 32, 8},   {8, 32, 8},   3500, 60};
-    case LedState::IdleDisconnected: return {{0, 12, 28},  {0, 12, 28},  3500, 60};
+    case LedState::Idle:             return {{0, 0, 0},   {0, 0, 0},   0, 0};
+    case LedState::IdleDisconnected: return {{0, 0, 0},   {0, 0, 0},   0, 0};
   }
   return {{0, 0, 0}, {0, 0, 0}, 0, 0};
 }

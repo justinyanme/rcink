@@ -1,7 +1,7 @@
 // src/main.cpp
 //
 // Orchestrator. Owns the wake cycle:
-//   sense → wifi → ntp → axiom fetch → render → deep sleep.
+//   sense → fetch when scheduled/forced → render or skip → deep sleep.
 //
 // Render and dev-console primitives live in their own modules:
 //   render/status_bar.cpp, render/nav_strip.cpp, render/page.cpp,
@@ -101,8 +101,8 @@ bool refetch_now() {
   bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (ok) {
     g_state.pages = std::move(fresh);
-    // Preserve g_state.page_index: rotation continues across fetches. The
-    // page-rotate logic in setup() clamps idx if pages shrank.
+    // Preserve g_state.page_index: scheduled refreshes update content without
+    // changing pages. setup() clamps idx if the producer shrank the page list.
     // Only stamp last_fetch_s when NTP genuinely synced — otherwise time() is
     // RTC fallback (often stale or local-as-UTC) and would render wrong.
     if (ntp_ok) g_state.last_fetch_s = (uint64_t)time(nullptr);
@@ -208,39 +208,30 @@ void setup() {
 
   g_state = nvs_load();
 
-  // Fetch cadence is gated on a deep-sleep-persistent wake counter, NOT on
-  // wall clock. time(nullptr) isn't reliably restored across wakes (M5.begin
-  // doesn't sync the BM8563 RTC chip into the system clock on this board),
-  // so a (now - last_fetch_s) comparison either underflows or overflows and
-  // fires every wake — wasting WiFi every 5 min instead of every 15.
-  constexpr uint16_t WAKES_PER_FETCH = FETCH_INTERVAL_SEC / ROTATE_INTERVAL_SEC;
   bool needs_fetch =
       g_state.pages.empty()
       || wr == WakeReason::ButtonC
-      || g_state.wakes_since_fetch + 1 >= WAKES_PER_FETCH;
+      || wr == WakeReason::Timer;
 
   if (needs_fetch) {
-    if (refetch_now()) {
-      g_state.wakes_since_fetch = 0;
-    } else {
-      g_state.wakes_since_fetch++;  // still counts as a wake even if fetch failed
-    }
-  } else {
-    g_state.wakes_since_fetch++;
+    refetch_now();
   }
 
-  // Rotate based on wake reason. refetch_now() no longer resets idx, so
-  // rotation continues from where the last session left off — pages cycle
-  // visibly instead of getting pinned to the post-refetch idx=0.
+  // Page navigation is button-only. Timer wakes are scheduled refreshes and
+  // must not advance the page; if fetched content is unchanged, render_current()
+  // will skip the panel refresh via the persisted render marker.
   if (!g_state.pages.empty()) {
+    uint8_t prev_page_index = g_state.page_index;
     if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
-    if (wr == WakeReason::ButtonA || wr == WakeReason::Timer) {
+    if (wr == WakeReason::ButtonA) {
       g_state.page_index = (uint8_t)((g_state.page_index + 1) % g_state.pages.size());
     } else if (wr == WakeReason::ButtonB) {
       g_state.page_index = (uint8_t)((g_state.page_index + g_state.pages.size() - 1)
                                       % g_state.pages.size());
     }
-    nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
+    if (g_state.page_index != prev_page_index) {
+      nvs_save_progress(g_state.page_index);
+    }
   }
 
   render_current();
@@ -255,9 +246,7 @@ void setup() {
   led_status_show(LedState::IdleDisconnected);
   Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
 #else
-  // Sleep for exactly one rotation interval — fetch cadence is decided by
-  // the wakes_since_fetch counter at wake-time, not the sleep duration.
-  enter_deep_sleep_until((uint64_t)time(nullptr) + ROTATE_INTERVAL_SEC);
+  enter_deep_sleep_until((uint64_t)time(nullptr) + FETCH_INTERVAL_SEC);
 #endif
 }
 

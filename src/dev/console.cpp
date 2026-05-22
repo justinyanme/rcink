@@ -55,7 +55,7 @@ static void console_state_dump() {
 }
 
 // In production the buttons act as EXT1 deep-sleep wake sources, so the device
-// wakes → fetches/rotates → renders → sleeps in one cycle. In DEV_CONSOLE mode
+// wakes → fetches or navigates → renders → sleeps in one cycle. In DEV_CONSOLE mode
 // the device stays awake and never sleeps, so those wake sources are inert.
 // Poll the three side buttons (M5Unified mapping: G9=A, G10=B, G1=C) directly
 // in loop() and dispatch the matching console command on a falling edge so the
@@ -119,7 +119,7 @@ void console_dispatch(char c) {
     case 'n':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
       g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
-      nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
+      nvs_save_progress(g_state.page_index);
       Serial.printf("[console] n → idx=%u\n", g_state.page_index);
       render_current();
       led_status_show(LedState::IdleDisconnected);
@@ -127,7 +127,7 @@ void console_dispatch(char c) {
     case 'b':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
       g_state.page_index = (g_state.page_index + g_state.pages.size() - 1) % g_state.pages.size();
-      nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
+      nvs_save_progress(g_state.page_index);
       Serial.printf("[console] b → idx=%u\n", g_state.page_index);
       render_current();
       led_status_show(LedState::IdleDisconnected);
