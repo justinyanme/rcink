@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "net/wifi.h"
+#include "power/nav_delta.h"
 #include "power/sleep.h"
 #include "render/page.h"
 #include "render/palette.h"
@@ -19,6 +20,8 @@ namespace rcpaper {
 extern DeviceState g_state;
 bool refetch_now();
 void render_current();
+struct NavCoalesceResult { int delta = 0; bool force_refetch = false; };
+NavCoalesceResult coalesce_nav_from_poll(int initial_delta);
 }  // namespace rcpaper
 
 namespace rcpaper::dev {
@@ -71,6 +74,29 @@ void dev_buttons_init() {
   for (auto& b : g_dev_btns) pinMode(b.pin, INPUT_PULLUP);
 }
 
+static void dev_handle_nav_button(int initial_delta) {
+  if (g_state.pages.empty()) { Serial.println("[btn] no pages"); return; }
+  NavCoalesceResult nav = coalesce_nav_from_poll(initial_delta);
+  if (nav.force_refetch) {
+    if (refetch_now()) {}
+  }
+  if (nav.delta != 0) {
+    g_state.page_index = apply_nav_delta(g_state.page_index, nav.delta,
+                                          g_state.pages.size());
+    nvs_save_progress(g_state.page_index);
+  }
+  Serial.printf("[btn] coalesced → idx=%u\n", g_state.page_index);
+  render_current();
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  led_status_show(LedState::IdleDisconnected);
+  // Drain any presses that may have landed during the long render so the
+  // next dev_buttons_poll edge-detect doesn't see a stale state.
+  for (auto& b : g_dev_btns) {
+    b.prev_high = digitalRead(b.pin) != 0;
+    b.last_change_ms = millis();
+  }
+}
+
 void dev_buttons_poll() {
   uint32_t now = millis();
   for (auto& b : g_dev_btns) {
@@ -81,8 +107,16 @@ void dev_buttons_poll() {
     b.prev_high = high;
     b.last_change_ms = now;
     if (!high) {  // falling edge = press
-      Serial.printf("[btn] G%d → '%c'\n", b.pin, b.cmd);
-      console_dispatch(b.cmd);
+      if (b.pin == 9) {        // BtnA = next
+        Serial.printf("[btn] G%d → nav coalesce +1\n", b.pin);
+        dev_handle_nav_button(+1);
+      } else if (b.pin == 10) { // BtnB = prev
+        Serial.printf("[btn] G%d → nav coalesce -1\n", b.pin);
+        dev_handle_nav_button(-1);
+      } else {                 // BtnC = refetch (single-step)
+        Serial.printf("[btn] G%d → '%c'\n", b.pin, b.cmd);
+        console_dispatch(b.cmd);
+      }
     }
   }
 }

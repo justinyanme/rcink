@@ -117,36 +117,17 @@ static void flash_for_button(WakeReason r) {
   }
 }
 
-// Caller must only invoke this for WakeReason::ButtonA or ButtonB.
-static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
+// Shared sliding-window loop driven by ISR counters. Caller seeds the initial
+// delta (+1 / -1 from whichever press triggered entry) and provides baselines
+// for the ISR counters so already-counted presses aren't replayed.
+static NavCoalesceResult run_coalesce_loop(int initial_delta,
+                                            uint32_t seen_a,
+                                            uint32_t seen_b,
+                                            uint32_t seen_c) {
   NavCoalesceResult out;
-  out.delta = (initial == WakeReason::ButtonA) ? 1 : -1;
-  flash_for_button(initial);
-
-  // Snapshot any boot-window presses captured by ISRs before we got here.
-  uint32_t boot_a = g_isr_count_a;
-  uint32_t boot_b = g_isr_count_b;
-  uint32_t boot_c = g_isr_count_c;
-  Serial.printf("[nav] enter initial=%d boot_isr a=%u b=%u c=%u\n",
-                (int)initial, (unsigned)boot_a, (unsigned)boot_b, (unsigned)boot_c);
-
-  // Replay boot presses as if they happened at function entry.
-  out.delta += (int)boot_a;
-  out.delta -= (int)boot_b;
-  for (uint32_t i = 0; i < boot_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
-  for (uint32_t i = 0; i < boot_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
-  if (boot_c > 0) {
-    out.force_refetch = true;
-    led_status_pulse(96, 56, 0, kNavLedPulseMs);
-    Serial.printf("[nav] coalesce done delta=%d force_refetch=1 (boot-c)\n", out.delta);
-    return out;
-  }
-
+  out.delta = initial_delta;
   const uint32_t start_ms = millis();
   uint32_t deadline_ms    = start_ms + kNavCoalesceWindowMs;
-  uint32_t seen_a = boot_a;
-  uint32_t seen_b = boot_b;
-  uint32_t seen_c = boot_c;
 
   for (;;) {
     uint32_t now = millis();
@@ -184,6 +165,53 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
                 out.delta, (int)out.force_refetch,
                 (unsigned)(millis() - start_ms));
   return out;
+}
+
+// Entry from setup() on a deep-sleep ButtonA/ButtonB wake. The wake press
+// did NOT increment any ISR (the GPIO was already LOW when ISRs were armed),
+// so we seed with ±1 from the wake reason and "replay" any ISR ticks that
+// landed during M5.begin() as if they were the next presses in the window.
+static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
+  int delta0 = (initial == WakeReason::ButtonA) ? 1 : -1;
+  flash_for_button(initial);
+
+  uint32_t boot_a = g_isr_count_a;
+  uint32_t boot_b = g_isr_count_b;
+  uint32_t boot_c = g_isr_count_c;
+  Serial.printf("[nav] enter initial=%d boot_isr a=%u b=%u c=%u\n",
+                (int)initial, (unsigned)boot_a, (unsigned)boot_b, (unsigned)boot_c);
+
+  delta0 += (int)boot_a - (int)boot_b;
+  for (uint32_t i = 0; i < boot_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
+  for (uint32_t i = 0; i < boot_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
+  if (boot_c > 0) {
+    NavCoalesceResult r;
+    r.delta = delta0;
+    r.force_refetch = true;
+    led_status_pulse(96, 56, 0, kNavLedPulseMs);
+    Serial.printf("[nav] coalesce done delta=%d force_refetch=1 (boot-c)\n", r.delta);
+    return r;
+  }
+  return run_coalesce_loop(delta0, boot_a, boot_b, boot_c);
+}
+
+// Entry from the dev-console button poll. Unlike the wake path, the press
+// that triggered entry HAS already incremented the ISR (the falling edge
+// fired both the poll and the ISR), so the current counters become the
+// baseline — additional presses during the window are everything beyond it.
+// Exposed (non-static) so dev/console.cpp can call it.
+NavCoalesceResult coalesce_nav_from_poll(int initial_delta) {
+  WakeReason fake = (initial_delta > 0) ? WakeReason::ButtonA : WakeReason::ButtonB;
+  flash_for_button(fake);
+  // Small delay so a pending ISR for the just-detected falling edge has
+  // definitely fired before we snapshot baselines.
+  delay(2);
+  uint32_t seen_a = g_isr_count_a;
+  uint32_t seen_b = g_isr_count_b;
+  uint32_t seen_c = g_isr_count_c;
+  Serial.printf("[nav] poll-entry initial=%d baseline a=%u b=%u c=%u\n",
+                initial_delta, (unsigned)seen_a, (unsigned)seen_b, (unsigned)seen_c);
+  return run_coalesce_loop(initial_delta, seen_a, seen_b, seen_c);
 }
 
 static void apply_local_tz() {
