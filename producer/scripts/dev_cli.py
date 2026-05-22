@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from contextlib import ExitStack, suppress
 
 import serial
 import typer
@@ -57,8 +58,8 @@ def cmd_log(
 ) -> None:
     """Stream serial output. Reopens on USB-CDC drops (deep sleep)."""
     deadline = (time.time() + timeout) if timeout > 0 else None
-    out = open(save, "w") if save else None
-    try:
+    with ExitStack() as stack:
+        out = stack.enter_context(open(save, "w")) if save else None
         while True:
             if deadline is not None and time.time() >= deadline:
                 logger.info("timeout reached")
@@ -92,13 +93,8 @@ def cmd_log(
                 if once and "[sleep]" in text:
                     logger.info("sleep marker seen; exiting")
                     return
-            try:
+            with suppress(Exception):
                 s.close()
-            except Exception:
-                pass
-    finally:
-        if out:
-            out.close()
 
 
 def main() -> None:

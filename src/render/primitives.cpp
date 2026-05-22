@@ -78,7 +78,7 @@ void draw_divider(LovyanGFX& gfx, const DividerNode& d, Rect r, bool /*vertical_
 void draw_hbar(LovyanGFX& gfx, const HBarNode& b, Rect r) {
   // Border
   uint32_t fg = color_to_m5gfx(b.color);
-  gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
+  gfx.drawRect(r.x, r.y, r.w, r.h, kE6Black);
   // Fill
   int16_t inner_w = r.w - 4;
   int16_t pct = (int16_t)b.pct;
@@ -90,13 +90,13 @@ void draw_hbar(LovyanGFX& gfx, const HBarNode& b, Rect r) {
   // Optional labels — left at the inset, right at the trailing edge.
   if (!b.label_left.empty()) {
     gfx.setFont(font_for(TextSize::Sm, Weight::Bold));
-    gfx.setTextColor(0xFFFFFF);
+    gfx.setTextColor(kE6White);
     gfx.setCursor(r.x + 4, r.y + (r.h - 14) / 2);
     gfx.print(b.label_left.c_str());
   }
   if (!b.label_right.empty()) {
     gfx.setFont(font_for(TextSize::Sm, Weight::Bold));
-    gfx.setTextColor(0x000000);
+    gfx.setTextColor(kE6Black);
     int16_t tw = gfx.textWidth(b.label_right.c_str());
     gfx.setCursor(r.x + r.w - tw - 4, r.y + (r.h - 14) / 2);
     gfx.print(b.label_right.c_str());
@@ -151,10 +151,10 @@ void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
     gfx.drawLine(x0, y0 - 1, x1, y1 - 1, fg);
     gfx.drawLine(x0, y0 + 1, x1, y1 + 1, fg);
   }
-  // Dotted baseline at the bottom — visually anchors the chart without
-  // competing with the data line.
+  // Dotted baseline at the bottom, using black ink so the chart stays inside
+  // the six-color E6 palette.
   for (int16_t x = r.x; x < r.x + r.w; x += 4) {
-    gfx.drawPixel(x, r.y + r.h - 1, 0x808080);
+    gfx.drawPixel(x, r.y + r.h - 1, kE6Black);
   }
 }
 
@@ -226,9 +226,9 @@ enum class ImageFormat {
 };
 
 static void draw_image_placeholder(LovyanGFX& gfx, const ImageNode& i, Rect r, const char* label) {
-  gfx.drawRect(r.x, r.y, r.w, r.h, 0x000000);
+  gfx.drawRect(r.x, r.y, r.w, r.h, kE6Black);
   gfx.setFont(font_for(TextSize::Sm, Weight::Regular));
-  gfx.setTextColor(0x000000);
+  gfx.setTextColor(kE6Black);
   gfx.setCursor(r.x + 4, r.y + 4);
   gfx.print(label);
   if (!i.name.empty()) {

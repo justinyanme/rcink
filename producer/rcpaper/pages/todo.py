@@ -11,6 +11,7 @@ import re
 from urllib.parse import urlparse
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcpaper.palette import ColorToken
 from rcpaper.sources.reminders import Reminder, TodaysReminders
 
 _URL_RE = re.compile(r"https?://\S+")
@@ -97,7 +98,7 @@ def render_item_children(item: Reminder, *, limit: int = 24) -> list[dict]:
 
 # EventKit priority buckets → palette + label.
 #   1..3 = high, 4..6 = medium, 7..9 = low, 0 = none.
-def _prio_color(p: int) -> str | None:
+def _prio_color(p: int) -> ColorToken | None:
     if p == 0:
         return None
     if p <= 3:

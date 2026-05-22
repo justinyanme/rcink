@@ -8,6 +8,7 @@
 #include "proto/parser.h"
 #include "render/engine.h"
 #include "render/nav_strip.h"
+#include "render/palette.h"
 #include "render/status_bar.h"
 #endif
 
@@ -31,6 +32,15 @@ bool layout_has_any_image(const LayoutNode& node) {
   return false;
 }
 
+bool layout_has_unknown_node(const LayoutNode& node) {
+  if (node.type == NodeType::Unknown) return true;
+  if (node.type != NodeType::VStack && node.type != NodeType::HStack) return false;
+  for (const auto& child : node.as_stack.children) {
+    if (layout_has_unknown_node(child)) return true;
+  }
+  return false;
+}
+
 #ifdef ARDUINO
 
 bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
@@ -40,6 +50,10 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
     return false;
   }
   root = parse_layout(doc.as<JsonVariantConst>());
+  if (layout_has_unknown_node(root)) {
+    Serial.println("[render] layout rejected: unknown node type or invalid color token");
+    return false;
+  }
   return true;
 }
 
@@ -50,6 +64,18 @@ const char* epd_mode_name(epd_mode_t m) {
     case epd_mode_t::epd_fast:     return "fast";
     case epd_mode_t::epd_fastest:  return "fastest";
     default:                       return "?";
+  }
+}
+
+static void quantize_canvas_to_e6(M5Canvas& canvas) {
+  const int16_t w = canvas.width();
+  const int16_t h = canvas.height();
+  for (int16_t y = 0; y < h; ++y) {
+    for (int16_t x = 0; x < w; ++x) {
+      auto px = canvas.readPixelRGB(x, y);
+      const uint32_t quantized = quantize_rgb_to_e6(px.R8(), px.G8(), px.B8());
+      if (quantized != px.RGB888()) canvas.drawPixel(x, y, quantized);
+    }
   }
 }
 
@@ -82,19 +108,19 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   // directly on M5.Display — each text/rect would cause its own panel
   // refresh. The canvas keeps all draws in RAM until pushSprite().
   M5Canvas canvas(&M5.Display);
-  // 16bpp RGB565: keeps our muted brand colors (0xD92027, 0x0F4D92, ...)
-  // intact through the canvas. 4bpp indexed mode loses them to the default
-  // 16-color palette. Cost: 480 KB in PSRAM, of which we have ~8 MB free.
+  // 16bpp RGB565 keeps the six E6 ink anchors intact through the canvas.
+  // 4bpp indexed mode loses them to the default 16-color palette. Cost:
+  // 480 KB in PSRAM, of which we have ~8 MB free.
   canvas.setColorDepth(16);
   canvas.setPsram(true);
   if (!canvas.createSprite(W, H)) {
     Serial.println("[render] canvas alloc FAILED — falling back to direct draw");
-    M5.Display.fillScreen(0xFFFFFF);
+    M5.Display.fillScreen(kE6White);
     paint_layout(M5.Display, laid);
     M5.Display.display();
     return;
   }
-  canvas.fillSprite(0xFFFFFF);
+  canvas.fillSprite(kE6White);
   paint_layout(canvas, laid);
 
   // Overlay the status bar at the top and page-rotation indicator at the bottom.
@@ -109,11 +135,12 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
     int16_t pw = tw + 12, ph = 18;
     int16_t px = W - pw - 8;
     int16_t py = H - ph - 6;
-    canvas.fillRect(px, py, pw, ph, 0xD92027);
-    canvas.setTextColor(0xFFFFFF);
+    canvas.fillRect(px, py, pw, ph, kE6Red);
+    canvas.setTextColor(kE6White);
     canvas.setCursor(px + 6, py + 3);
     canvas.print(label);
   }
+  quantize_canvas_to_e6(canvas);
   uint32_t t_draw = millis() - t0;
   uint32_t t_push0 = millis();
   canvas.pushSprite(0, 0);
@@ -139,22 +166,23 @@ void render_error(const char* msg) {
   canvas.setColorDepth(16);
   canvas.setPsram(true);
   if (!canvas.createSprite(M5.Display.width(), M5.Display.height())) {
-    M5.Display.fillScreen(0xFFFFFF);
+    M5.Display.fillScreen(kE6White);
     M5.Display.setFont(&fonts::FreeSansBold12pt7b);
-    M5.Display.setTextColor(0x000000);
+    M5.Display.setTextColor(kE6Black);
     M5.Display.setCursor(20, 40);
     M5.Display.print(msg);
     M5.Display.display();
     return;
   }
-  canvas.fillSprite(0xFFFFFF);
+  canvas.fillSprite(kE6White);
   canvas.setFont(&fonts::FreeSansBold12pt7b);
-  canvas.setTextColor(0x000000);
+  canvas.setTextColor(kE6Black);
   canvas.setCursor(20, 40);
   canvas.print("rcpapercolor");
   canvas.setFont(&fonts::FreeSans9pt7b);
   canvas.setCursor(20, 80);
   canvas.print(msg);
+  quantize_canvas_to_e6(canvas);
   canvas.pushSprite(0, 0);
   canvas.deleteSprite();
   M5.Display.display();

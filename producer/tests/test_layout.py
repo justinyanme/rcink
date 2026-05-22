@@ -1,3 +1,4 @@
+import pytest
 from rcpaper.layout import (
     divider,
     hbar,
@@ -10,6 +11,8 @@ from rcpaper.layout import (
     text,
     vstack,
 )
+from rcpaper.palette import E6_COLOR_TOKENS, E6_HEX
+from rcpaper.preview import to_html
 
 
 def test_text_minimal():
@@ -127,3 +130,28 @@ def test_image_requires_exactly_one_source():
         assert "exactly one" in str(exc)
     else:  # pragma: no cover - defensive
         raise AssertionError("image() should reject missing source")
+
+
+def test_color_tokens_are_strict_e6_palette():
+    assert E6_COLOR_TOKENS == ("black", "white", "red", "yellow", "green", "blue")
+    assert E6_HEX == {
+        "black": "#000000",
+        "white": "#FFFFFF",
+        "red": "#FF0000",
+        "yellow": "#FFFF00",
+        "green": "#00FF00",
+        "blue": "#0000FF",
+    }
+
+    with pytest.raises(ValueError, match="six E6 colors"):
+        text("X", color="magenta")
+    with pytest.raises(ValueError, match="six E6 colors"):
+        text("X", bg="gray")
+
+
+def test_preview_uses_solid_e6_colors():
+    html = to_html(text("X", color="red", bg="blue"))
+    assert "#FF0000" in html
+    assert "#0000FF" in html
+    assert "#D92027" not in html
+    assert "#0F4D92" not in html

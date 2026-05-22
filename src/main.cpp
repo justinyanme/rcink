@@ -178,7 +178,7 @@ void setup() {
   M5.begin(cfg);
   // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
   // them in one full-panel refresh on Display.display(). epd_text auto-pushes
-  // after each text write, which on a 7-color panel manifests as one full
+  // after each text write, which on a 6-color panel manifests as one full
   // refresh cycle per element drawn.
   M5.Display.setEpdMode(epd_mode_t::epd_quality);
 

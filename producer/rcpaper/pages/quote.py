@@ -9,10 +9,11 @@ from __future__ import annotations
 import datetime as dt
 
 from rcpaper.layout import divider, hstack, icon, spacer, text, vstack
+from rcpaper.palette import ColorToken
 from rcpaper.sources.quotes import Quote
 
 # Color cycle for body lines. Index = line position.
-_LINE_COLORS: tuple[str | None, ...] = (None, "blue", None, "red")
+_LINE_COLORS: tuple[ColorToken | None, ...] = (None, "blue", None, "red")
 
 
 def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:

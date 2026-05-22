@@ -40,6 +40,21 @@ static NodeType parse_type(const char* s) {
   return NodeType::Unknown;
 }
 
+static bool read_color(JsonVariantConst v, const char* key, Color fallback, Color& out) {
+  JsonObjectConst obj = v.as<JsonObjectConst>();
+  JsonVariantConst value = obj[key];
+  if (obj.isNull() || value.isNull()) {
+    out = fallback;
+    return true;
+  }
+  if (!value.is<const char*>()) return false;
+  return color_from_token(value.as<const char*>(), &out);
+}
+
+static void reject_node(LayoutNode& n) {
+  n = LayoutNode{};
+}
+
 static void fill_stack(StackNode& s, JsonVariantConst v) {
   s.gap   = v["gap"]  | 0;
   s.pad   = v["pad"]  | 0;
@@ -70,7 +85,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
       break;
 
     case NodeType::Divider:
-      n.as_divider.color     = color_from_token(v["color"] | "black");
+      if (!read_color(v, "color", Color::Black, n.as_divider.color)) { reject_node(n); break; }
       n.as_divider.thickness = v["thickness"] | 1;
       break;
 
@@ -78,18 +93,20 @@ LayoutNode parse_layout(JsonVariantConst v) {
       const char* val = v["value"] | "";
       n.as_text.value     = val;
       n.as_text.size      = parse_size(v["size"]   | (const char*)nullptr);
-      n.as_text.color     = color_from_token(v["color"] | "black");
+      if (!read_color(v, "color", Color::Black, n.as_text.color)) { reject_node(n); break; }
       n.as_text.weight    = parse_weight(v["weight"] | (const char*)nullptr);
       n.as_text.align     = parse_align(v["align"]  | (const char*)nullptr);
-      const char* bg      = v["bg"] | (const char*)nullptr;
-      if (bg && *bg) { n.as_text.bg = color_from_token(bg); n.as_text.has_bg = true; }
+      if (!v["bg"].isNull()) {
+        if (!read_color(v, "bg", Color::White, n.as_text.bg)) { reject_node(n); break; }
+        n.as_text.has_bg = true;
+      }
       n.as_text.pad       = v["pad"] | 0;
       break;
     }
 
     case NodeType::HBar:
       n.as_hbar.pct         = v["pct"]    | 0.0f;
-      n.as_hbar.color       = color_from_token(v["color"] | "black");
+      if (!read_color(v, "color", Color::Black, n.as_hbar.color)) { reject_node(n); break; }
       n.as_hbar.height      = v["height"] | 12;
       n.as_hbar.label_left  = (const char*)(v["label_left"]  | "");
       n.as_hbar.label_right = (const char*)(v["label_right"] | "");
@@ -98,7 +115,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
     case NodeType::Icon:
       n.as_icon.name  = (const char*)(v["name"] | "");
       n.as_icon.size  = v["size"]  | 16;
-      n.as_icon.color = color_from_token(v["color"] | "black");
+      if (!read_color(v, "color", Color::Black, n.as_icon.color)) { reject_node(n); break; }
       break;
 
     case NodeType::Image:
@@ -110,7 +127,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
       break;
 
     case NodeType::Sparkline:
-      n.as_sparkline.color  = color_from_token(v["color"] | "black");
+      if (!read_color(v, "color", Color::Black, n.as_sparkline.color)) { reject_node(n); break; }
       n.as_sparkline.height = v["height"] | 24;
       if (v["values"].is<JsonArrayConst>()) {
         for (JsonVariantConst x : v["values"].as<JsonArrayConst>()) {
@@ -121,7 +138,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
 
     case NodeType::Marker:
       n.as_marker.pct   = v["pct"] | 0.0f;
-      n.as_marker.color = color_from_token(v["color"] | "red");
+      if (!read_color(v, "color", Color::Red, n.as_marker.color)) { reject_node(n); break; }
       break;
 
     case NodeType::Unknown:

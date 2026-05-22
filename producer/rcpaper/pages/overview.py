@@ -11,13 +11,14 @@ from __future__ import annotations
 import datetime as dt
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcpaper.palette import ColorToken
 from rcpaper.sources.calendar import TodaysCalendar
 from rcpaper.sources.claude import ClaudeUsage
 from rcpaper.sources.codex import CodexUsage
 from rcpaper.sources.reminders import TodaysReminders
 
 
-def _pct_color(pct: float | None) -> str:
+def _pct_color(pct: float | None) -> ColorToken:
     if pct is None:
         return "black"
     if pct >= 80:
@@ -29,7 +30,7 @@ def _pct_color(pct: float | None) -> str:
 
 def _usage_row(
     brand: str,
-    brand_color: str,
+    brand_color: ColorToken,
     icon_name: str,
     primary_pct: float | None,
     primary_label: str,
@@ -123,7 +124,7 @@ def _todos_row(rem: TodaysReminders | None) -> dict:
             ],
         )
     count = rem.incomplete_total
-    color = "red" if count >= 20 else "yellow" if count >= 5 else "green"
+    color: ColorToken = "red" if count >= 20 else "yellow" if count >= 5 else "green"
     return hstack(
         gap=8,
         align="center",

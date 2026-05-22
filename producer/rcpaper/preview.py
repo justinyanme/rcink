@@ -10,15 +10,10 @@ from __future__ import annotations
 import html
 from typing import Any
 
-# Match `src/render/palette.cpp::color_to_m5gfx`.
-COLORS = {
-    "black": "#000000",
-    "white": "#FFFFFF",
-    "red": "#D92027",
-    "yellow": "#F7C815",
-    "green": "#1EA84B",
-    "blue": "#0F4D92",
-}
+from rcpaper.palette import E6_HEX, normalize_color
+
+BLACK = E6_HEX["black"]
+WHITE = E6_HEX["white"]
 
 # Match the firmware font set in `src/render/fonts_icons.cpp`.
 SIZE_PX = {"h1": 24, "h2": 18, "body": 14, "sm": 12}
@@ -28,9 +23,12 @@ W, H = 400, 600
 
 
 def _color(token: str | None, default: str = "transparent") -> str:
-    if not token:
+    if token is None:
         return default
-    return COLORS.get(token, default)
+    color = normalize_color(token)
+    if color is None:
+        return default
+    return E6_HEX[color]
 
 
 def _align(token: str | None, axis: str) -> str:
@@ -59,7 +57,7 @@ def _node_html(node: dict[str, Any]) -> str:
     if t == "text":
         size = SIZE_PX.get(node.get("size", "body"), 14)
         weight = "700" if node.get("weight") == "bold" else "400"
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         bg = _color(node.get("bg"))
         align_text = {"center": "center", "end": "right"}.get(node.get("align"), "left")
         value = html.escape(str(node.get("value", "")))
@@ -74,7 +72,7 @@ def _node_html(node: dict[str, Any]) -> str:
 
     if t == "hbar":
         pct = max(0.0, min(100.0, float(node.get("pct", 0) or 0)))
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         height = int(node.get("height", 14) or 14)
         label_l = html.escape(str(node.get("label_left", "")))
         label_r = html.escape(str(node.get("label_right", "")))
@@ -82,18 +80,18 @@ def _node_html(node: dict[str, Any]) -> str:
         # src/render/primitives.cpp.
         return (
             f'<div class="hbar" style="position:relative;flex:1;'
-            f'height:{height}px;border:1px solid #000;box-sizing:border-box;">'
+            f'height:{height}px;border:1px solid {BLACK};box-sizing:border-box;">'
             f'<div style="position:absolute;left:2px;top:2px;bottom:2px;'
             f'width:calc({pct}% - 4px);background:{color};"></div>'
             f'<div style="position:absolute;left:6px;top:0;bottom:0;'
-            f'color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;">{label_l}</div>'
+            f'color:{WHITE};font-weight:700;font-size:12px;display:flex;align-items:center;">{label_l}</div>'
             f'<div style="position:absolute;right:6px;top:0;bottom:0;'
-            f'color:#000;font-weight:700;font-size:12px;display:flex;align-items:center;">{label_r}</div>'
+            f'color:{BLACK};font-weight:700;font-size:12px;display:flex;align-items:center;">{label_r}</div>'
             f"</div>"
         )
 
     if t == "divider":
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         th = int(node.get("thickness", 1) or 1)
         return f'<div class="divider" style="width:100%;height:{th}px;background:{color};"></div>'
 
@@ -107,7 +105,7 @@ def _node_html(node: dict[str, Any]) -> str:
 
     if t == "sparkline":
         values = node.get("values") or []
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         if not values:
             return '<div class="sparkline-empty" style="height:32px;"></div>'
         lo, hi = min(values), max(values)
@@ -125,12 +123,12 @@ def _node_html(node: dict[str, Any]) -> str:
             f'<svg class="sparkline" viewBox="0 0 {width} {height}" '
             f'preserveAspectRatio="none" style="width:100%;height:{height}px;">'
             f'<polyline fill="none" stroke="{color}" stroke-width="2" points="{polyline}" />'
-            f'<line x1="0" y1="{height - 1}" x2="{width}" y2="{height - 1}" stroke="#000" />'
+            f'<line x1="0" y1="{height - 1}" x2="{width}" y2="{height - 1}" stroke="{BLACK}" />'
             f"</svg>"
         )
 
     if t == "icon":
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         s = int(node.get("size", 16) or 16)
         return f'<div class="icon" style="width:{s}px;height:{s}px;background:{color};"></div>'
 
@@ -142,19 +140,19 @@ def _node_html(node: dict[str, Any]) -> str:
             safe_url = html.escape(str(url), quote=True)
             return (
                 f'<div class="image" style="width:{width}px;height:{height}px;'
-                f'border:1px solid #000;box-sizing:border-box;overflow:hidden;">'
+                f'border:1px solid {BLACK};box-sizing:border-box;overflow:hidden;">'
                 f'<img src="{safe_url}" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>'
             )
         name = html.escape(str(node.get("name", "")))
         return (
             f'<div class="image" style="width:{width}px;height:{height}px;'
-            f'border:1px solid #000;padding:4px;font-size:12px;box-sizing:border-box;">img:{name}</div>'
+            f'border:1px solid {BLACK};padding:4px;font-size:12px;box-sizing:border-box;">img:{name}</div>'
         )
 
     if t == "marker":
         # Overlay; in browser preview just show a vertical bar at the requested pct.
         pct = max(0.0, min(100.0, float(node.get("pct", 0) or 0)))
-        color = _color(node.get("color"), "#000")
+        color = _color(node.get("color"), BLACK)
         return (
             f'<div class="marker" style="position:relative;height:1px;">'
             f'<div style="position:absolute;left:calc({pct}% - 1px);'
@@ -176,20 +174,19 @@ def to_html(layout: dict[str, Any], *, title: str = "rcpaper preview") -> str:
   :root {{ color-scheme: light; }}
   body {{
     margin: 0; padding: 24px;
-    background: #f3f3f3;
+    background: {WHITE};
     font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
   }}
   .frame {{
     width: {W}px; height: {H}px;
-    background: #fff;
-    border: 1px solid #999;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    background: {WHITE};
+    border: 1px solid {BLACK};
     margin: 0 auto;
     overflow: hidden;
   }}
   .label {{
     width: {W}px; margin: 0 auto 8px;
-    font-size: 12px; color: #666;
+    font-size: 12px; color: {BLACK};
   }}
 </style>
 </head>

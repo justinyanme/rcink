@@ -98,6 +98,14 @@ void test_unknown_type_becomes_unknown() {
   TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
 }
 
+void test_invalid_color_becomes_unknown() {
+  auto n = parse_str(R"({"type":"text","value":"X","color":"magenta"})");
+  TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
+
+  n = parse_str(R"({"type":"text","value":"X","bg":"gray"})");
+  TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_text_minimal);
@@ -108,5 +116,6 @@ int main() {
   RUN_TEST(test_remote_image);
   RUN_TEST(test_sparkline_values);
   RUN_TEST(test_unknown_type_becomes_unknown);
+  RUN_TEST(test_invalid_color_becomes_unknown);
   return UNITY_END();
 }

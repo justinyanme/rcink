@@ -10,12 +10,13 @@ from __future__ import annotations
 import datetime as dt
 
 from rcpaper.layout import divider, hbar, hstack, spacer, text, vstack
+from rcpaper.palette import ColorToken
 from rcpaper.sources.calendar import CalEvent, TodaysCalendar
 
 # Cycle of "ink" colors for event ticks in the UP NEXT list. Per-calendar
-# coloring (mapping EKCalendar.color → palette) is overkill for a 7-color
+# coloring (mapping EKCalendar.color to palette) is overkill for a 6-color
 # E6 panel; cycling through saturated swatches keeps the list readable.
-_TICK_COLORS = ("blue", "red", "green", "yellow")
+_TICK_COLORS: tuple[ColorToken, ...] = ("blue", "red", "green", "yellow")
 
 
 def _fmt_time(when: dt.datetime, all_day: bool) -> str:

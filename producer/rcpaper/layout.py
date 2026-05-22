@@ -1,12 +1,18 @@
 """Tiny DSL: each helper returns a dict matching the rcpapercolor protocol."""
 
+from __future__ import annotations
+
 from typing import Any
+
+from rcpaper.palette import ColorToken, normalize_color
 
 
 def _node(t: str, **props: Any) -> dict[str, Any]:
     out: dict[str, Any] = {"type": t}
     for k, v in props.items():
         if v is not None:
+            if k in {"color", "bg"}:
+                v = normalize_color(v, field=k)
             out[k] = v
     return out
 
@@ -35,7 +41,7 @@ def spacer(*, size: int | None = None) -> dict:
     return _node("spacer", size=size)
 
 
-def divider(*, color: str | None = None, thickness: int | None = None) -> dict:
+def divider(*, color: ColorToken | None = None, thickness: int | None = None) -> dict:
     return _node("divider", color=color, thickness=thickness)
 
 
@@ -43,10 +49,10 @@ def text(
     value: str,
     *,
     size: str | None = None,
-    color: str | None = None,
+    color: ColorToken | None = None,
     weight: str | None = None,
     align: str | None = None,
-    bg: str | None = None,
+    bg: ColorToken | None = None,
     pad: int | None = None,
 ) -> dict:
     return _node(
@@ -64,7 +70,7 @@ def text(
 def hbar(
     *,
     pct: float,
-    color: str | None = None,
+    color: ColorToken | None = None,
     height: int | None = None,
     label_left: str | None = None,
     label_right: str | None = None,
@@ -79,7 +85,7 @@ def hbar(
     )
 
 
-def icon(name: str, *, size: int | None = None, color: str | None = None) -> dict:
+def icon(name: str, *, size: int | None = None, color: ColorToken | None = None) -> dict:
     return _node("icon", name=name, size=size, color=color)
 
 
@@ -99,7 +105,7 @@ def image(
 def sparkline(
     values: list[float],
     *,
-    color: str | None = None,
+    color: ColorToken | None = None,
     height: int | None = None,
     baseline: str | int | None = None,
 ) -> dict:
@@ -112,5 +118,5 @@ def sparkline(
     )
 
 
-def marker(*, pct: float, color: str | None = None) -> dict:
+def marker(*, pct: float, color: ColorToken | None = None) -> dict:
     return _node("marker", pct=pct, color=color)

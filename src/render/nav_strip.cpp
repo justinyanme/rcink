@@ -2,6 +2,7 @@
 
 #ifdef ARDUINO
 #include <M5Unified.h>
+#include "render/palette.h"
 
 namespace rcpaper {
 
@@ -13,11 +14,11 @@ void paint_indicator(M5Canvas& canvas,
   const int16_t y_strip = H - BOT_STRIP_H;
 
   // White background + hairline top rule
-  canvas.fillRect(0, y_strip, W, BOT_STRIP_H, 0xFFFFFF);
-  canvas.drawFastHLine(0, y_strip, W, 0x000000);
+  canvas.fillRect(0, y_strip, W, BOT_STRIP_H, kE6White);
+  canvas.drawFastHLine(0, y_strip, W, kE6Black);
 
   canvas.setFont(&fonts::FreeSansBold9pt7b);
-  canvas.setTextColor(0x000000);
+  canvas.setTextColor(kE6Black);
 
   const size_t n = pages.size();
   const uint8_t prev_idx = (uint8_t)((idx + n - 1) % n);
@@ -39,7 +40,7 @@ void paint_indicator(M5Canvas& canvas,
   const int16_t lpad = 8;
   canvas.fillTriangle(lpad,     y_mid,
                       lpad + 7, y_strip + 5,
-                      lpad + 7, y_strip + BOT_STRIP_H - 5, 0x000000);
+                      lpad + 7, y_strip + BOT_STRIP_H - 5, kE6Black);
   canvas.setCursor(lpad + 13, y_text);
   canvas.print(prev_id.c_str());
 
@@ -48,7 +49,7 @@ void paint_indicator(M5Canvas& canvas,
   const int16_t arrow_x = W - rpad - 7;
   canvas.fillTriangle(arrow_x,     y_strip + 5,
                       arrow_x,     y_strip + BOT_STRIP_H - 5,
-                      arrow_x + 7, y_mid, 0x000000);
+                      arrow_x + 7, y_mid, kE6Black);
   const int16_t next_w = canvas.textWidth(next_id.c_str());
   canvas.setCursor(arrow_x - 5 - next_w, y_text);
   canvas.print(next_id.c_str());
@@ -64,8 +65,8 @@ void paint_indicator(M5Canvas& canvas,
   // Only draw dots when there's more than one page; a single dot adds no info.
   if (n > 1) {
     for (size_t i = 0; i < n; ++i) {
-      if (i == idx) canvas.fillCircle(dx, y_mid, 3, 0x000000);
-      else          canvas.drawCircle(dx, y_mid, 2, 0x000000);
+      if (i == idx) canvas.fillCircle(dx, y_mid, 3, kE6Black);
+      else          canvas.drawCircle(dx, y_mid, 2, kE6Black);
       dx += dot_gap;
     }
   }

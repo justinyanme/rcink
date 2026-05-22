@@ -10,6 +10,7 @@
 #include "net/wifi.h"
 #include "power/sleep.h"
 #include "render/page.h"
+#include "render/palette.h"
 #include "store/nvs.h"
 
 namespace rcpaper {
@@ -130,7 +131,7 @@ void console_dispatch(char c) {
       Serial.println("[console] c → clear screen");
       uint32_t t0 = millis();
       M5.Display.startWrite();
-      M5.Display.fillScreen(0xFFFFFF);
+      M5.Display.fillScreen(kE6White);
       M5.Display.endWrite();
       M5.Display.display();
       Serial.printf("[console] clear done in %u ms\n", (unsigned)(millis() - t0));

@@ -9,6 +9,7 @@
 
 #include "config.h"
 #include "render/icons_data.h"
+#include "render/palette.h"
 
 namespace rcpaper {
 
@@ -33,7 +34,7 @@ static void blit_icon16(M5Canvas& canvas, int16_t x, int16_t y, const char* name
       for (int yy = 0; yy < 16; ++yy) {
         uint16_t row = ((uint16_t)px[yy * 2] << 8) | px[yy * 2 + 1];
         for (int xx = 0; xx < 16; ++xx) {
-          if (row & (0x8000 >> xx)) canvas.drawPixel(x + xx, y + yy, 0x000000);
+          if (row & (0x8000 >> xx)) canvas.drawPixel(x + xx, y + yy, kE6Black);
         }
       }
       return;
@@ -51,11 +52,11 @@ void paint_status_bar(M5Canvas& canvas,
   const int16_t y = 0;
   const int16_t kRightMargin = 6;
 
-  canvas.fillRect(0, y, W, TOP_STRIP_H, 0xFFFFFF);
-  canvas.drawFastHLine(0, y + TOP_STRIP_H - 1, W, 0x000000);
+  canvas.fillRect(0, y, W, TOP_STRIP_H, kE6White);
+  canvas.drawFastHLine(0, y + TOP_STRIP_H - 1, W, kE6Black);
 
   canvas.setFont(&fonts::FreeSansBold9pt7b);
-  canvas.setTextColor(0x000000);
+  canvas.setTextColor(kE6Black);
 
   int16_t x = 6;
   const int16_t y_text = y + 4;
@@ -70,11 +71,11 @@ void paint_status_bar(M5Canvas& canvas,
   // --- Battery glyph: outline 22x10 with 2x4 nipple, fill 0..18px wide. ---
   const int16_t batt_w = 22, batt_h = 10;
   const int16_t batt_y = y + (TOP_STRIP_H - batt_h) / 2;
-  uint32_t fill_c = 0x1EA84B;          // green (>=30%)
-  if (batt.pct < 30) fill_c = 0xF7C815; // yellow (10..29%)
-  if (batt.pct < 10) fill_c = 0xD92027; // red   (<10%)
-  canvas.drawRect(x, batt_y, batt_w, batt_h, 0x000000);
-  canvas.fillRect(x + batt_w, batt_y + 3, 2, 4, 0x000000);
+  uint32_t fill_c = kE6Green;          // green (>=30%)
+  if (batt.pct < 30) fill_c = kE6Yellow; // yellow (10..29%)
+  if (batt.pct < 10) fill_c = kE6Red;    // red   (<10%)
+  canvas.drawRect(x, batt_y, batt_w, batt_h, kE6Black);
+  canvas.fillRect(x + batt_w, batt_y + 3, 2, 4, kE6Black);
   if (batt.ok) {
     int16_t fill_w = (int16_t)((batt_w - 4) * (int)batt.pct / 100);
     if (fill_w > 0) canvas.fillRect(x + 2, batt_y + 2, fill_w, batt_h - 4, fill_c);

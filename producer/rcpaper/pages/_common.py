@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from rcpaper.layout import hbar, hstack, spacer, text, vstack
+from rcpaper.palette import ColorToken
 
 
-def kpi_row(label: str, pct: float | None, reset: str, color: str) -> dict:
+def kpi_row(label: str, pct: float | None, reset: str, color: ColorToken) -> dict:
     """Two-row block: [LABEL ... resets …] / [N% bar].
 
     Used identically by the Claude and Codex pages — header on top, value on

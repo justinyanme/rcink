@@ -11,10 +11,12 @@ from __future__ import annotations
 from rcpaper.layout import hstack, spacer, text, vstack
 from rcpaper.layout import sparkline as spark
 from rcpaper.pages._common import kpi_row
+from rcpaper.palette import ColorToken
 from rcpaper.sources.claude import ClaudeUsage
 
 
 def _model_cell(label: str, pct: float) -> dict:
+    color: ColorToken = "red" if pct >= 80 else "green"
     return vstack(
         pad=4,
         gap=2,
@@ -23,7 +25,7 @@ def _model_cell(label: str, pct: float) -> dict:
             text(
                 f"{int(pct)}%",
                 size="body",
-                color="red" if pct >= 80 else "green",
+                color=color,
                 weight="bold",
             ),
         ],
