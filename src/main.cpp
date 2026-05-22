@@ -44,14 +44,64 @@ static EnvReading     g_env{};
 // On a ButtonA/ButtonB wake we count taps for 500 ms (sliding, max 2 s) and
 // apply the net delta in one render. BtnC during the window cancels nav and
 // requests a refetch — see coalesce_nav_presses() below and the apply step
-// further down in setup(). Boot delay (~250-400 ms from ext1 wake) is
-// outside the window: taps that arrive before led_status_init() are lost.
-// The first LED flash tells the user "I'm listening, keep tapping."
+// further down in setup().
+//
+// Detection is ISR-based on the raw button GPIOs (mirroring the GPIO
+// numbers used by ext1 wake in power/sleep.cpp). The ISRs are installed at
+// the very top of setup() — BEFORE M5.begin(), which takes ~200 ms — so a
+// second tap that arrives while the device is still booting is captured.
+// The wake press itself does NOT fire the ISR (the GPIO is already LOW when
+// we install attachInterrupt(FALLING)), so it is only counted via the wake
+// reason. M5.BtnA/B/C are deliberately not used: dev/console.cpp also
+// chose raw GPIO, and with `board = esp32s3box` in platformio.ini we cannot
+// rely on M5Unified auto-detecting M5PaperColor's button map.
+
+#define BTN_A_GPIO 9
+#define BTN_B_GPIO 10
+#define BTN_C_GPIO 1
 
 constexpr uint16_t kNavCoalesceWindowMs = 500;
 constexpr uint16_t kNavCoalesceMaxMs    = 2000;
 constexpr uint16_t kNavPollIntervalMs   = 10;
 constexpr uint16_t kNavLedPulseMs       = 80;
+constexpr uint32_t kNavDebounceMs       = 30;
+
+namespace {
+volatile uint32_t g_isr_count_a    = 0;
+volatile uint32_t g_isr_count_b    = 0;
+volatile uint32_t g_isr_count_c    = 0;
+volatile uint32_t g_isr_last_a_ms  = 0;
+volatile uint32_t g_isr_last_b_ms  = 0;
+volatile uint32_t g_isr_last_c_ms  = 0;
+}  // namespace
+
+void IRAM_ATTR isr_btn_a() {
+  uint32_t now = millis();
+  if (now - g_isr_last_a_ms < kNavDebounceMs) return;
+  g_isr_last_a_ms = now;
+  g_isr_count_a++;
+}
+void IRAM_ATTR isr_btn_b() {
+  uint32_t now = millis();
+  if (now - g_isr_last_b_ms < kNavDebounceMs) return;
+  g_isr_last_b_ms = now;
+  g_isr_count_b++;
+}
+void IRAM_ATTR isr_btn_c() {
+  uint32_t now = millis();
+  if (now - g_isr_last_c_ms < kNavDebounceMs) return;
+  g_isr_last_c_ms = now;
+  g_isr_count_c++;
+}
+
+static void install_button_isrs() {
+  pinMode(BTN_A_GPIO, INPUT_PULLUP);
+  pinMode(BTN_B_GPIO, INPUT_PULLUP);
+  pinMode(BTN_C_GPIO, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BTN_A_GPIO), isr_btn_a, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_B_GPIO), isr_btn_b, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_C_GPIO), isr_btn_c, FALLING);
+}
 
 struct NavCoalesceResult {
   int  delta         = 0;
@@ -73,26 +123,59 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
   out.delta = (initial == WakeReason::ButtonA) ? 1 : -1;
   flash_for_button(initial);
 
+  // Snapshot any boot-window presses captured by ISRs before we got here.
+  uint32_t boot_a = g_isr_count_a;
+  uint32_t boot_b = g_isr_count_b;
+  uint32_t boot_c = g_isr_count_c;
+  Serial.printf("[nav] enter initial=%d boot_isr a=%u b=%u c=%u\n",
+                (int)initial, (unsigned)boot_a, (unsigned)boot_b, (unsigned)boot_c);
+
+  // Replay boot presses as if they happened at function entry.
+  out.delta += (int)boot_a;
+  out.delta -= (int)boot_b;
+  for (uint32_t i = 0; i < boot_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
+  for (uint32_t i = 0; i < boot_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
+  if (boot_c > 0) {
+    out.force_refetch = true;
+    led_status_pulse(96, 56, 0, kNavLedPulseMs);
+    Serial.printf("[nav] coalesce done delta=%d force_refetch=1 (boot-c)\n", out.delta);
+    return out;
+  }
+
   const uint32_t start_ms = millis();
   uint32_t deadline_ms    = start_ms + kNavCoalesceWindowMs;
+  uint32_t seen_a = boot_a;
+  uint32_t seen_b = boot_b;
+  uint32_t seen_c = boot_c;
 
   for (;;) {
     uint32_t now = millis();
     if ((int32_t)(deadline_ms - now) <= 0) break;
     if (now - start_ms >= kNavCoalesceMaxMs) break;
 
-    M5.update();
-    if (M5.BtnA.wasPressed()) {
-      out.delta++;
-      led_status_pulse(0, 96, 0, kNavLedPulseMs);
+    uint32_t cur_a = g_isr_count_a;
+    uint32_t cur_b = g_isr_count_b;
+    uint32_t cur_c = g_isr_count_c;
+    uint32_t new_a = cur_a - seen_a;
+    uint32_t new_b = cur_b - seen_b;
+    uint32_t new_c = cur_c - seen_c;
+
+    if (new_a > 0) {
+      out.delta += (int)new_a;
+      for (uint32_t i = 0; i < new_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
-    } else if (M5.BtnB.wasPressed()) {
-      out.delta--;
-      led_status_pulse(0, 0, 96, kNavLedPulseMs);
+      seen_a = cur_a;
+    }
+    if (new_b > 0) {
+      out.delta -= (int)new_b;
+      for (uint32_t i = 0; i < new_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
-    } else if (M5.BtnC.wasPressed()) {
+      seen_b = cur_b;
+    }
+    if (new_c > 0) {
       out.force_refetch = true;
       led_status_pulse(96, 56, 0, kNavLedPulseMs);
+      seen_c = cur_c;
       break;
     }
     delay(kNavPollIntervalMs);
@@ -246,6 +329,11 @@ using namespace rcpaper;
 void setup() {
   Serial.begin(115200);
   delay(50);
+
+  // Arm raw-GPIO button ISRs as early as possible so taps that arrive during
+  // M5.begin() (~200 ms) are captured. See the comment block above the ISR
+  // definitions for why this is ISR-based rather than M5.update()-based.
+  install_button_isrs();
 
   auto cfg = M5.config();
   // clear_display would force a full ~17 s panel refresh to white at the
