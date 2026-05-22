@@ -70,6 +70,49 @@ def test_todo_page_wraps_long_title_to_two_lines():
     assert " ".join(line_values).split()[:3] == long_title.split()[:3]
 
 
+def test_todo_page_wraps_long_cjk_title_to_two_lines():
+    """CJK chars render ~2x wider than Latin; the wrapper must count cells,
+    not Python chars, or long Chinese titles silently overflow."""
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    title = "确认是否可通过用户ID获取自选股和持仓并出具持仓报告"
+    page = build_todo_page(
+        TodaysReminders(
+            list_name="Inbox",
+            items=[_reminder(title, updated_min_ago=5)],
+            incomplete_total=1,
+        ),
+        now=now,
+    )
+    row = next(child for child in page["children"] if _is_todo_row(child))
+    title_cell = next(c for c in row["children"] if c.get("type") == "vstack")
+    line_values = [c.get("value") for c in title_cell["children"] if c.get("type") == "text"]
+    assert len(line_values) == 2
+
+
+def test_todo_page_url_residual_avoids_em_dash():
+    """VT323 has no `—` glyph, so the inline residual must use an ASCII
+    separator (or wrap to a second line)."""
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    page = build_todo_page(
+        TodaysReminders(
+            list_name="Inbox",
+            items=[_reminder("https://x.com/post tip", updated_min_ago=5)],
+            incomplete_total=1,
+        ),
+        now=now,
+    )
+    row = next(child for child in page["children"] if _is_todo_row(child))
+    # Recursively collect every text value in the row.
+    stack = list(row["children"])
+    seen = []
+    while stack:
+        node = stack.pop()
+        if node.get("type") == "text":
+            seen.append(node.get("value", ""))
+        stack.extend(node.get("children", []) or [])
+    assert not any("—" in v for v in seen), seen
+
+
 def test_todo_page_keeps_short_title_on_one_line():
     now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
     page = build_todo_page(
