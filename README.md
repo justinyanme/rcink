@@ -23,11 +23,30 @@ Two halves of one repo:
 
    ```bash
    pio run -e m5stack-papercolor -t upload
-   pio device monitor
+   pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
    ```
 
 4. Device boot sequence (first time): WiFi → NTP → Axiom query → render →
    deep sleep. Subsequent wakes are timer- or button-driven.
+
+If serial stays silent after upload, avoid repeated default monitor opens.
+ESP32-S3 USB-CDC can be left in DOWNLOAD mode by DTR/RTS toggles. Power-cycle
+PaperColor with double-tap PWR, then single-tap PWR.
+
+## LED states
+
+PaperColor RGB LEDs are low-duty heartbeats: brief pulse, off between pulses.
+
+- white heartbeat — launch
+- blue heartbeat — connecting WiFi
+- green heartbeat — WiFi connected
+- red heartbeat — WiFi failed
+- cyan/blue heartbeat — NTP or Axiom sync
+- amber/red heartbeat — sync/fetch failed, cache kept
+- amber heartbeat — panel refresh/render
+- slow green heartbeat — idle with WiFi up
+- slow blue heartbeat — WiFi disconnected and idle
+- off — entering deep sleep
 
 ## Buttons
 

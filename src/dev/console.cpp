@@ -11,6 +11,7 @@
 #include "power/sleep.h"
 #include "render/page.h"
 #include "render/palette.h"
+#include "status/led_status.h"
 #include "store/nvs.h"
 
 namespace rcpaper {
@@ -107,11 +108,13 @@ void console_dispatch(char c) {
     case 'r':
       Serial.println("[console] r → re-render current");
       render_current();
+      led_status_show(LedState::IdleDisconnected);
       break;
     case 'f':
       Serial.println("[console] f → refetch");
       if (refetch_now()) render_current();
       if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+      led_status_show(LedState::IdleDisconnected);
       break;
     case 'n':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
@@ -119,6 +122,7 @@ void console_dispatch(char c) {
       nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
       Serial.printf("[console] n → idx=%u\n", g_state.page_index);
       render_current();
+      led_status_show(LedState::IdleDisconnected);
       break;
     case 'b':
       if (g_state.pages.empty()) { Serial.println("[console] no pages"); break; }
@@ -126,6 +130,7 @@ void console_dispatch(char c) {
       nvs_save_progress(g_state.page_index, g_state.wakes_since_fetch);
       Serial.printf("[console] b → idx=%u\n", g_state.page_index);
       render_current();
+      led_status_show(LedState::IdleDisconnected);
       break;
     case 'c': {
       Serial.println("[console] c → clear screen");
@@ -135,6 +140,7 @@ void console_dispatch(char c) {
       M5.Display.endWrite();
       M5.Display.display();
       Serial.printf("[console] clear done in %u ms\n", (unsigned)(millis() - t0));
+      led_status_show(LedState::IdleDisconnected);
       break;
     }
     case 'm': {

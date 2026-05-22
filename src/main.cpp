@@ -21,6 +21,7 @@
 #include "render/page.h"
 #include "sense/battery.h"
 #include "sense/env.h"
+#include "status/led_status.h"
 #include "store/nvs.h"
 
 #ifdef RCPAPER_DEV_CONSOLE
@@ -52,6 +53,7 @@ static void apply_local_tz() {
 // reply.
 static bool sync_ntp_once() {
   // pool.ntp.org is often blocked on Chinese networks; try aliyun first.
+  led_status_show(LedState::Syncing);
   configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
   // Apply local TZ so subsequent localtime_r() calls (e.g. for the footer
   // HH:MM stamps) render in the user's wall-clock instead of UTC.
@@ -61,9 +63,11 @@ static bool sync_ntp_once() {
   while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
     if (millis() - start > timeout_ms) {
       Serial.println("[ntp] sync timeout — SNTP did not deliver");
+      led_status_show(LedState::SyncFailed);
       return false;
     }
     delay(100);
+    led_status_tick();
   }
   time_t now;
   struct tm ti;
@@ -92,6 +96,7 @@ bool refetch_now() {
     return false;
   }
   bool ntp_ok = sync_ntp_once();
+  led_status_show(LedState::Syncing);
   std::vector<PageRecord> fresh;
   bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (ok) {
@@ -107,12 +112,14 @@ bool refetch_now() {
                   (unsigned)g_state.page_index, ntp_ok ? 1 : 0);
   } else {
     Serial.println("[main] fetch failed; keeping cache");
+    led_status_show(LedState::SyncFailed);
   }
   return ok;
 }
 
 void render_current() {
   if (g_state.pages.empty()) {
+    led_status_show(LedState::Refreshing);
     render_error("no pages — check producer + Axiom dataset");
     return;
   }
@@ -132,6 +139,7 @@ void render_current() {
 
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
+    led_status_show(LedState::Refreshing);
     render_error("layout_json parse failed");
     return;
   }
@@ -143,6 +151,7 @@ void render_current() {
     }
   }
   bool stale = (uint64_t)time(nullptr) - g_state.last_fetch_s > FETCH_INTERVAL_SEC;
+  led_status_show(LedState::Refreshing);
   render_page(rec, root, stale, g_state, g_battery, g_env);
 
   // Persist the render marker so the next wake (cold or warm) can compare and
@@ -176,6 +185,7 @@ void setup() {
   cfg.clear_display = false;
   cfg.output_power  = true;
   M5.begin(cfg);
+  led_status_init();
   // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
   // them in one full-panel refresh on Display.display(). epd_text auto-pushes
   // after each text write, which on a 6-color panel manifests as one full
@@ -236,10 +246,13 @@ void setup() {
   render_current();
   if (WiFi.status() == WL_CONNECTED) {
     wifi_disconnect();
+  } else {
+    led_status_show(LedState::IdleDisconnected);
   }
 
 #ifdef RCPAPER_DEV_CONSOLE
   dev::dev_buttons_init();
+  led_status_show(LedState::IdleDisconnected);
   Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
 #else
   // Sleep for exactly one rotation interval — fetch cadence is decided by

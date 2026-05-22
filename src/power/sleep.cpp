@@ -2,6 +2,7 @@
 #include "power/sleep.h"
 #include <M5Unified.h>
 #include <time.h>
+#include "status/led_status.h"
 
 // Pin mapping from the PaperColor obsidian note.
 #define BTN_A_GPIO 9
@@ -57,6 +58,7 @@ void enter_deep_sleep_until(uint64_t epoch_seconds) {
   esp_sleep_enable_ext1_wakeup(BTN_WAKE_MASK, ESP_EXT1_WAKEUP_ANY_LOW);
 
   Serial.printf("[sleep] entering deep sleep for %lld s\n", (long long)delta);
+  led_status_show(LedState::Off);
   Serial.flush();
   esp_deep_sleep_start();
 }
