@@ -36,6 +36,7 @@ class FakePeripheral:
     crc_errors_remaining: int = 0
     forced_inflate_error: bool = False
     drop_chunks: list[int] = field(default_factory=list)
+    stale_progress_before_commit: bool = False
 
     _staging: bytearray = field(default_factory=bytearray)
     _begin: dict[str, int] | None = None
@@ -141,6 +142,8 @@ class FakePeripheral:
                 self._ack(0, ACK_ERR_INFLATE)
                 return
             self.data_ver = self._begin["data_ver"]
+            if self.stale_progress_before_commit:
+                self._ack(max(0, self._expected_seq - 1), ACK_OK_PROGRESS)
             self._ack(0, ACK_OK_COMMIT)
 
     async def _handle_data(self, frame: bytes) -> None:

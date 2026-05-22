@@ -32,5 +32,6 @@ typedef enum {
 
 int cmd_handler(void *p);
 void layout_xfer_service_init(void);
+void layout_xfer_service_tick(void);
 int layout_xfer_ctl_write(void *p);
 int layout_xfer_data_write(void *p);

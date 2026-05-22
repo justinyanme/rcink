@@ -40,3 +40,33 @@ make test
 make smoke
 uv run tlsr-layout --help
 ```
+
+## Hardware E2E
+
+Wake the tag first with BDT (`activate`, then `reset`), then run:
+
+```bash
+uv run tlsr-layout hardware-e2e example
+```
+
+Pass criteria:
+
+- pre-push advertisement is found
+- page push succeeds
+- GATT `STATUS.data_ver` equals pushed `data_ver`
+- post-push advertisement reports same `data_ver`
+- post-push advertisement has no render error and `display_busy=false`
+
+Physical pixel correctness still requires visual comparison against the
+host-rendered expected PNG for the pushed page.
+
+Optional webcam/photo review flow:
+
+```bash
+ffmpeg -hide_banner -y -f avfoundation -framerate 30 -video_size 1920x1080 \
+  -i "0:none" -frames:v 1 /tmp/tlsr-layout-tag-screen.jpg
+
+uv run tlsr-layout visual-review \
+  --expected /tmp/tlsr-layout-e2e-example-current/example.expected.png \
+  --capture /tmp/tlsr-layout-tag-screen.jpg
+```

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import struct
+from html import escape
 from pathlib import Path
 from typing import Annotated
 
@@ -11,7 +12,7 @@ import typer
 
 from .ble.central import PushError, push_page
 from .ble.discovery import scan
-from .ble.transport import Transport
+from .ble.transport import connect_transport
 from .encode import chunk_payload, encode_page
 from .pages.registry import build_page, page_names
 from .protocol import DSL_FORMAT_ZLIB_JSON_V1, build_begin, build_data_chunk
@@ -79,6 +80,55 @@ def dry_run(
     typer.echo(json.dumps(summary, indent=2))
 
 
+@app.command("visual-review")
+def visual_review(
+    expected: Annotated[Path, typer.Option("--expected", help="Host-rendered expected PNG.")],
+    capture: Annotated[
+        Path, typer.Option("--capture", help="Camera/photo capture of the physical tag.")
+    ],
+    out: Annotated[Path, typer.Option("--out", help="Output HTML review artifact.")] = Path(
+        "/tmp/tlsr-layout-visual-review.html"
+    ),
+) -> None:
+    """Build a local visual review page for the final e-ink pixel gate."""
+
+    for label, path in (("expected", expected), ("capture", capture)):
+        if not path.is_file():
+            typer.echo(f"{label} image not found: {path}", err=True)
+            raise typer.Exit(code=2)
+
+    expected_uri = expected.resolve().as_uri()
+    capture_uri = capture.resolve().as_uri()
+    expected_path = escape(str(expected))
+    capture_path = escape(str(capture))
+    pass_text = (
+        "Pass only if the physical tag matches the expected layout: "
+        "red CLAUDE header, black progress bar, red sparkline, bottom updated 14:32."
+    )
+    html = f"""<!doctype html>
+<meta charset="utf-8">
+<title>tlsr-layout visual review</title>
+<style>
+body {{ font: 14px -apple-system, BlinkMacSystemFont, sans-serif; margin: 24px; }}
+.grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }}
+img {{ max-width: 100%; border: 1px solid #ccc; image-rendering: pixelated; }}
+code {{ background: #f4f4f4; padding: 2px 4px; }}
+</style>
+<h1>tlsr-layout visual review</h1>
+<p>{pass_text}</p>
+<div class="grid">
+  <section><h2>Expected</h2><p><code>{expected_path}</code></p><img src="{expected_uri}"></section>
+  <section><h2>Capture</h2><p><code>{capture_path}</code></p><img src="{capture_uri}"></section>
+</div>
+"""
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html)
+    typer.echo(f"visual review: {out}")
+    typer.echo(
+        "pass criteria: red CLAUDE header, black progress bar, red sparkline, bottom updated 14:32"
+    )
+
+
 @app.command("devices")
 def devices(
     duration: Annotated[
@@ -106,6 +156,9 @@ def devices(
 def push(
     page_name: Annotated[str, typer.Argument()],
     device: Annotated[str, typer.Option("--device", help="Target tag MAC address.")],
+    scan_duration: Annotated[
+        float, typer.Option("--scan-duration", help="Seconds to scan before connecting.")
+    ] = 10.0,
 ) -> None:
     """Push a registered page to a tag."""
 
@@ -116,15 +169,104 @@ def push(
         raise typer.Exit(code=2) from exc
 
     async def _run() -> None:
-        from bleak import BleakClient
-
-        async with Transport(BleakClient(device)) as transport:
+        found = await scan(duration_s=scan_duration)
+        tag = found.get(device)
+        if tag is None:
+            typer.echo(f"device {device!r} not found during scan", err=True)
+            raise typer.Exit(code=2)
+        async with connect_transport(device, device=tag.device) as transport:
             try:
                 encoded = await push_page(transport, page)
             except PushError as exc:
                 typer.echo(f"push failed: {exc}", err=True)
                 raise typer.Exit(code=3) from exc
             typer.echo(f"push ok: data_ver=0x{encoded.data_ver:08X}")
+
+    asyncio.run(_run())
+
+
+@app.command("hardware-e2e")
+def hardware_e2e(
+    page_name: Annotated[str, typer.Argument()] = "example",
+    device: Annotated[str | None, typer.Option("--device", help="Target tag MAC address.")] = None,
+    scan_duration: Annotated[
+        float, typer.Option("--scan-duration", help="Seconds to scan before connecting.")
+    ] = 30.0,
+    post_scan_duration: Annotated[
+        float, typer.Option("--post-scan-duration", help="Seconds to scan for the pushed data_ver.")
+    ] = 20.0,
+) -> None:
+    """Run scan -> push -> STATUS -> post-push advertising verification."""
+
+    try:
+        page = build_page(page_name)
+    except KeyError as exc:
+        typer.echo(f"unknown page {page_name!r}; known: {page_names()}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    async def _run() -> None:
+        found = await scan(duration_s=scan_duration)
+        if device is not None:
+            selected = found.get(device)
+            if selected is None:
+                typer.echo(f"device {device!r} not found during scan", err=True)
+                raise typer.Exit(code=2)
+            address = device
+        else:
+            if not found:
+                typer.echo("no tags found during scan", err=True)
+                raise typer.Exit(code=2)
+            address, selected = sorted(found.items())[0]
+
+        typer.echo(
+            f"before {address} data_ver=0x{selected.adv.data_ver:08X} "
+            f"batt={selected.adv.battery_mV}mV flags={selected.adv.flags:#04x}"
+        )
+        async with connect_transport(address, device=selected.device) as transport:
+            try:
+                encoded = await push_page(transport, page)
+            except PushError as exc:
+                typer.echo(f"push failed: {exc}", err=True)
+                raise typer.Exit(code=3) from exc
+            status = await transport.read_status()
+
+        status_data_ver = int.from_bytes(status[:4], "little")
+        typer.echo(
+            f"push ok data_ver=0x{encoded.data_ver:08X} status_data_ver=0x{status_data_ver:08X}"
+        )
+        if status_data_ver != encoded.data_ver:
+            typer.echo("STATUS data_ver mismatch", err=True)
+            raise typer.Exit(code=4)
+
+        post_found = await scan(duration_s=post_scan_duration)
+        post_tag = next(
+            (
+                tag
+                for tag in post_found.values()
+                if tag.adv.data_ver == encoded.data_ver
+                and not tag.adv.render_err
+                and not tag.adv.display_busy
+            ),
+            None,
+        )
+        if post_tag is None:
+            observed = ", ".join(
+                f"{addr}=0x{tag.adv.data_ver:08X}/flags={tag.adv.flags:#04x}"
+                for addr, tag in sorted(post_found.items())
+            )
+            typer.echo(
+                f"post-push advertisement data_ver=0x{encoded.data_ver:08X} "
+                "with display idle and no render error not found"
+                + (f"; observed {observed}" if observed else ""),
+                err=True,
+            )
+            raise typer.Exit(code=5)
+
+        typer.echo(
+            f"after {post_tag.address} data_ver=0x{post_tag.adv.data_ver:08X} "
+            f"batt={post_tag.adv.battery_mV}mV flags={post_tag.adv.flags:#04x}"
+        )
+        typer.echo(f"hardware e2e ok: data_ver=0x{encoded.data_ver:08X}")
 
     asyncio.run(_run())
 

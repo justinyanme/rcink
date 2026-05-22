@@ -8,6 +8,7 @@
 #include <battery.h>
 #include <log.h>
 #include <store/ringlog.h>
+#include <store/slot.h>
 
 #include "ble.h"
 #include "ble_service.h"
@@ -119,7 +120,9 @@ RAM u8 layout_status_buf[16];
 RAM u8 layout_meta_buf[32];
 RAM u8 layout_xfer_ctl_scratch[20];
 RAM u8 layout_xfer_data_scratch[182];
-static u8 layout_xfer_ack_buf[4];
+static u8 layout_xfer_ctl_value[1];
+static u8 layout_xfer_data_value[1];
+static u8 layout_xfer_ack_value[1];
 static u8 layout_xfer_ack_cccd[2];
 static u8 layout_status_cccd[2];
 static ringlog_record_t layout_ringlog_buf;
@@ -138,11 +141,27 @@ static void layout_put_u32(u8 *dst, const u32 value)
     dst[3] = (value >> 24) & 0xFF;
 }
 
-void layout_att_refresh_status(const u16 battery_mv, const s8 temp_c, const u8 flags)
+static void layout_att_mark_no_page(void)
 {
     layout_put_u32(&layout_status_buf[0], 0xFFFFFFFFUL);
     layout_status_buf[4] = 0x00; // flash_state: no page yet
     layout_status_buf[5] = 0x00; // last_err
+}
+
+static void layout_att_load_active_slot(void)
+{
+    slot_header_t header;
+    if (slot_active(&header) == SLOT_NONE) {
+        return;
+    }
+
+    layout_put_u32(&layout_status_buf[0], header.data_ver);
+    layout_status_buf[4] = 0x01; // flash_state: active page present
+    layout_status_buf[5] = 0x00; // last_err
+}
+
+void layout_att_refresh_status(const u16 battery_mv, const s8 temp_c, const u8 flags)
+{
     layout_put_u16(&layout_status_buf[6], battery_mv);
     layout_status_buf[8] = (u8)temp_c;
     layout_status_buf[9] = flags;
@@ -233,19 +252,19 @@ static const u8 layout_status_char_val[19] = {
 };
 
 static const u8 layout_xfer_ctl_char_val[19] = {
-    CHAR_PROP_WRITE,
+    CHAR_PROP_READ | CHAR_PROP_WRITE_WITHOUT_RSP | CHAR_PROP_WRITE,
     U16_LO(DP_H_LAYOUT_XFER_CTL_VAL), U16_HI(DP_H_LAYOUT_XFER_CTL_VAL),
     LAYOUT_CHAR_UUID_BYTES(0x02)
 };
 
 static const u8 layout_xfer_data_char_val[19] = {
-    CHAR_PROP_WRITE_WITHOUT_RSP,
+    CHAR_PROP_READ | CHAR_PROP_WRITE_WITHOUT_RSP,
     U16_LO(DP_H_LAYOUT_XFER_DATA_VAL), U16_HI(DP_H_LAYOUT_XFER_DATA_VAL),
     LAYOUT_CHAR_UUID_BYTES(0x03)
 };
 
 static const u8 layout_xfer_ack_char_val[19] = {
-    CHAR_PROP_NOTIFY,
+    CHAR_PROP_READ | CHAR_PROP_NOTIFY,
     U16_LO(DP_H_LAYOUT_XFER_ACK_VAL), U16_HI(DP_H_LAYOUT_XFER_ACK_VAL),
     LAYOUT_CHAR_UUID_BYTES(0x04)
 };
@@ -339,11 +358,11 @@ static const attribute_t my_Attributes[] = {
     {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_status_buf), (u8*)(LAYOUT_CHAR_STATUS_UUID), (u8*)(layout_status_buf), 0, 0},
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_status_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_status_cccd), 0, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_ctl_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_ctl_char_val), 0, 0},
-    {0,ATT_PERMISSIONS_WRITE, 16, sizeof(layout_xfer_ctl_scratch), (u8*)(LAYOUT_CHAR_XFER_CTL_UUID), (u8*)(layout_xfer_ctl_scratch), &layout_xfer_ctl_write, 0},
+    {0,ATT_PERMISSIONS_RDWR, 16, sizeof(layout_xfer_ctl_value), (u8*)(LAYOUT_CHAR_XFER_CTL_UUID), (u8*)(layout_xfer_ctl_value), &layout_xfer_ctl_write, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_data_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_data_char_val), 0, 0},
-    {0,ATT_PERMISSIONS_WRITE, 16, sizeof(layout_xfer_data_scratch), (u8*)(LAYOUT_CHAR_XFER_DATA_UUID), (u8*)(layout_xfer_data_scratch), &layout_xfer_data_write, 0},
+    {0,ATT_PERMISSIONS_RDWR, 16, sizeof(layout_xfer_data_value), (u8*)(LAYOUT_CHAR_XFER_DATA_UUID), (u8*)(layout_xfer_data_value), &layout_xfer_data_write, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_xfer_ack_char_val), (u8*)(&my_characterUUID), (u8*)(layout_xfer_ack_char_val), 0, 0},
-    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_xfer_ack_buf), (u8*)(LAYOUT_CHAR_XFER_ACK_UUID), (u8*)(layout_xfer_ack_buf), 0, 0},
+    {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_xfer_ack_value), (u8*)(LAYOUT_CHAR_XFER_ACK_UUID), (u8*)(layout_xfer_ack_value), 0, 0},
     {0,ATT_PERMISSIONS_RDWR, 2, sizeof(layout_xfer_ack_cccd), (u8*)(&clientCharacterCfgUUID), (u8*)(layout_xfer_ack_cccd), 0, 0},
     {0,ATT_PERMISSIONS_READ, 2, sizeof(layout_meta_char_val), (u8*)(&my_characterUUID), (u8*)(layout_meta_char_val), 0, 0},
     {0,ATT_PERMISSIONS_READ, 16, sizeof(layout_meta_buf), (u8*)(LAYOUT_CHAR_META_UUID), (u8*)(layout_meta_buf), 0, 0},
@@ -358,7 +377,9 @@ static const attribute_t my_Attributes[] = {
 void my_att_init(void) {
     ringlog_init();
     layout_att_init_meta();
+    layout_att_mark_no_page();
     layout_att_refresh_status(battery_read_mv(), 0, 0);
+    layout_att_load_active_slot();
     log_debugf("set %d attributes", sizeof(my_Attributes) / sizeof(attribute_t) - 1);
     bls_att_setAttributeTable((u8*)my_Attributes);
 }

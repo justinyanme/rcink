@@ -1,5 +1,6 @@
 #pragma once
 #include "etime.h"
+#include "scene.h"
 
 #ifndef EPD_ROW_BYTES
 #define EPD_ROW_BYTES(width) (((width) + 7) / 8)
@@ -22,15 +23,6 @@
 
 #define MAX_TEXT_SIZE 200
 
-typedef enum
-{
-    EPD_SCENE_TIME = 0, // default
-    EPD_SCENE_LIST,     // display text list, like reminders
-    EPD_SCENE_IMAGE,    // display image
-
-    EPD_SCENE_DEFAULT = EPD_SCENE_TIME,
-} EPD_SCENE;
-
 typedef enum {
     EPD_COLOR_WHITE = 0,
     EPD_COLOR_BLACK = 1,
@@ -46,9 +38,9 @@ typedef enum {
 } EPD_REFRESH_MODE;
 
 void set_force_refresh_when_available(EPD_REFRESH_MODE mode);
-void change_scene(EPD_SCENE scene);
 // trigger check display state and returns if its updating
 bool epd_check_is_updating(void);
+bool epd_is_display_busy(void);
 void epd_clear_buffer(void);
 void epd_fill_ram(EPD_COLOR color);
 

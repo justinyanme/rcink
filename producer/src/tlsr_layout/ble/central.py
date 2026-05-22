@@ -1,5 +1,6 @@
 """High-level page push orchestration over the tlsr-layout GATT service."""
 
+import asyncio
 import logging
 
 from ..encode import EncodedPage, chunk_payload, encode_page
@@ -35,6 +36,7 @@ async def push_page(
     *,
     chunk_payload_size: int = 180,
     ack_timeout_s: float = 5.0,
+    commit_timeout_s: float = 45.0,
     crc_retries: int = 1,
 ) -> EncodedPage:
     """Push one page. Recovers GAPs in-place and retries once on CRC failure."""
@@ -48,6 +50,7 @@ async def push_page(
             encoded=encoded,
             chunks=chunks,
             ack_timeout_s=ack_timeout_s,
+            commit_timeout_s=commit_timeout_s,
         )
         if ack.code == ACK_OK_COMMIT:
             return encoded
@@ -67,6 +70,7 @@ async def _transfer_once(
     encoded: EncodedPage,
     chunks: list[tuple[int, bytes]],
     ack_timeout_s: float,
+    commit_timeout_s: float,
 ) -> Ack:
     await transport.write_ctl(
         build_begin(
@@ -98,7 +102,20 @@ async def _transfer_once(
         raise _push_error_for_ack(ack, phase="DATA")
 
     await transport.write_ctl(build_commit(data_ver=encoded.data_ver))
-    return parse_ack(await transport.next_ack(ack_timeout_s * 3))
+    return await _wait_for_commit_ack(transport, timeout_s=commit_timeout_s)
+
+
+async def _wait_for_commit_ack(transport: Transport, *, timeout_s: float) -> Ack:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while True:
+        remaining_s = deadline - loop.time()
+        if remaining_s <= 0:
+            raise TimeoutError
+        ack = parse_ack(await transport.next_ack(remaining_s))
+        if ack.code in {ACK_OK_PROGRESS, ACK_OK_BEGIN}:
+            continue
+        return ack
 
 
 async def _maybe_ack(transport: Transport) -> Ack | None:

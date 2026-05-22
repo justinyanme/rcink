@@ -13,6 +13,7 @@ class DiscoveredTag:
     address: str
     rssi: int
     adv: Advertisement
+    device: BLEDevice | None = None
 
 
 async def scan(duration_s: float = 10.0) -> dict[str, DiscoveredTag]:
@@ -28,6 +29,7 @@ async def scan(duration_s: float = 10.0) -> dict[str, DiscoveredTag]:
             address=device.address,
             rssi=adv.rssi or 0,
             adv=parsed,
+            device=device,
         )
 
     async with BleakScanner(detection_callback=_detect):

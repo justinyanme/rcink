@@ -44,6 +44,50 @@ def test_dry_run_unknown_page(tmp_path: Path):
     assert "unknown page" in result.output.lower()
 
 
+def test_visual_review_writes_html(tmp_path: Path):
+    expected = tmp_path / "expected.png"
+    capture = tmp_path / "capture.jpg"
+    out = tmp_path / "review.html"
+    expected.write_bytes(b"expected")
+    capture.write_bytes(b"capture")
+
+    result = runner.invoke(
+        app,
+        [
+            "visual-review",
+            "--expected",
+            str(expected),
+            "--capture",
+            str(capture),
+            "--out",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "visual review:" in result.output
+    html = out.read_text()
+    assert "red CLAUDE header" in html
+    assert expected.resolve().as_uri() in html
+    assert capture.resolve().as_uri() in html
+
+
+def test_visual_review_requires_images(tmp_path: Path):
+    result = runner.invoke(
+        app,
+        [
+            "visual-review",
+            "--expected",
+            str(tmp_path / "missing.png"),
+            "--capture",
+            str(tmp_path / "missing.jpg"),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "expected image not found" in result.output
+
+
 def test_devices_stub():
     with patch("tlsr_layout.cli.scan", AsyncMock(return_value={})):
         result = runner.invoke(app, ["devices", "--duration", "0"])

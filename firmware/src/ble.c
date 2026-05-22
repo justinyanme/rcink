@@ -4,6 +4,7 @@
 #include "app_config.h"
 #include "stack/ble/ble.h"
 #include "ble_service.h"
+#include "epd/epd.h"
 #include "proto/xfer.h"
 
 #include "ble.h"
@@ -70,11 +71,12 @@ _attribute_data_retention_ my_fifo_t blt_txfifo = {
 /**
  * @brief	BLE Advertising data
  */
-RAM u8 tbl_advData[31] = {
+RAM u8 tbl_advData[] = {
     0x02, 0x01, 0x06,
     // CompleteLocalName: len=0x0C (1 type byte + 11 chars), not 0x0D — off-by-one in earlier rev
     0x0C, 0x09, 'T', 'L', 'a', 'y', '_', 'X', 'X', 'X', 'X', 'X', 'X',
-    0x0B, 0xFF, 0xFF, 0xFF, 0x02,
+    // Manufacturer data: type + company ID + v2 payload (12 bytes).
+    0x0C, 0xFF, 0xFF, 0xFF, 0x02,
     0x00, 0x00, 0x00, 0x00,  // data_ver
     0x00, 0x00,              // battery_mV
     0x00,                    // temp_c
@@ -160,6 +162,16 @@ _attribute_ram_code_ void ble_open_peek_window(void) {
 #endif
 }
 
+_attribute_ram_code_ void ble_open_sync_window(void) {
+#if !(DISABLE_BLE)
+    ble_sync_window_begin_tick = clock_time();
+    ble_sync_window_closed = 0;
+    sendTerminate_before_enterDeep = 0;
+    bls_ll_setAdvEnable(BLC_ADV_ENABLE);
+    log_debugf("BLE sync window opened for %d seconds", BLE_SYNC_WINDOW_SECONDS);
+#endif
+}
+
 ////////////////////////// Callback //////////////////////////
 
 /**
@@ -172,6 +184,7 @@ void task_sleep_enter(u8 e, u8 *p, int n) {
     (void)e;
     (void)p;
     (void)n;
+    _battery_clear_adc_setting_flag();
 }
 
 
@@ -215,7 +228,7 @@ void task_connect(u8 e, u8 *p, int n) {
     (void)n;
     tlk_contr_evt_connect_t *pConnEvt = (tlk_contr_evt_connect_t*)p;
     tlkapi_send_string_data(APP_CONTR_EVENT_LOG_EN, "[APP][EVT] connect, intA & advA:", pConnEvt->initA, 12);
-    bls_l2cap_requestConnParamUpdate(CONN_INTERVAL_10MS, CONN_INTERVAL_10MS, 99, CONN_TIMEOUT_4S); // 1 S
+    bls_l2cap_requestConnParamUpdate(CONN_INTERVAL_10MS, CONN_INTERVAL_20MS, 0, CONN_TIMEOUT_4S);
 
     ble_note_user_activity();
 }
@@ -244,6 +257,7 @@ void task_terminate(u8 e, u8 *p, int n) //*p is terminate reason
 #endif
 
     advertise_begin_tick = clock_time();
+    layout_apply_adv_payload();
     if (clock_time_exceed(ble_sync_window_begin_tick, BLE_SYNC_WINDOW_SECONDS * 1000000)) {
         ble_close_sync_window();
     }
@@ -346,8 +360,21 @@ void layout_refresh_adv_payload(void) {
         flags |= 0x01;
     }
     flags = (flags & (u8)~0x04) | (xfer_adv_flags() & 0x04);
+    if (epd_is_display_busy()) {
+        flags |= 0x08;
+    } else {
+        flags &= (u8)~0x08;
+    }
     layout_status_buf[9] = flags;
     tbl_advData[28] = flags;
+}
+
+void layout_apply_adv_payload(void) {
+    layout_refresh_adv_payload();
+    ble_sts_t sts_set_adv = bls_ll_setAdvData((u8*)tbl_advData, sizeof(tbl_advData));
+    if (sts_set_adv != BLE_SUCCESS) {
+        log_debugf("[ERROR] set adv data failed: %d", sts_set_adv);
+    }
 }
 
 #if AIRTAG_ENABLE
@@ -501,11 +528,7 @@ void init_ble(void) {
     ble_sync_window_begin_tick = clock_time();
     ble_sync_window_closed = 0;
     latest_user_event_tick = ble_sync_window_begin_tick;
-    layout_refresh_adv_payload();
-    ble_sts_t sts_set_adv = bls_ll_setAdvData((u8*)tbl_advData, sizeof(tbl_advData));
-    if (sts_set_adv != BLE_SUCCESS) {
-        log_debugf("[ERROR] set adv data failed: %d", sts_set_adv);
-    }
+    layout_apply_adv_payload();
     bls_ll_setScanRspData((u8*)ble_name, sizeof(ble_name));
     bls_ll_setAdvEnable(BLC_ADV_ENABLE); //ADV enable
 
@@ -580,17 +603,8 @@ _attribute_ram_code_ void blt_pm_proc(void) {
             cpu_sleep_wakeup(DEEPSLEEP_MODE_RET_SRAM_LOW32K, PM_WAKEUP_TIMER, TICK_SECONDS_LATER(BLE_SLEEP_SECONDS)); //deepSleep
         }
 #endif
-    } else {
-        //PM module manage advertising and ACL connection Slave role low power only
-
-#if (PM_DEEPSLEEP_RETENTION_ENABLE)
-        bls_pm_setSuspendMask(SUSPEND_ADV | DEEPSLEEP_RETENTION_ADV | SUSPEND_CONN | DEEPSLEEP_RETENTION_CONN);
-#else
-        bls_pm_setSuspendMask (SUSPEND_ADV | SUSPEND_CONN);
-        log_verbosef("set suspend mask: 0x%x", SUSPEND_ADV | SUSPEND_CONN);
-#endif
-
 #if (!TEST_CONN_CURRENT_ENABLE && FORCE_SLEEP)   //test connection power, should disable deepSleep
+    } else {
         if (!ota_is_working && !blc_ll_isControllerEventPending()) {
             // no controller event pending
             /* Close BLE after the boot sync window expires without a connection. */
@@ -611,6 +625,25 @@ _attribute_ram_code_ void blt_pm_proc(void) {
                 sendTerminate_before_enterDeep = 1;
             }
         }
+
+        if (blc_ll_getCurrentState() == BLS_LINK_STATE_ADV && !ble_sync_window_closed) {
+            // The initial sync window is the user's chance to push the first DSL
+            // page. Keep advertising fully awake here; power save resumes after
+            // the window closes or once connected.
+            bls_pm_setSuspendMask(SUSPEND_DISABLE);
+            return;
+        }
+#else
+    } else {
+#endif
+
+        //PM module manage advertising and ACL connection Slave role low power only
+
+#if (PM_DEEPSLEEP_RETENTION_ENABLE)
+        bls_pm_setSuspendMask(SUSPEND_ADV | DEEPSLEEP_RETENTION_ADV | SUSPEND_CONN | DEEPSLEEP_RETENTION_CONN);
+#else
+        bls_pm_setSuspendMask (SUSPEND_ADV | SUSPEND_CONN);
+        log_verbosef("set suspend mask: 0x%x", SUSPEND_ADV | SUSPEND_CONN);
 #endif  //end of !TEST_CONN_CURRENT_ENABLE
     }
 #endif  //end of BLE_APP_PM_ENABLE
@@ -633,12 +666,7 @@ _attribute_ram_code_ void update_adv_data(s16 temp, u16 battery_mv) {
     const s8 temp_c = (s8)(temp / 10);
     const u8 flags = layout_status_buf[9];
     layout_att_refresh_status(battery_mv, temp_c, flags);
-    layout_refresh_adv_payload();
-
-    ble_sts_t sts_set_adv = bls_ll_setAdvData((u8*)tbl_advData, sizeof(tbl_advData));
-    if (sts_set_adv != BLE_SUCCESS) {
-        log_debugf("[ERROR] set adv data failed: %d", sts_set_adv);
-    }
+    layout_apply_adv_payload();
 
     u8 battery_level = mv_to_battery_level(battery_mv);
     ble_notify_battery(battery_level);

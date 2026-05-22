@@ -5,6 +5,7 @@
 #include "../engine/engine.h"
 #include "../engine/measure.h"
 #include "../proto/uzlib/uzlib.h"
+#include "fonts.h"
 #include "paint.h"
 
 #include <string.h>
@@ -16,8 +17,8 @@ static size_t16_t device_text(const measurer_t *m, const text_node_t *t)
 {
     (void)m;
     return (size_t16_t){
-        (int16_t)(t->value_len * 7 + 2 * t->pad),
-        (int16_t)(layout_font_height(t->size) + 2 * t->pad),
+        (int16_t)(fonts_default.measure_text(t->size, t->weight, t->value, t->value_len) + 2 * t->pad),
+        (int16_t)(fonts_default.line_height(t->size) + 2 * t->pad),
     };
 }
 

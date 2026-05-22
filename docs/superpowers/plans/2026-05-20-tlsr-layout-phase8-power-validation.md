@@ -1,6 +1,8 @@
 # tlsr-layout — Phase 8: Power Validation (Manual)
 
-**Status:** Hardware-only — not codex-doable. This document is a checklist for a human with a flashed Phase-5 firmware, a CR2032, a shunt resistor (10 Ω), and an oscilloscope or low-current logger (e.g., Otii Arc, Joulescope, or a Power Profiler Kit II).
+**Status:** Hardware-only. Requires a visually verified current firmware, a
+CR2032 or bench supply, a shunt resistor (10 Ω), and an oscilloscope or
+low-current logger (Otii Arc, Joulescope, Power Profiler Kit II, etc.).
 
 **Goal:** Confirm the tlsr-layout firmware hits the spec §9 power budget:
 
@@ -13,14 +15,39 @@ If the measured numbers miss the budget, the most likely culprits are documented
 
 ## Setup
 
-1. Flash `firmware/build/src/TLSR-LAYOUT.bin` to a Blozi 2.13" BWR FPC-A002 or FPC-7528B board (the tlsr-price-tag-compatible hardware).
+1. Flash `firmware/build/src/TLSR-LAYOUT.bin` to a Blozi 2.13" BWR FPC-A002 or
+   FPC-7528B board.
 2. Solder a 10 Ω resistor in series with the battery positive terminal. Connect scope / logger across it.
-3. Verify the board boots: EPD shows the time scene (left over from the price-tag scaffold; replaced in Phase 4 by the rendered DSL page).
-4. Run `tlsr-layout devices --duration 30` from the Mac. Confirm one entry shows up with `data_ver=0x00000000` and the right `battery_mV` (within 50 mV of the CR2032's actual voltage).
+3. Run the terminal E2E first:
+   `uv run tlsr-layout hardware-e2e example --scan-duration 15 --post-scan-duration 25`.
+   Confirm the final advertisement reports the pushed `data_ver`, no
+   `render_err`, and `display_busy=false`.
+4. Visually compare the physical panel against the host-rendered expected PNG.
+   Power validation is meaningful only after the display pixels are known-good.
+5. Run `tlsr-layout devices --duration 30` from the Mac. Confirm one entry shows
+   the expected `data_ver` (`0xFFFFFFFF` on fresh erase, or the last pushed
+   value after E2E) and `battery_mV` within 50 mV of the actual supply.
+
+**PEEK precondition:** the spec's 60 s PEEK loop requires
+`BLE_PM_PEEK_ENABLE=1`. The current bring-up binary keeps the radio silent after
+the initial sync window unless that compile-time flag is enabled, so build a
+PEEK-validation binary before Test A/B.
+
+```bash
+cd firmware
+cmake -S . -B build-peek -G Ninja \
+  -DTOOLCHAIN_PREFIX="$HOME/w/tc32" \
+  -DSDK_PREFIX="$HOME/w/telink_b85m_ble_single_connection_sdk/b85_ble_sdk" \
+  -DENABLE_BLE_PEEK=ON \
+  -DBLE_PEEK_INTERVAL_SECONDS=60 \
+  -DBLE_PEEK_ADV_SECONDS=5
+cmake --build build-peek --target TLSR-LAYOUT.bin
+```
 
 ## Test A — Idle PEEK loop (no Mac in range)
 
-1. Power-cycle the tag with the Mac out of range or BLE off.
+1. Flash a PEEK-validation binary (`BLE_PM_PEEK_ENABLE=1`) and power-cycle the
+   tag with the Mac out of range or BLE off.
 2. After the 5-minute sync window, the tag should fall into PEEK_LOOP (60 s deep sleep + ~5 s advertise).
 3. Capture 10 minutes of current. Compute the **mean**.
 

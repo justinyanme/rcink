@@ -13,8 +13,8 @@ void EPD_trigger_display_impl(bool full_refresh);
 void EPD_WriteRam_impl(const uint8_t *image, int width, int height, int left, int top, bool is_red);
 void EPD_Load_LUT();
 
-u8 EPD_read_temp_impl(void);
-u8 EPD_Display_BWR_impl(unsigned char *image, unsigned char *red_image, u8 full_refresh);
+bool EPD_read_temp_impl(u8 *out_temperature);
+bool EPD_Display_BWR_impl(unsigned char *image, unsigned char *red_image, u8 full_refresh, u8 *out_temperature);
 void EPD_set_sleep_impl(void);
 
 #endif

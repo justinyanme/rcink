@@ -12,3 +12,12 @@ async def test_push_happy_path_updates_data_ver():
         encoded = await push_page(transport, example_page())
 
     assert peripheral.data_ver == encoded.data_ver
+
+
+async def test_push_ignores_stale_progress_ack_before_commit_ack():
+    peripheral = FakePeripheral(stale_progress_before_commit=True)
+
+    async with Transport(peripheral) as transport:
+        encoded = await push_page(transport, example_page())
+
+    assert peripheral.data_ver == encoded.data_ver

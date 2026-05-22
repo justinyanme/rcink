@@ -99,7 +99,7 @@ async def test_pushes_when_stale(monkeypatch):
         pushed.append(pushed_page)
         return encode_page(pushed_page)
 
-    monkeypatch.setattr("tlsr_layout.serve.BleakClient", FakeClient)
+    monkeypatch.setattr("tlsr_layout.ble.transport.BleakClient", FakeClient)
     monkeypatch.setattr("tlsr_layout.serve.push_page_via", fake_push)
 
     changed = await _maybe_push(
@@ -124,7 +124,7 @@ async def test_push_failure_does_not_advance(monkeypatch):
     async def fail_push(_transport, _page):
         raise PushError(0x11, "CRC mismatch")
 
-    monkeypatch.setattr("tlsr_layout.serve.BleakClient", FakeClient)
+    monkeypatch.setattr("tlsr_layout.ble.transport.BleakClient", FakeClient)
     monkeypatch.setattr("tlsr_layout.serve.push_page_via", fail_push)
 
     changed = await _maybe_push(

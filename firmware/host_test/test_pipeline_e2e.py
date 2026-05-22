@@ -3,7 +3,6 @@ import zlib
 from pathlib import Path
 
 import pytest
-
 from conftest import ROOT
 
 BIN = ROOT / "build" / "host_test"

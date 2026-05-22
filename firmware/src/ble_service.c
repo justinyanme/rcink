@@ -25,6 +25,40 @@ static u16 buffer_cursor = 0;
 static u8 buffer[EPD_BUFFER_SIZE];
 extern u8 epd_buffer[EPD_BUFFER_SIZE];
 
+#define LAYOUT_ACK_QUEUE_CAPACITY 8
+
+typedef struct {
+    uint16_t last_seq;
+    uint8_t code;
+    uint8_t flags;
+} layout_ack_t;
+
+static layout_ack_t layout_ack_queue[LAYOUT_ACK_QUEUE_CAPACITY];
+static uint8_t layout_ack_head = 0;
+static uint8_t layout_ack_tail = 0;
+static uint8_t layout_ack_count = 0;
+
+static void layout_ack_queue_reset(void)
+{
+    layout_ack_head = 0;
+    layout_ack_tail = 0;
+    layout_ack_count = 0;
+}
+
+static void layout_ack_enqueue(uint16_t last_seq, uint8_t code, uint8_t flags)
+{
+    if (layout_ack_count >= LAYOUT_ACK_QUEUE_CAPACITY) {
+        log_debugf("layout ack queue full: last_seq=%d code=0x%x", last_seq, code);
+        return;
+    }
+
+    layout_ack_queue[layout_ack_head].last_seq = last_seq;
+    layout_ack_queue[layout_ack_head].code = code;
+    layout_ack_queue[layout_ack_head].flags = flags;
+    layout_ack_head = (uint8_t)((layout_ack_head + 1) % LAYOUT_ACK_QUEUE_CAPACITY);
+    layout_ack_count++;
+}
+
 static bool refresh_mode_is_valid(const u8 mode)
 {
     return mode <= EPD_RM_PARTIAL;
@@ -37,7 +71,7 @@ static bool color_is_valid(const u8 color)
 
 static bool scene_is_valid(const u8 scene)
 {
-    return scene <= EPD_SCENE_IMAGE;
+    return epd_scene_is_supported((EPD_SCENE)scene);
 }
 
 static bool read_refresh_mode(
@@ -83,16 +117,38 @@ static void fill_frame_tail(u8 *frame, const u16 frame_len, const bool is_red)
 
 static void layout_send_ack(uint16_t last_seq, uint8_t code, uint8_t flags)
 {
+    layout_ack_enqueue(last_seq, code, flags);
+}
+
+void layout_xfer_service_tick(void)
+{
     uint8_t buf[4];
-    buf[0] = last_seq & 0xFF;
-    buf[1] = (last_seq >> 8) & 0xFF;
-    buf[2] = code;
-    buf[3] = flags;
-    bls_att_pushNotifyData(DP_H_LAYOUT_XFER_ACK_VAL, buf, sizeof(buf));
+
+    if (layout_ack_count == 0) {
+        return;
+    }
+    if (!ble_is_connected()) {
+        layout_ack_queue_reset();
+        return;
+    }
+
+    const layout_ack_t *ack = &layout_ack_queue[layout_ack_tail];
+    buf[0] = ack->last_seq & 0xFF;
+    buf[1] = (ack->last_seq >> 8) & 0xFF;
+    buf[2] = ack->code;
+    buf[3] = ack->flags;
+
+    if (blc_gatt_pushHandleValueNotify(BLS_CONN_HANDLE, DP_H_LAYOUT_XFER_ACK_VAL, buf, sizeof(buf)) != BLE_SUCCESS) {
+        return;
+    }
+
+    layout_ack_tail = (uint8_t)((layout_ack_tail + 1) % LAYOUT_ACK_QUEUE_CAPACITY);
+    layout_ack_count--;
 }
 
 void layout_xfer_service_init(void)
 {
+    layout_ack_queue_reset();
     xfer_init(layout_send_ack);
 }
 

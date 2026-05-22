@@ -1,6 +1,7 @@
 #include "xfer.h"
 
 #include "../proto/crc32.h"
+#include "../epd/scene.h"
 #include "../render/pipeline.h"
 #include "../store/ringlog.h"
 #include "../store/slot.h"
@@ -10,9 +11,12 @@
 #define XFER_EPD_BUFFER_SIZE (300 * 128 / 8)
 
 void epd_clear_buffer(void);
-void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh);
-void layout_refresh_adv_payload(void);
+void FixBuffer(void);
+uint8_t EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh);
+void layout_apply_adv_payload(void);
+void ble_open_sync_window(void);
 extern uint8_t layout_status_buf[16];
+extern uint16_t current_battery_mv;
 uint16_t battery_read_mv(void);
 
 #define XFER_CTL_BEGIN 0x01u
@@ -38,6 +42,7 @@ typedef struct {
     uint16_t expected_seq;
     uint32_t now_ms;
     uint32_t last_progress_ms;
+    uint16_t rendered_uncompressed_len;
 } xfer_ctx_t;
 
 static xfer_ctx_t g_xfer;
@@ -63,6 +68,11 @@ static void emit_ack(uint16_t last_seq, xfer_code_t code)
     }
 }
 
+static uint16_t xfer_battery_mv(void)
+{
+    return current_battery_mv == 0 ? battery_read_mv() : current_battery_mv;
+}
+
 uint8_t xfer_adv_flags(void)
 {
     return g_adv_flags;
@@ -71,7 +81,7 @@ uint8_t xfer_adv_flags(void)
 static void mark_xfer_error(void)
 {
     g_adv_flags |= 0x04u;
-    layout_refresh_adv_payload();
+    layout_apply_adv_payload();
 }
 
 static void clear_xfer_error(void)
@@ -146,7 +156,8 @@ static void publish_data_ver(uint32_t data_ver)
     layout_status_buf[3] = (data_ver >> 24) & 0xFF;
     layout_status_buf[4] = 0x01;
     layout_status_buf[5] = 0x00;
-    layout_refresh_adv_payload();
+    ble_open_sync_window();
+    layout_apply_adv_payload();
 }
 
 void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
@@ -167,7 +178,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         g_xfer.total_chunks = get_le16(&frame[7]);
         g_xfer.crc32 = get_le32(&frame[9]);
         g_xfer.dsl_format = frame[13];
-        if (battery_read_mv() < XFER_MIN_BATTERY_MV) {
+        if (xfer_battery_mv() < XFER_MIN_BATTERY_MV) {
             ringlog_append(XFER_ERR_LOW_BATT, 0, 0, xfer_error_message(XFER_ERR_LOW_BATT));
             mark_xfer_error();
             emit_ack(0, XFER_ERR_LOW_BATT);
@@ -183,6 +194,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         slot_erase(g_xfer.staging);
         g_xfer.recv_offset = 0;
         g_xfer.expected_seq = 0;
+        g_xfer.rendered_uncompressed_len = 0;
         g_xfer.last_progress_ms = g_xfer.now_ms;
         g_xfer.state = XFER_RECEIVING;
         emit_ack(0, XFER_OK_BEGIN);
@@ -268,8 +280,43 @@ static xfer_code_t render_staging(uint16_t *out_uncompressed_len)
         return XFER_ERR_RENDER;
     }
 
-    EPD_Display(epd_buffer, epd_buffer_red, 1);
+    FixBuffer();
+    if (!EPD_Display(epd_buffer, epd_buffer_red, 1)) {
+        return XFER_ERR_RENDER;
+    }
+    change_scene(EPD_SCENE_IMAGE);
     return XFER_OK_COMMIT;
+}
+
+static void finish_pending_render(void)
+{
+    slot_header_t active;
+    uint32_t next_seq = 1;
+    if (slot_active(&active) != SLOT_NONE) {
+        next_seq = active.seq + 1;
+    }
+
+    slot_header_t hdr;
+    memset(&hdr, 0, sizeof(hdr));
+    hdr.magic = SLOT_MAGIC_BE;
+    hdr.data_ver = g_xfer.data_ver;
+    hdr.uncompressed_len = g_xfer.rendered_uncompressed_len;
+    hdr.compressed_len = g_xfer.total_len;
+    hdr.crc32 = g_xfer.crc32;
+    hdr.seq = next_seq;
+
+    if (slot_write_header(g_xfer.staging, &hdr) != 0) {
+        ringlog_append(XFER_ERR_RENDER, g_xfer.data_ver, 0, "header write failed");
+        mark_xfer_error();
+        g_xfer.state = XFER_IDLE;
+        emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_RENDER);
+        return;
+    }
+
+    clear_xfer_error();
+    publish_data_ver(g_xfer.data_ver);
+    emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_OK_COMMIT);
+    g_xfer.state = XFER_IDLE;
 }
 
 void xfer_run_pending_render(void)
@@ -288,31 +335,6 @@ void xfer_run_pending_render(void)
         return;
     }
 
-    slot_header_t active;
-    uint32_t next_seq = 1;
-    if (slot_active(&active) != SLOT_NONE) {
-        next_seq = active.seq + 1;
-    }
-
-    slot_header_t hdr;
-    memset(&hdr, 0, sizeof(hdr));
-    hdr.magic = SLOT_MAGIC_BE;
-    hdr.data_ver = g_xfer.data_ver;
-    hdr.uncompressed_len = uncompressed_len;
-    hdr.compressed_len = g_xfer.total_len;
-    hdr.crc32 = g_xfer.crc32;
-    hdr.seq = next_seq;
-
-    if (slot_write_header(g_xfer.staging, &hdr) != 0) {
-        ringlog_append(XFER_ERR_RENDER, g_xfer.data_ver, 0, "header write failed");
-        mark_xfer_error();
-        g_xfer.state = XFER_IDLE;
-        emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_RENDER);
-        return;
-    }
-
-    clear_xfer_error();
-    publish_data_ver(g_xfer.data_ver);
-    emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_OK_COMMIT);
-    g_xfer.state = XFER_IDLE;
+    g_xfer.rendered_uncompressed_len = uncompressed_len;
+    finish_pending_render();
 }

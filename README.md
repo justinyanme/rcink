@@ -10,7 +10,7 @@ A Mac-resident BLE producer that streams a JSON layout DSL to a TLSR8258 3-color
 │  layout DSL builders | encode (zlib+CRC) | ble │                       ▼
 └────────────────────────────────────────────────┘     ┌── TLSR8258 firmware ─┐
                                                        │ GATT service 0x1F20  │
-                                                       │ A/B flash @ 0x74000  │
+                                                       │ A/B flash @ 0x70000  │
                                                        │ uzlib + jsmn         │
                                                        │ run_layout + paint   │
                                                        │ EPD 250×128 BWR      │
@@ -20,9 +20,9 @@ A Mac-resident BLE producer that streams a JSON layout DSL to a TLSR8258 3-color
 ## Layout
 
 ```
-producer/    Python ≥3.13, uv-managed.        89 passing tests, 87 % coverage.
-firmware/    C99, TLSR TC32 + B85m SDK.       117 KB binary, ≤145 KB flash.
-firmware/host_test/  Host-shim layout +       32 passing tests; PNG dump per scenario.
+producer/    Python ≥3.13, uv-managed.        96 passing tests, ≥85 % coverage.
+firmware/    C99, TLSR TC32 + B85m SDK.       102 KB binary, ≤145 KB flash.
+firmware/host_test/  Host-shim layout +       39 passing tests; PNG dump per scenario.
                      render tests via clang.
 docs/superpowers/specs/    Authoritative wire-protocol design (v1).
 docs/superpowers/plans/    Per-phase implementation plans (1–8).
@@ -35,10 +35,11 @@ docs/superpowers/plans/    Per-phase implementation plans (1–8).
 ```bash
 cd producer
 uv sync --all-extras
-uv run pytest -q                                  # 89 tests, ~0.4 s
+uv run pytest -q                                  # 96 tests, ~0.5 s
 
 uv run tlsr-layout devices                         # scan 10 s for tags
 uv run tlsr-layout push example --device AA:BB:CC:DD:EE:FF
+uv run tlsr-layout hardware-e2e example            # scan -> push -> STATUS -> adv verify
 uv run tlsr-layout serve --device-filter AA:BB:CC:DD:EE:FF
 ```
 
@@ -61,7 +62,7 @@ cmake --build build --target TLSR-LAYOUT.bin
 cd firmware/host_test
 cmake -S . -B build && cmake --build build
 uv sync --all-extras
-uv run pytest -v                                   # 32 tests, ~0.2 s
+uv run pytest -v                                   # 39 tests, ~0.3 s
 # PNGs in firmware/host_test/out/ for visual review.
 ```
 

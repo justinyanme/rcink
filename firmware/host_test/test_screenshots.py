@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from conftest import ROOT, run_render
 
 SCENARIOS = sorted((ROOT / "scenarios").glob("*.json"))

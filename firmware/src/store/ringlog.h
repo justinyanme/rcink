@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define RINGLOG_ADDR         0x76000u
+#define RINGLOG_ADDR         0x72000u
 #define RINGLOG_RECORD_SIZE  64u
 #define RINGLOG_CAPACITY     8u
 #define RINGLOG_EMPTY_TS     0xFFFFFFFFu

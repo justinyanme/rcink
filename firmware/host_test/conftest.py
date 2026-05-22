@@ -11,9 +11,7 @@ BIN = ROOT / "build" / "host_test"
 
 def pytest_configure(config):
     if not BIN.exists():
-        raise RuntimeError(
-            f"host_test binary not built at {BIN}. Run `cmake -S . -B build && cmake --build build`."
-        )
+        raise RuntimeError(f"host_test binary not built at {BIN}. Run `cmake -S . -B build && cmake --build build`.")
 
 
 @pytest.fixture(scope="session")

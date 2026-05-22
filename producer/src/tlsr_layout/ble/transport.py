@@ -2,10 +2,13 @@
 
 import asyncio
 import struct
+import sys
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
 from bleak import BleakClient
+from bleak.exc import BleakDeviceNotFoundError
 
 from .uuids import (
     CHAR_META,
@@ -14,6 +17,8 @@ from .uuids import (
     CHAR_XFER_CTL,
     CHAR_XFER_DATA,
 )
+
+DEFAULT_CONNECT_TIMEOUT_S = 30.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,10 +76,43 @@ class Transport:
         return bytes(await self._client.read_gatt_char(CHAR_STATUS))
 
     async def write_ctl(self, frame: bytes) -> None:
-        await self._client.write_gatt_char(CHAR_XFER_CTL, frame, response=True)
+        await self._client.write_gatt_char(CHAR_XFER_CTL, frame, response=False)
 
     async def write_data(self, frame: bytes) -> None:
         await self._client.write_gatt_char(CHAR_XFER_DATA, frame, response=False)
 
     async def next_ack(self, timeout_s: float) -> bytes:
         return await asyncio.wait_for(self._ack_queue.get(), timeout=timeout_s)
+
+
+@asynccontextmanager
+async def connect_transport(
+    address: str,
+    *,
+    device: Any | None = None,
+    timeout_s: float = DEFAULT_CONNECT_TIMEOUT_S,
+):
+    """Open a Transport using the scanned device first, with address lookup as fallback."""
+
+    primary = device if device is not None else address
+    fallback = address if device is not None else None
+
+    transport = Transport(BleakClient(primary, timeout=timeout_s))
+    try:
+        await transport.__aenter__()
+    except (BleakDeviceNotFoundError, TimeoutError):
+        if fallback is None:
+            raise
+    else:
+        exc_info = (None, None, None)
+        try:
+            yield transport
+        except BaseException:
+            exc_info = sys.exc_info()
+            raise
+        finally:
+            await transport.__aexit__(*exc_info)
+        return
+
+    async with Transport(BleakClient(fallback, timeout=timeout_s)) as transport:
+        yield transport

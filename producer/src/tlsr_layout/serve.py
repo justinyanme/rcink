@@ -5,13 +5,13 @@ import logging
 import time
 from dataclasses import dataclass
 
-from bleak import AdvertisementData, BleakClient, BleakScanner, BLEDevice
+from bleak import AdvertisementData, BleakScanner, BLEDevice
 
 from .ble.adv_parser import Advertisement
 from .ble.adv_parser import parse as parse_adv
 from .ble.central import PushError
 from .ble.central import push_page as push_page_via
-from .ble.transport import Transport
+from .ble.transport import connect_transport
 from .hash import data_ver as compute_data_ver
 from .pages.registry import build_page, page_names
 from .state import Store, get_or_create, load, save
@@ -63,6 +63,7 @@ async def serve(config: ServeConfig) -> None:
                 rotation,
                 store,
                 busy_macs,
+                device_ref=device,
                 settle_delay_s=config.settle_delay_s,
             )
         )
@@ -86,6 +87,7 @@ async def _maybe_push_and_save(
     store: Store,
     busy: set[str],
     *,
+    device_ref: BLEDevice | None = None,
     settle_delay_s: float,
 ) -> None:
     changed = await _maybe_push(
@@ -94,6 +96,7 @@ async def _maybe_push_and_save(
         rotation,
         store,
         busy,
+        device_ref=device_ref,
         settle_delay_s=settle_delay_s,
     )
     if changed:
@@ -107,6 +110,7 @@ async def _maybe_push(
     store: Store,
     busy: set[str],
     *,
+    device_ref: BLEDevice | None = None,
     settle_delay_s: float = 0.0,
 ) -> bool:
     state = get_or_create(store, mac)
@@ -127,7 +131,7 @@ async def _maybe_push(
     try:
         if settle_delay_s > 0:
             await asyncio.sleep(settle_delay_s)
-        async with Transport(BleakClient(mac)) as transport:
+        async with connect_transport(mac, device=device_ref) as transport:
             try:
                 encoded = await push_page_via(transport, page)
             except PushError as exc:

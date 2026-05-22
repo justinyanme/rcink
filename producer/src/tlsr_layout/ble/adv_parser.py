@@ -15,6 +15,7 @@ class Advertisement:
     sync_window: bool
     low_batt: bool
     render_err: bool
+    display_busy: bool = False
 
 
 def parse(manufacturer_data: dict[int, bytes]) -> Advertisement | None:
@@ -36,4 +37,5 @@ def parse(manufacturer_data: dict[int, bytes]) -> Advertisement | None:
         sync_window=bool(flags & 0x01),
         low_batt=bool(flags & 0x02),
         render_err=bool(flags & 0x04),
+        display_busy=bool(flags & 0x08),
     )

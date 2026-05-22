@@ -9,7 +9,13 @@ _attribute_data_retention_ static u32 battery_check_tick = 0;
 _attribute_data_retention_ u16 current_battery_mv = 0;
 static u8 adc_hw_initialized = 0;
 
+#define BATTERY_MIN_VALID_MV 1000
+
 static int app_battery_power_check(void);
+
+static bool battery_mv_is_valid(const int mv) {
+    return mv >= BATTERY_MIN_VALID_MV;
+}
 
 void _battery_clear_adc_setting_flag(void) {
     adc_hw_initialized = 0;
@@ -17,10 +23,9 @@ void _battery_clear_adc_setting_flag(void) {
 
 u16 battery_read_mv(void) {
     const int mv = app_battery_power_check();
-    if (mv <= 0) {
+    if (!battery_mv_is_valid(mv)) {
         log_debugf("invalid battery reading: %d", mv);
-        current_battery_mv = 0;
-        return 0;
+        return current_battery_mv;
     }
 
     current_battery_mv = (u16)mv;
@@ -36,6 +41,10 @@ bool battery_try_update() {
     battery_check_tick = clock_time();
 
     const int mv = app_battery_power_check();
+    if (!battery_mv_is_valid(mv)) {
+        log_debugf("invalid battery reading: %d", mv);
+        return false;
+    }
 
     // old mv > 0 && new mv < 2300, alert low battery
     if (mv < 2300 && current_battery_mv > 0) {

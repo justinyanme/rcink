@@ -127,7 +127,7 @@ void EPD_WriteRam_impl(const uint8_t *image, const int width, const int height, 
 }
 
 
-_attribute_ram_code_ uint8_t EPD_read_temp_impl(void) {
+_attribute_ram_code_ bool EPD_read_temp_impl(uint8_t *out_temperature) {
     // Temperature sensor control
     EPD_SPI_WriteCmd(0x18);
     EPD_SPI_WriteData(0x80); // 80: internal sensor 48: external sensor
@@ -139,12 +139,15 @@ _attribute_ram_code_ uint8_t EPD_read_temp_impl(void) {
     // Master Activation
     EPD_SPI_WriteCmd(0x20);
     if (!EPD_SPI_WaitBusy(100)) {
-        return 0;
+        return false;
     }
 
     // read temperature
     EPD_SPI_WriteCmd(0x1B);
-    return EPD_SPI_read();
+    if (out_temperature != NULL) {
+        *out_temperature = EPD_SPI_read();
+    }
+    return true;
 }
 
 _attribute_ram_code_ bool EPD_Display_setup(const bool soft_reset) {
@@ -214,15 +217,23 @@ _attribute_ram_code_ void EPD_Load_LUT() {
     EPD_SPI_WriteData(LUT_bwr_213_part[EPD_LUT_BYTES + 5]);
 }
 
-_attribute_ram_code_ uint8_t EPD_Display_BWR_impl(unsigned char *image, unsigned char *red_image, const uint8_t full_refresh) {
+_attribute_ram_code_ bool EPD_Display_BWR_impl(
+    unsigned char *image,
+    unsigned char *red_image,
+    const uint8_t full_refresh,
+    uint8_t *out_temperature
+) {
     if (!epd_soft_reset()) {
-        return 0;
+        return false;
     }
 
-    const uint8_t temperature = EPD_read_temp_impl();
+    uint8_t temperature = 0;
+    if (!EPD_read_temp_impl(&temperature)) {
+        return false;
+    }
 
     if (!EPD_Display_setup(FALSE)) {
-        return 0;
+        return false;
     }
 
     // load lut
@@ -236,7 +247,10 @@ _attribute_ram_code_ uint8_t EPD_Display_BWR_impl(unsigned char *image, unsigned
 
     EPD_trigger_display_impl(full_refresh);
 
-    return temperature;
+    if (out_temperature != NULL) {
+        *out_temperature = temperature;
+    }
+    return true;
 }
 
 _attribute_ram_code_ void EPD_set_sleep_impl(void) {

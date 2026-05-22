@@ -32,7 +32,7 @@ radio on a transfer when the Mac has fresh data.
 │   encode/   zlib(json) + chunker   │      ┌── TLSR8258 firmware ───────────┐
 │   ble/      bleak central          │      │ ble/    GATT 0x1F20            │
 │   cli       tlsr-layout (typer)    │      │ proto/  BEGIN/DATA/COMMIT FSM  │
-└────────────────────────────────────┘      │ store/  flash @ 0x74000/0x75000│
+└────────────────────────────────────┘      │ store/  flash @ 0x70000/0x71000│
                                             │ dsl/    uzlib + jsmn-style     │
                                             │ render/ port of rcpaper prims  │
                                             │ pm/     PEEK + deep sleep      │
@@ -62,26 +62,23 @@ the price-tag project — clean break.
 
 Tag holds a 5-minute **sync window** where it advertises continuously. Lets
 first-time pairing / initial render succeed without timing pressure. After the
-sync window, it falls into PEEK_LOOP.
+sync window, it sleeps until the next wake policy. Default firmware does not
+draw a boot UI; the panel remains unchanged until a DSL page is pushed.
+`ENABLE_BLE_PEEK=ON` enables brief periodic advertising windows after the
+initial sync window.
 
 ### 4.3 State diagram (firmware)
 
 ```
-BOOT ─► SYNC_WINDOW (5 min advertise) ─► PEEK_LOOP
-                                         │
-                  ┌──────────────────────┘
-                  ▼
-         PEEK_WAKE (RTC timer)
+BOOT ─► SYNC_WINDOW (5 min advertise, no boot draw)
                   │
-                  ▼
-         ADVERTISE_5s ──no-conn──► DEEP_SLEEP_60s ──┐
-                  │                                 │
-                  │ connected                       │
-                  ▼                                 │
-         TRANSFER_FSM (BEGIN→DATA→COMMIT)           │
-                  │                                 │
-                  ▼                                 │
-         RENDER (2–3s) ─► DEEP_SLEEP_60s ───────────┘
+                  ├─connected─► TRANSFER_FSM (BEGIN→DATA→COMMIT)
+                  │                         │
+                  │                         ▼
+                  │                 RENDER DSL PAGE
+                  │                         │
+                  ▼                         ▼
+         DEEP_SLEEP / optional PEEK_WAKE ◄──┘
 ```
 
 Render runs **after** disconnect so the radio is off during the 2–3 s EPD
@@ -102,17 +99,17 @@ suffix is the 4-byte `xxxxxxxx` slot — `00000001`=`STATUS`, `00000002`=`XFER_C
 | Char       | Props                       | Size          | Purpose |
 |------------|-----------------------------|---------------|---------|
 | `STATUS`   | Read, Notify                | 16 B          | Live state — `data_ver(4) | flash_state(1) | last_err(1) | battery_mV(2) | temp_c(1) | flags(1) | reserved(6)`. Mac reads after connect, subscribes during transfer. |
-| `XFER_CTL` | Write (with response)       | ≤20 B         | Frames: `BEGIN`, `ABORT`, `COMMIT`. See §6. |
-| `XFER_DATA`| Write Without Response      | ≤MTU−3 bytes  | Bulk chunks: `seq(2) | payload(…)`. |
-| `XFER_ACK` | Notify                      | 4 B           | `last_seq(2) | code(1) | flags(1)`. Periodic + on transitions. |
+| `XFER_CTL` | Read, Write, Write Without Response | ≤20 B | Frames: `BEGIN`, `ABORT`, `COMMIT`. See §6. |
+| `XFER_DATA`| Read, Write Without Response | ≤MTU−3 bytes | Bulk chunks: `seq(2) | payload(…)`. |
+| `XFER_ACK` | Read, Notify                | 4 B           | `last_seq(2) | code(1) | flags(1)`. Periodic + on transitions. |
 | `META`     | Read                        | ≤32 B         | Static device info — `hw_id(2) | fw_ver(4) | epd_w(2) | epd_h(2) | epd_bpp(1) | palette_mask(2) | flash_capacity_b(4) | mtu_pref(2)`. Cached on Mac after first read. |
 
 ### 5.2 Advertising (LegacyAdv, 31 B payload budget)
 
 ```
 Flags                  AD type 0x01 (3 B):   02 01 06
-CompleteLocalName      AD type 0x09 (14 B):  0D 09 "TLay_AABBCC"  ← MAC last 3 bytes as 6 hex
-ManufacturerData       AD type 0xFF (12 B):  0B FF FF FF
+CompleteLocalName      AD type 0x09 (13 B):  0C 09 "TLay_AABBCC"  ← MAC last 3 bytes as 6 hex
+ManufacturerData       AD type 0xFF (13 B):  0C FF FF FF
                                              02                  type tag — adv payload v2
                                              data_ver_hash(4)    xxhash32 of last rendered
                                                                  *uncompressed* DSL JSON
@@ -120,10 +117,11 @@ ManufacturerData       AD type 0xFF (12 B):  0B FF FF FF
                                              temp_c(1)           int8 °C
                                              flags(1)            bit0=sync_window,
                                                                  bit1=low_batt,
-                                                                 bit2=render_err
+                                                                 bit2=render_err,
+                                                                 bit3=display_busy
 ```
 
-Total = 3 + 14 + 12 = 29 B (fits 31 B). Mac filters on Manufacturer ID
+Total = 3 + 13 + 13 = 29 B (fits 31 B). Mac filters on Manufacturer ID
 `0xFFFF` + payload type byte `0x02`.
 
 ### 5.3 MTU & security
@@ -179,25 +177,28 @@ last_seq(2) | code(1) | flags(1)
 | `0x11` | `ERR_CRC` — CRC mismatch on compressed payload |
 | `0x12` | `ERR_INFLATE` — uzlib failed |
 | `0x13` | `ERR_PARSE` — JSON parser failed |
-| `0x14` | `ERR_RENDER` — render reported failure (unknown icon, etc.) |
+| `0x14` | `ERR_RENDER` — render or EPD driver path failed (unknown icon, reset/setup failure, display-busy timeout, etc.) |
 | `0x20` | `ERR_LOW_BATT` — refused at BEGIN; battery < 2.4 V |
 | `0x21` | `ERR_BUSY` — already transferring; ABORT and retry |
 
 ### 6.4 Flow
 
-1. Mac writes `BEGIN`. Tag erases staging sector, notifies `OK_BEGIN`.
+1. Mac writes `BEGIN`; ATT write response is not used. Tag erases staging
+   sector, notifies `OK_BEGIN`.
 2. Mac streams `XFER_DATA` chunks back-to-back (no per-chunk wait).
 3. Tag emits `OK_PROGRESS` every 8 chunks. Mac monitors; if 500 ms goes by
    without progress past the latest chunk it sent, it reads `STATUS` and
    resumes from `last_seq + 1`. Same on `ERR_GAP`.
 4. Mac writes `COMMIT`. Tag verifies CRC, decompresses into a 4 KB RAM scratch,
-   parses JSON, swaps active page pointer, notifies `OK_COMMIT`.
-5. Tag disconnects after a 1 s linger, then runs the 2–3 s EPD refresh, then
-   deep-sleeps.
+   parses JSON, starts the EPD refresh, waits up to 40 s for `EPD_BUSY` to
+   clear, writes the active slot header, publishes the new `data_ver`, then
+   notifies `OK_COMMIT`.
+5. Mac reads `STATUS`, disconnects, and rescans advertising until it observes
+   the committed `data_ver`.
 
 **Why WriteWithoutResponse:** macOS CoreBluetooth round-trip ~30 ms; saving the
-per-chunk handshake gives ~180 ms back per 1 KB page. Drops are detected via
-the periodic ACK protocol, not per-chunk ACKs.
+ATT handshake keeps BEGIN/DATA/COMMIT behavior consistent. Drops are detected
+via protocol ACK notifications, not ATT write responses.
 
 ## 7. Firmware design
 
@@ -205,10 +206,13 @@ the periodic ACK protocol, not per-chunk ACKs.
 
 | Address   | Use |
 |-----------|-----|
+| `0x70000` | **Slot A** — `header(32) | compressed_dsl(…)` (up to 4064 B). |
+| `0x71000` | **Slot B** — same layout as Slot A. |
+| `0x72000` | **Render-failure ring** — 8 records × 64 B. `ts(4) | err_code(1) | data_ver(4) | partial_json_off(2) | message(53)`. Cheap forensics. |
 | `0x73000` | Reserved — tlsr-price-tag quote sector (kept clear in case a board is dual-flashed). |
-| `0x74000` | **Slot A** — `header(32) | compressed_dsl(…)` (up to 4064 B). |
-| `0x75000` | **Slot B** — same layout as Slot A. |
-| `0x76000` | **Render-failure ring** — 8 records × 64 B. `ts(4) | err_code(1) | data_ver(4) | partial_json_off(2) | message(53)`. Cheap forensics. |
+| `0x74000` | Reserved — Telink SMP pairing sector on 512 KB flash. |
+| `0x76000` | Reserved — Telink public MAC sector on 512 KB flash. |
+| `0x77000` | Reserved — Telink calibration sector on 512 KB flash. |
 
 **Slot header (32 B):**
 
@@ -359,6 +363,7 @@ persisted in `~/.config/tlsr-layout/state.json` keyed by MAC.
 | Mac crashes during transfer | Tag watchdog 30 s → ABORT → peek loop. |
 | Battery < 2.4 V at BEGIN | `ERR_LOW_BATT`. Mac backs off, retries next cycle. Logged to ring. |
 | DSL parses but render fails | Ring-logged. Previous page kept. Adv `flags.render_err=1` so Mac can warn. |
+| EPD busy pin never clears | Ring-logged as `ERR_RENDER`. Previous page kept. Adv `flags.render_err=1`. |
 | Out-of-order chunks | `ERR_GAP` with `last_seq` → Mac resumes from `last_seq+1`. |
 | Duplicate page push | `data_ver` matches advertised value → Mac never connects. Free dedup. |
 | Legacy MTU 23 | Firmware falls back to 20 B chunk payloads. Slower but works. |

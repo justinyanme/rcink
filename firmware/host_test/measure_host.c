@@ -1,22 +1,12 @@
 #include "../src/engine/engine.h"
 #include "../src/engine/measure.h"
-
-static int16_t width_per_char(text_size_t size)
-{
-    switch (size) {
-    case TS_H1: return 14;
-    case TS_H2: return 11;
-    case TS_BODY: return 7;
-    case TS_SM: return 5;
-    }
-    return 7;
-}
+#include "../src/render/fonts.h"
 
 static size_t16_t host_text(const measurer_t *m, const text_node_t *t)
 {
     return (size_t16_t){
-        (int16_t)(t->value_len * width_per_char(t->size) + 2 * t->pad),
-        (int16_t)(layout_font_height(t->size) + 2 * t->pad),
+        (int16_t)(fonts_default.measure_text(t->size, t->weight, t->value, t->value_len) + 2 * t->pad),
+        (int16_t)(fonts_default.line_height(t->size) + 2 * t->pad),
     };
 }
 

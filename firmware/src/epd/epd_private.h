@@ -5,16 +5,16 @@
 #include "types.h"
 
 
-void EPD_Display(unsigned char *image, unsigned char *red_image, bool full_refresh);
+bool EPD_Display(unsigned char *image, unsigned char *red_image, bool full_refresh);
 void FixBuffer();
 
 // display with scene
 #ifndef EPD_HAS_SCENE_TIME
-#define EPD_HAS_SCENE_TIME 1
+#define EPD_HAS_SCENE_TIME 0
 #endif
 
 #ifndef EPD_HAS_SCENE_LIST
-#define EPD_HAS_SCENE_LIST 1
+#define EPD_HAS_SCENE_LIST 0
 #endif
 
 #if EPD_HAS_SCENE_TIME

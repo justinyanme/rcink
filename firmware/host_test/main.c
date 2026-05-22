@@ -3,6 +3,7 @@
 #include "../src/dsl/arena.h"
 #include "../src/dsl/parser.h"
 #include "../src/engine/engine.h"
+#include "../src/epd/scene.h"
 #include "../src/proto/uzlib/uzlib.h"
 #include "../src/render/paint.h"
 #include "../src/render/pipeline.h"
@@ -23,9 +24,15 @@ extern void host_flash_reset(void);
 uint8_t epd_buffer[HOST_EPD_BUFFER_SIZE];
 uint8_t epd_buffer_red[HOST_EPD_BUFFER_SIZE];
 uint8_t layout_status_buf[16];
+uint16_t current_battery_mv;
 
 static uint32_t g_host_now_ms;
 static uint16_t g_host_battery_mv = 3000;
+static uint8_t g_host_epd_display_ok = 1;
+static uint8_t g_host_epd_display_busy = 0;
+static uint8_t g_host_epd_display_count = 0;
+static uint8_t g_host_fix_buffer_count = 0;
+static EPD_SCENE g_host_scene = EPD_SCENE_DEFAULT;
 
 typedef struct {
     uint16_t last_seq;
@@ -52,14 +59,39 @@ void epd_clear_buffer(void)
     memset(epd_buffer_red, 0x00, sizeof(epd_buffer_red));
 }
 
-void EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh)
+void FixBuffer(void)
+{
+    g_host_fix_buffer_count++;
+}
+
+uint8_t EPD_Display(unsigned char *image, unsigned char *red_image, unsigned char requested_full_refresh)
 {
     (void)image;
     (void)red_image;
     (void)requested_full_refresh;
+    g_host_epd_display_count++;
+    return g_host_epd_display_ok;
+}
+
+uint8_t epd_is_display_busy(void)
+{
+    return g_host_epd_display_busy;
+}
+
+void change_scene(EPD_SCENE scene)
+{
+    g_host_scene = scene;
 }
 
 void layout_refresh_adv_payload(void)
+{
+}
+
+void layout_apply_adv_payload(void)
+{
+}
+
+void ble_open_sync_window(void)
 {
 }
 
@@ -79,6 +111,12 @@ static void host_xfer_reset(void)
     g_ack_count = 0;
     g_host_now_ms = 0;
     g_host_battery_mv = 3000;
+    current_battery_mv = 0;
+    g_host_epd_display_ok = 1;
+    g_host_epd_display_busy = 0;
+    g_host_epd_display_count = 0;
+    g_host_fix_buffer_count = 0;
+    g_host_scene = EPD_SCENE_TIME;
     ringlog_init();
     xfer_init(host_ack_emit);
     xfer_tick(g_host_now_ms);
@@ -469,6 +507,21 @@ static void send_one_chunk_transfer(uint32_t data_ver, const uint8_t *payload, u
     send_commit(data_ver);
 }
 
+static const uint8_t valid_layout_payload[] = {
+    0x78, 0xda, 0xab, 0x56, 0x2a, 0xa9, 0x2c, 0x48, 0x55, 0xb2, 0x52, 0x2a,
+    0x2b, 0x2e, 0x49, 0x4c, 0xce, 0x56, 0xd2, 0x51, 0x2a, 0x48, 0x4c, 0x51,
+    0xb2, 0xb2, 0xd0, 0x51, 0x4a, 0x4f, 0x2c, 0x50, 0xb2, 0x32, 0xd1, 0x51,
+    0x4a, 0xce, 0xc8, 0xcc, 0x49, 0x29, 0x4a, 0xcd, 0x53, 0xb2, 0x8a, 0xe6,
+    0x52, 0x50, 0xa8, 0x86, 0xa9, 0x2f, 0x49, 0xad, 0x28, 0x01, 0xaa, 0x2e,
+    0x4b, 0xcc, 0x29, 0x05, 0x71, 0x3d, 0x5c, 0x7d, 0x7c, 0xfc, 0x81, 0xfc,
+    0xe2, 0xcc, 0x2a, 0x10, 0x37, 0xc3, 0x10, 0xc8, 0x4e, 0xce, 0xcf, 0xc9,
+    0x2f, 0x02, 0x72, 0x92, 0x72, 0x20, 0x26, 0x27, 0xe6, 0x64, 0xa6, 0x03,
+    0x8d, 0x51, 0x4a, 0x4e, 0xcd, 0x2b, 0x49, 0x2d, 0x52, 0xaa, 0xd5, 0xc1,
+    0x63, 0x5e, 0x79, 0x7e, 0x51, 0x4e, 0x0a, 0xc2, 0xbc, 0xa4, 0xfc, 0x94,
+    0x4a, 0x22, 0x4c, 0xe4, 0x8a, 0xad, 0xe5, 0x02, 0x00, 0x62, 0xda, 0x40,
+    0x8a,
+};
+
 static int xfer_test(const char *scenario)
 {
     host_xfer_reset();
@@ -528,6 +581,67 @@ static int xfer_test(const char *scenario)
         return 0;
     }
 
+    if (strcmp(scenario, "render-fail") == 0) {
+        g_host_epd_display_ok = 0;
+        send_one_chunk_transfer(
+            0xC0DEC006u,
+            valid_layout_payload,
+            sizeof(valid_layout_payload),
+            crc32_zlib(valid_layout_payload, sizeof(valid_layout_payload))
+        );
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_ERR_RENDER) != 0 ||
+            expect_ringlog(XFER_ERR_RENDER, 0xC0DEC006u) != 0 || xfer_state() != XFER_IDLE ||
+            (xfer_adv_flags() & 0x04u) == 0) {
+            fprintf(stderr, "render-fail scenario failed\n");
+            return 1;
+        }
+        puts("OK render-fail");
+        return 0;
+    }
+
+    if (strcmp(scenario, "commit-success-image-scene") == 0) {
+        const uint32_t data_ver = 0xC0DEC008u;
+        send_one_chunk_transfer(
+            data_ver,
+            valid_layout_payload,
+            sizeof(valid_layout_payload),
+            crc32_zlib(valid_layout_payload, sizeof(valid_layout_payload))
+        );
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_OK_COMMIT) != 0 || xfer_state() != XFER_IDLE ||
+            g_host_epd_display_count != 1 || g_host_fix_buffer_count != 1 ||
+            g_host_scene != EPD_SCENE_IMAGE ||
+            layout_status_buf[0] != (uint8_t)(data_ver & 0xFF) ||
+            layout_status_buf[1] != (uint8_t)((data_ver >> 8) & 0xFF) ||
+            layout_status_buf[2] != (uint8_t)((data_ver >> 16) & 0xFF) ||
+            layout_status_buf[3] != (uint8_t)(data_ver >> 24)) {
+            fprintf(stderr, "commit-success-image-scene scenario failed\n");
+            return 1;
+        }
+        puts("OK commit-success-image-scene");
+        return 0;
+    }
+
+    if (strcmp(scenario, "busy-display-commits") == 0) {
+        g_host_epd_display_busy = 1;
+        send_one_chunk_transfer(
+            0xC0DEC007u,
+            valid_layout_payload,
+            sizeof(valid_layout_payload),
+            crc32_zlib(valid_layout_payload, sizeof(valid_layout_payload))
+        );
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_OK_COMMIT) != 0 || xfer_state() != XFER_IDLE ||
+            g_host_epd_display_count != 1 || g_host_fix_buffer_count != 1 ||
+            g_host_scene != EPD_SCENE_IMAGE) {
+            fprintf(stderr, "busy-display-commits scenario failed\n");
+            return 1;
+        }
+        puts("OK busy-display-commits");
+        return 0;
+    }
+
     if (strcmp(scenario, "low-batt") == 0) {
         g_host_battery_mv = 2300;
         send_begin(0xC0DEC004u, 16, 1, 0);
@@ -538,6 +652,18 @@ static int xfer_test(const char *scenario)
             return 1;
         }
         puts("OK low-batt");
+        return 0;
+    }
+
+    if (strcmp(scenario, "cached-batt") == 0) {
+        current_battery_mv = 3200;
+        g_host_battery_mv = 1;
+        send_begin(0xC0DEC009u, sizeof(valid_layout_payload), 1, crc32_zlib(valid_layout_payload, sizeof(valid_layout_payload)));
+        if (g_ack_count != 1 || expect_ack(0, 0, XFER_OK_BEGIN) != 0 || xfer_state() != XFER_RECEIVING) {
+            fprintf(stderr, "cached-batt scenario failed\n");
+            return 1;
+        }
+        puts("OK cached-batt");
         return 0;
     }
 

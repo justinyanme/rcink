@@ -1,11 +1,10 @@
 #ifndef TLSR_LAYOUT_STORE_SLOT_H
 #define TLSR_LAYOUT_STORE_SLOT_H
 
-#include <stddef.h>
 #include <stdint.h>
 
-#define SLOT_A_ADDR          0x74000u
-#define SLOT_B_ADDR          0x75000u
+#define SLOT_A_ADDR          0x70000u
+#define SLOT_B_ADDR          0x71000u
 #define SLOT_SIZE            0x1000u
 #define SLOT_HEADER_SIZE     32u
 #define SLOT_MAX_PAYLOAD     (SLOT_SIZE - SLOT_HEADER_SIZE)

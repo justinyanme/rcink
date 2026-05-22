@@ -30,12 +30,14 @@ extern const uint8_t ucMirror[];
 #endif
 
 #define EPD_MAX_CONSECUTIVE_PARTIAL_REFRESH 10
+#define EPD_UPDATE_TIMEOUT_MS 25000u
 
 #if EPD_MAX_CONSECUTIVE_PARTIAL_REFRESH > UINT8_MAX
 #error "EPD_MAX_CONSECUTIVE_PARTIAL_REFRESH must be <= UINT8_MAX for the streak counter"
 #endif
 
 RAM bool epd_is_updating = false;
+RAM uint32_t epd_update_start_ms = 0;
 
 RAM uint8_t hour_refresh = 100;
 RAM uint8_t minute_refresh = 100;
@@ -104,6 +106,10 @@ static void note_refresh_result(const bool full_refresh) {
     }
 }
 
+static uint32_t epd_now_ms(void) {
+    return clock_time() / (sys_tick_per_us * 1000u);
+}
+
 RAM u8 epd_buffer[EPD_BUFFER_SIZE];
 RAM u8 epd_buffer_red[EPD_BUFFER_SIZE];
 OBDISP obd; // virtual display structure
@@ -119,7 +125,10 @@ _attribute_ram_code_ uint8_t EPD_read_temp(void) {
     EPD_SPI_Hard_Reset();
 
     TIME_COST_START();
-    epd_temperature = EPD_read_temp_impl();
+    if (!EPD_read_temp_impl(&epd_temperature)) {
+        log_debugf("read temperature failed");
+        return epd_temperature;
+    }
     TIME_COST_END("READ TEMPERATURE");
     log_debugf("read temperature: %d", epd_temperature);
 
@@ -128,7 +137,7 @@ _attribute_ram_code_ uint8_t EPD_read_temp(void) {
     return epd_temperature;
 }
 
-_attribute_ram_code_ void EPD_Display(
+_attribute_ram_code_ bool EPD_Display(
     unsigned char *image, unsigned char *red_image, const bool requested_full_refresh) {
     const bool frame_has_red = buffer_has_nonzero_bytes(red_image, EPD_FRAME_BYTES);
     const bool full_refresh = should_promote_to_full_refresh(requested_full_refresh, frame_has_red);
@@ -142,13 +151,23 @@ _attribute_ram_code_ void EPD_Display(
     );
 
     epd_is_updating = true;
+    epd_update_start_ms = epd_now_ms();
     epd_pending_frame_has_red = false;
 
     EPD_SPI_init();
     EPD_SPI_Hard_Reset();
-    epd_temperature = EPD_Display_BWR_impl(image, red_image, full_refresh);
+    uint8_t display_temperature = 0;
+    if (!EPD_Display_BWR_impl(image, red_image, full_refresh, &display_temperature)) {
+        epd_is_updating = false;
+        layout_apply_adv_payload();
+        log_debugf("EPD_Display failed");
+        return false;
+    }
+    epd_temperature = display_temperature;
     epd_temperature_is_read = 1;
     note_refresh_result(full_refresh);
+    layout_apply_adv_payload();
+    return true;
 }
 
 
@@ -156,6 +175,7 @@ _attribute_ram_code_ void epd_set_sleep(void) {
     EPD_set_sleep_impl();
 
     epd_is_updating = false;
+    layout_apply_adv_payload();
 
     log_debugf("EPD set to sleep");
 }
@@ -206,6 +226,8 @@ _attribute_ram_code_ void EPD_Trigger_Display(const EPD_REFRESH_MODE refresh_mod
     const bool full_refresh = should_promote_to_full_refresh(requested_full, frame_has_red);
 
     epd_is_updating = TRUE;
+    epd_update_start_ms = epd_now_ms();
+    layout_apply_adv_payload();
 
     log_debugf(
         "EPD_Trigger_Display: request=%d frame_has_red=%d streak=%d -> full=%d",
@@ -245,10 +267,25 @@ void set_force_refresh_when_available(const EPD_REFRESH_MODE mode) {
     }
 }
 
+unsigned char epd_scene_is_supported(const EPD_SCENE scene) {
+    switch (scene) {
+    case EPD_SCENE_IMAGE:
+        return true;
+#if EPD_HAS_SCENE_TIME
+    case EPD_SCENE_TIME:
+        return true;
+#endif
+#if EPD_HAS_SCENE_LIST
+    case EPD_SCENE_LIST:
+        return true;
+#endif
+    default:
+        return false;
+    }
+}
+
 void change_scene(const EPD_SCENE scene) {
-    if (scene != EPD_SCENE_TIME && scene != EPD_SCENE_LIST &&
-        scene != EPD_SCENE_IMAGE)
-    {
+    if (!epd_scene_is_supported(scene)) {
         log_debugf("invalid scene: %d", scene);
         return;
     }
@@ -261,7 +298,14 @@ _attribute_ram_code_ bool epd_check_is_updating(void) {
     }
     if (!EPD_SPI_IS_BUSY()) {
         epd_set_sleep();
+    } else if ((uint32_t)(epd_now_ms() - epd_update_start_ms) > EPD_UPDATE_TIMEOUT_MS) {
+        log_debugf("EPD busy watchdog after %dms", EPD_UPDATE_TIMEOUT_MS);
+        epd_set_sleep();
     }
+    return epd_is_updating;
+}
+
+_attribute_ram_code_ bool epd_is_display_busy(void) {
     return epd_is_updating;
 }
 

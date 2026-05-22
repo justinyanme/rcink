@@ -10,7 +10,7 @@ async def test_round_robin_advances_index(monkeypatch):
     async def fake_push(_transport, page):
         return encode_page(page)
 
-    monkeypatch.setattr("tlsr_layout.serve.BleakClient", FakeClient)
+    monkeypatch.setattr("tlsr_layout.ble.transport.BleakClient", FakeClient)
     monkeypatch.setattr("tlsr_layout.serve.push_page_via", fake_push)
 
     store = Store(tags={"AA": TagState()})

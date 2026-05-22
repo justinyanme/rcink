@@ -3,6 +3,14 @@
 #ifndef TLSR_LAYOUT_HOST_BUILD
 #include "OneBitDisplay.h"
 #include "assets/asset.h"
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
+#endif
+#include "assets/font_classic.h"
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #include "epd/epd.h"
 
 #include <string.h>
@@ -26,12 +34,21 @@ static uint8_t needs_cjk(const char *s, uint8_t len)
 
 static GFXfont *font_for(text_size_t size, text_weight_t weight, const char *s, uint8_t len)
 {
-    (void)size;
     (void)weight;
     if (needs_cjk(s, len)) {
         return (GFXfont *)&Dialog_plain_16_zh;
     }
-    return (GFXfont *)&Dialog_plain_16;
+    switch (size) {
+    case TS_H1:
+        return (GFXfont *)&Classic16x16;
+    case TS_H2:
+        return (GFXfont *)&Classic12x16;
+    case TS_BODY:
+        return (GFXfont *)&Classic8x8;
+    case TS_SM:
+    default:
+        return (GFXfont *)&Classic6x8;
+    }
 }
 
 static int16_t firmware_line_height(text_size_t size)
@@ -49,7 +66,7 @@ static int16_t firmware_line_height(text_size_t size)
     }
 }
 
-static void copy_text(char *dst, size_t cap, const char *utf8, uint8_t len)
+static uint8_t copy_text(char *dst, size_t cap, const char *utf8, uint8_t len)
 {
     size_t n = len;
     if (n >= cap) {
@@ -57,17 +74,30 @@ static void copy_text(char *dst, size_t cap, const char *utf8, uint8_t len)
     }
     memcpy(dst, utf8, n);
     dst[n] = '\0';
+    return (uint8_t)n;
 }
 
 static int16_t firmware_measure_text(text_size_t size, text_weight_t weight, const char *utf8, uint8_t len)
 {
     char tmp[LAYOUT_MAX_TEXT_LEN];
-    copy_text(tmp, sizeof(tmp), utf8, len);
+    const uint8_t copied_len = copy_text(tmp, sizeof(tmp), utf8, len);
     int width = 0;
     int top = 0;
     int bottom = 0;
-    obdGetStringBox(font_for(size, weight, tmp, (uint8_t)strlen(tmp)), tmp, &width, &top, &bottom);
+    obdGetStringBox(font_for(size, weight, tmp, copied_len), tmp, &width, &top, &bottom);
     return (int16_t)width;
+}
+
+static int16_t top_to_baseline(GFXfont *font, char *text, int16_t top_y)
+{
+    int width = 0;
+    int top = 0;
+    int bottom = 0;
+    obdGetStringBox(font, text, &width, &top, &bottom);
+    if (width <= 0 || top > bottom) {
+        return top_y;
+    }
+    return (int16_t)(top_y - top);
 }
 
 static void ensure_obd(void)
@@ -92,11 +122,20 @@ static void firmware_draw_text(
 {
     (void)bg;
     char tmp[LAYOUT_MAX_TEXT_LEN];
-    copy_text(tmp, sizeof(tmp), utf8, len);
+    const uint8_t copied_len = copy_text(tmp, sizeof(tmp), utf8, len);
     ensure_obd();
-    OBDISP *target = fg == 2 ? &red_obd : &obd;
-    if (fg != 1) {
-        obdWriteStringCustom(target, font_for(size, weight, tmp, (uint8_t)strlen(tmp)), x, y, tmp, 1);
+    GFXfont *font = font_for(size, weight, tmp, copied_len);
+    const int16_t baseline_y = top_to_baseline(font, tmp, y);
+
+    if (fg == 0) {
+        obdWriteStringCustom(&red_obd, font, x, baseline_y, tmp, 0);
+        obdWriteStringCustom(&obd, font, x, baseline_y, tmp, 1);
+    } else if (fg == 2) {
+        obdWriteStringCustom(&obd, font, x, baseline_y, tmp, 0);
+        obdWriteStringCustom(&red_obd, font, x, baseline_y, tmp, 1);
+    } else {
+        obdWriteStringCustom(&obd, font, x, baseline_y, tmp, 0);
+        obdWriteStringCustom(&red_obd, font, x, baseline_y, tmp, 0);
     }
 }
 
