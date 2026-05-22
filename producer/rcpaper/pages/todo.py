@@ -16,6 +16,11 @@ from rcpaper.sources.reminders import Reminder, TodaysReminders
 
 _URL_RE = re.compile(r"https?://\S+")
 VISIBLE_ITEMS = 10
+# Char budget for a single body-line title. VT323 16pt is roughly monospace
+# at ~12 px; the title column gets ~430 px after the marker + priority +
+# relative-time chrome → ~32 chars. Stay a bit under so descenders don't
+# kiss the row edge.
+LINE_LIMIT = 30
 
 
 def _extract_hosts(raw: str) -> tuple[list[str], str]:
@@ -69,31 +74,57 @@ def _relative_short(when: dt.datetime | None, *, now: dt.datetime) -> str:
     return f"{months}mo"
 
 
-def render_item_children(item: Reminder, *, limit: int = 24) -> list[dict]:
-    """Build the right-hand side of a todo row.
+def _split_two_lines(body: str, *, line_limit: int) -> list[str]:
+    """Wrap `body` into at most 2 lines of ~line_limit chars each.
 
-    URL-heavy reminders become `[icon] hostname` (+ residual text if any),
-    so a row that's literally `https://github.com/foo/bar` reads as
-    `🔗 github.com` rather than a wall of URL chars that the layout would
-    have to truncate.
+    Single-line if it already fits. Otherwise prefer a word boundary near
+    `line_limit`; the second line gets an ellipsis if it overflows too.
+    """
+    if len(body) <= line_limit:
+        return [body]
+    cut = body.rfind(" ", 0, line_limit + 1)
+    if cut <= 0:
+        cut = line_limit
+    line1 = body[:cut].rstrip()
+    rest = body[cut:].lstrip()
+    line2 = rest if len(rest) <= line_limit else rest[: line_limit - 1].rstrip() + "…"
+    return [line1, line2]
+
+
+def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
+    """Build the title cell — a single node to slot into the row hstack.
+
+    URL-heavy reminders become `[icon] hostname` (+ residual text if any) on
+    one line, so a row that's literally `https://github.com/foo/bar` reads
+    as `🔗 github.com`. Plain titles expand to a 2-line vstack when they
+    overflow the single-line budget.
     """
     hosts, residual = _extract_hosts(item.title)
-    nodes: list[dict] = []
     if hosts:
         # link icon + first hostname (matters most for scannability); show
         # the second hostname inline if there's room.
-        nodes.append(icon("link", size=16, color="blue"))
+        children: list[dict] = [icon("link", size=16, color="blue")]
         head = hosts[0]
-        if len(hosts) > 1 and len(head) + 2 + len(hosts[1]) <= limit:
+        if len(hosts) > 1 and len(head) + 2 + len(hosts[1]) <= line_limit:
             head = f"{head} · {hosts[1]}"
-        nodes.append(text(head, size="body", weight="bold"))
+        children.append(text(head, size="body", weight="bold"))
         if residual:
-            tail = _trim(residual, limit=limit - len(head) - 2)
+            tail = _trim(residual, limit=line_limit - len(head) - 2)
             if tail:
-                nodes.append(text(f"— {tail}", size="sm"))
-    else:
-        nodes.append(text(_trim(residual or item.title, limit=limit), size="body", weight="bold"))
-    return nodes
+                children.append(text(f"— {tail}", size="sm"))
+        return hstack(gap=6, align="center", children=children)
+
+    body = residual or item.title
+    lines = _split_two_lines(body, line_limit=line_limit)
+    if len(lines) == 1:
+        return text(lines[0], size="body", weight="bold")
+    return vstack(
+        gap=2,
+        children=[
+            text(lines[0], size="body", weight="bold"),
+            text(lines[1], size="sm"),
+        ],
+    )
 
 
 # EventKit priority buckets → palette + label.
@@ -109,9 +140,10 @@ def _prio_color(p: int) -> ColorToken | None:
 
 
 def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
-    # The ☐ unicode glyph doesn't render in our bundled fonts; use an ASCII
-    # box that the FreeSans / efontCN fonts both have.
-    checkbox = text("[ ]", size="body", color="black", weight="bold")
+    # All reminders we render are unchecked by definition (incomplete list),
+    # so a compact "todo" glyph reads better than a `[ ]` ASCII box at body
+    # font size. Size 14 keeps the marker visually lighter than the title.
+    checkbox = icon("todo", size=14, color="black")
     prio_color = _prio_color(item.priority)
     children: list[dict] = [checkbox]
     if prio_color is not None:
@@ -119,7 +151,7 @@ def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
     else:
         # Reserve the priority slot so titles align across rows.
         children.append(spacer(size=10))
-    children.extend(render_item_children(item))
+    children.append(render_title_node(item))
     relative = _relative_short(item.updated, now=now)
     if relative:
         children.append(spacer())
