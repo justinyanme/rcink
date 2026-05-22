@@ -16,6 +16,7 @@
 #include "config.h"
 #include "net/axiom.h"
 #include "net/wifi.h"
+#include "power/nav_delta.h"
 #include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
@@ -37,6 +38,70 @@ DeviceState g_state;
 // Transient — re-read every wake / refetch. Not persisted in NVS.
 static BatteryReading g_battery{};
 static EnvReading     g_env{};
+
+// ---- nav-press coalescing ------------------------------------------------
+//
+// On a ButtonA/ButtonB wake we count taps for 500 ms (sliding, max 2 s) and
+// apply the net delta in one render. BtnC during the window cancels nav and
+// requests a refetch — see coalesce_nav_presses() below and the apply step
+// further down in setup(). Boot delay (~250-400 ms from ext1 wake) is
+// outside the window: taps that arrive before led_status_init() are lost.
+// The first LED flash tells the user "I'm listening, keep tapping."
+
+constexpr uint16_t kNavCoalesceWindowMs = 500;
+constexpr uint16_t kNavCoalesceMaxMs    = 2000;
+constexpr uint16_t kNavPollIntervalMs   = 10;
+constexpr uint16_t kNavLedPulseMs       = 80;
+
+struct NavCoalesceResult {
+  int  delta         = 0;
+  bool force_refetch = false;
+};
+
+static void flash_for_button(WakeReason r) {
+  switch (r) {
+    case WakeReason::ButtonA: led_status_pulse(0,  96, 0,  kNavLedPulseMs); break;
+    case WakeReason::ButtonB: led_status_pulse(0,  0,  96, kNavLedPulseMs); break;
+    case WakeReason::ButtonC: led_status_pulse(96, 56, 0,  kNavLedPulseMs); break;
+    default: break;
+  }
+}
+
+// Caller must only invoke this for WakeReason::ButtonA or ButtonB.
+static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
+  NavCoalesceResult out;
+  out.delta = (initial == WakeReason::ButtonA) ? 1 : -1;
+  flash_for_button(initial);
+
+  const uint32_t start_ms = millis();
+  uint32_t deadline_ms    = start_ms + kNavCoalesceWindowMs;
+
+  for (;;) {
+    uint32_t now = millis();
+    if ((int32_t)(deadline_ms - now) <= 0) break;
+    if (now - start_ms >= kNavCoalesceMaxMs) break;
+
+    M5.update();
+    if (M5.BtnA.wasPressed()) {
+      out.delta++;
+      led_status_pulse(0, 96, 0, kNavLedPulseMs);
+      deadline_ms = now + kNavCoalesceWindowMs;
+    } else if (M5.BtnB.wasPressed()) {
+      out.delta--;
+      led_status_pulse(0, 0, 96, kNavLedPulseMs);
+      deadline_ms = now + kNavCoalesceWindowMs;
+    } else if (M5.BtnC.wasPressed()) {
+      out.force_refetch = true;
+      led_status_pulse(96, 56, 0, kNavLedPulseMs);
+      break;
+    }
+    delay(kNavPollIntervalMs);
+  }
+  Serial.printf("[nav] coalesce done delta=%d force_refetch=%d window=%u ms\n",
+                out.delta, (int)out.force_refetch,
+                (unsigned)(millis() - start_ms));
+  return out;
+}
 
 static void apply_local_tz() {
   setenv("TZ", LOCAL_TZ, 1);
@@ -225,16 +290,22 @@ void setup() {
   }
 
   // Page navigation is button-only. Timer wakes are scheduled refreshes and
-  // must not advance the page; if fetched content is unchanged, render_current()
-  // will skip the panel refresh via the persisted render marker.
+  // must not advance the page; on a nav wake we coalesce rapid taps within a
+  // sliding 500 ms window (cap 2 s) into a single net delta + one render.
+  // BtnC pressed during coalescing cancels nav and forces a refetch.
   if (!g_state.pages.empty()) {
     uint8_t prev_page_index = g_state.page_index;
     if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
-    if (wr == WakeReason::ButtonA) {
-      g_state.page_index = (uint8_t)((g_state.page_index + 1) % g_state.pages.size());
-    } else if (wr == WakeReason::ButtonB) {
-      g_state.page_index = (uint8_t)((g_state.page_index + g_state.pages.size() - 1)
-                                      % g_state.pages.size());
+
+    if (wr == WakeReason::ButtonA || wr == WakeReason::ButtonB) {
+      NavCoalesceResult nav = coalesce_nav_presses(wr);
+      if (nav.force_refetch) {
+        refetch_now();
+      }
+      if (nav.delta != 0) {
+        g_state.page_index = apply_nav_delta(g_state.page_index, nav.delta,
+                                             g_state.pages.size());
+      }
     }
     if (g_state.page_index != prev_page_index) {
       nvs_save_progress(g_state.page_index);
