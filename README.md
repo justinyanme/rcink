@@ -45,6 +45,9 @@ PaperColor RGB LEDs are low-duty heartbeats: brief pulse, off between pulses.
 - cyan/blue heartbeat — NTP or Axiom sync
 - amber/red heartbeat — sync/fetch failed, cache kept
 - amber heartbeat — panel refresh/render
+- short green flash — BtnA press registered (next-page)
+- short blue flash — BtnB press registered (prev-page)
+- short amber flash — BtnC press registered (refetch)
 - idle states — LEDs off
 - off — entering deep sleep
 
@@ -53,6 +56,13 @@ PaperColor RGB LEDs are low-duty heartbeats: brief pulse, off between pulses.
 - **BtnA** — next page
 - **BtnB** — previous page
 - **BtnC** — force re-fetch from Axiom now
+
+Rapid taps within ~500 ms of each other coalesce into a single net page
+jump and one e-ink refresh. Example: BtnA × 3 then BtnB × 1 quickly →
+device advances 2 pages with one render (≈ 17 s) instead of four.
+The window slides on each new tap, caps at 2 s total, and a BtnC press
+during the window cancels nav and triggers a refetch instead. Each press
+flashes the LEDs in its color so you know it registered.
 
 ## Native tests
 
