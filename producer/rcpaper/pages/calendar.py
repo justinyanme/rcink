@@ -108,15 +108,22 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
                 spacer(size=6),
             ]
 
-        # UP NEXT list of remaining events. Identity dedup (`is not nxt`) misses
-        # cross-calendar duplicates — the same meeting invited via personal +
-        # work calendars surfaces as separate EKEvent instances with matching
-        # (start, title). Dedup by that tuple, and also collapse any further
-        # rest-list duplicates so a triple-subscribed event doesn't fill the list.
+        # UP NEXT list of remaining events. Two filters:
+        #   1. drop anything that has already ended — once it's past, it stops
+        #      being "up next" (all-day events stay until end-of-day, which
+        #      EventKit reports as the next-midnight, so the time check handles
+        #      them naturally);
+        #   2. dedup by (start, title) — identity dedup (`is not nxt`) misses
+        #      cross-calendar duplicates (same meeting invited via personal +
+        #      work calendars surfaces as separate EKEvent instances), and we
+        #      also collapse any further rest-list duplicates so a triple-
+        #      subscribed event doesn't fill the slot list.
         nxt_key = (nxt.start, nxt.title) if nxt is not None else None
         seen: set[tuple[dt.datetime, str]] = {nxt_key} if nxt_key else set()
         rest: list[CalEvent] = []
         for e in cal.events:
+            if e.end <= now and not e.is_all_day:
+                continue
             key = (e.start, e.title)
             if key in seen:
                 continue

@@ -2,8 +2,8 @@
 #include "render/palette.h"
 
 #ifdef ARDUINO
-#include "render/fonts/vt323_11pt7b.h"
-#include "render/fonts/vt323_14pt7b.h"
+#include "render/fonts/vt323_13pt7b.h"
+#include "render/fonts/vt323_16pt7b.h"
 #include "render/fonts/vt323_18pt7b.h"
 #include "render/fonts/vt323_24pt7b.h"
 #endif
@@ -13,30 +13,32 @@ namespace rcpaper {
 // Layout heights tracked alongside VT323's yAdvance so the layout engine
 // reserves the right amount of vertical space per row. Pixel fonts pack
 // taller ascenders/descenders than FreeSans. body + sm are baked at larger
-// pt sizes than h1/h2 grew from FreeSans equivalents so dense overview rows
+// pt sizes than h1/h2 grew from FreeSans equivalents so dense dashboard rows
 // don't read as cramped; see tools/fonts/bake.py for the source pt sizes.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:   return 44;
-    case TextSize::H2:   return 32;
-    case TextSize::Body: return 24;
+    case TextSize::H1:   return 48;
+    case TextSize::H2:   return 36;
+    case TextSize::Body: return 32;
     case TextSize::Sm:
-    default:             return 20;
+    default:             return 26;
   }
 }
 
 #ifdef ARDUINO
 
 // VT323 is single-weight; the same baked glyph table serves both Regular and
-// Bold lookups. body + sm are bumped to 14pt / 11pt (from 12pt / 9pt) so
-// dashboard rows read comfortably on the e-ink panel.
+// Bold lookups. body + sm have been bumped twice now (9→11→13pt for sm,
+// 12→14→16pt for body) per UX feedback that overview text felt too small at
+// the smaller sizes. h1/h2 stay at 24/18 pt — those felt right on the quote
+// page.
 const lgfx::IFont* font_for(TextSize size, Weight /*weight*/) {
   switch (size) {
     case TextSize::H1:   return &baked_fonts::VT323_24pt7b;
     case TextSize::H2:   return &baked_fonts::VT323_18pt7b;
-    case TextSize::Body: return &baked_fonts::VT323_14pt7b;
+    case TextSize::Body: return &baked_fonts::VT323_16pt7b;
     case TextSize::Sm:
-    default:             return &baked_fonts::VT323_11pt7b;
+    default:             return &baked_fonts::VT323_13pt7b;
   }
 }
 
