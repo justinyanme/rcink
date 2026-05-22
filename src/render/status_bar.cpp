@@ -61,6 +61,11 @@ void paint_status_bar(M5Canvas& canvas,
   int16_t x = 6;
   const int16_t y_text = y + 4;
   const int16_t y_icon = y + 3;
+  // Inter-group gap. 4px is the smallest that still reads as separated once
+  // each group has its own icon to anchor it; tightened from 8 so we can
+  // fit six groups (battery, batt%, temp, humid, data, refresh, next) into
+  // the 400-px-wide PaperColor S3 status strip.
+  const int16_t kGap = 4;
 
   auto fits = [&](int16_t need) {
     if (x + need + kRightMargin <= W) return true;
@@ -87,41 +92,41 @@ void paint_status_bar(M5Canvas& canvas,
   else         snprintf(num, sizeof(num), "--");
   canvas.setCursor(x, y_text);
   canvas.print(num);
-  x += canvas.textWidth(num) + 8;
+  x += canvas.textWidth(num) + kGap;
 
   // --- Temperature ---
   if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
   else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
-  int16_t temp_w = 18 + canvas.textWidth(num) + 8;
+  int16_t temp_w = 18 + canvas.textWidth(num) + kGap;
   if (!fits(temp_w)) return;
   blit_icon16(canvas, x, y_icon, "thermometer"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(num);
-  x += canvas.textWidth(num) + 8;
+  x += canvas.textWidth(num) + kGap;
 
   // --- Humidity ---
   if (env.ok) snprintf(num, sizeof(num), "%d%%", (int)(env.humidity_pct + 0.5f));
   else        snprintf(num, sizeof(num), "--%%");
-  int16_t humid_w = 18 + canvas.textWidth(num) + 8;
+  int16_t humid_w = 18 + canvas.textWidth(num) + kGap;
   if (!fits(humid_w)) return;
   blit_icon16(canvas, x, y_icon, "droplet"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(num);
-  x += canvas.textWidth(num) + 8;
+  x += canvas.textWidth(num) + kGap;
 
   // --- Data time (page's data_ts) ---
   String s = format_local_hhmm(rec.data_ts);
-  int16_t data_w = 18 + canvas.textWidth(s.c_str()) + 8;
+  int16_t data_w = 18 + canvas.textWidth(s.c_str()) + kGap;
   if (!fits(data_w)) return;
   blit_icon16(canvas, x, y_icon, "download"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(s.c_str());
-  x += canvas.textWidth(s.c_str()) + 8;
+  x += canvas.textWidth(s.c_str()) + kGap;
 
   // --- Last refresh time (device last_fetch_s) ---
   s = format_local_hhmm(last_fetch_s);
-  int16_t refresh_w = 18 + canvas.textWidth(s.c_str()) + 8;
+  int16_t refresh_w = 18 + canvas.textWidth(s.c_str()) + kGap;
   if (!fits(refresh_w)) return;
   blit_icon16(canvas, x, y_icon, "refresh"); x += 18;
   canvas.setCursor(x, y_text); canvas.print(s.c_str());
-  x += canvas.textWidth(s.c_str()) + 8;
+  x += canvas.textWidth(s.c_str()) + kGap;
 
   // --- Next refresh time (last_fetch_s + FETCH_INTERVAL_SEC) ---
   uint64_t next_s = last_fetch_s ? last_fetch_s + FETCH_INTERVAL_SEC : 0;
