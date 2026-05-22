@@ -1,37 +1,41 @@
 #include "render/fonts_icons.h"
 #include "render/palette.h"
 
+#ifdef ARDUINO
+#include "render/fonts/vt323_9pt7b.h"
+#include "render/fonts/vt323_12pt7b.h"
+#include "render/fonts/vt323_18pt7b.h"
+#include "render/fonts/vt323_24pt7b.h"
+#endif
+
 namespace rcpaper {
 
+// Layout heights tracked alongside VT323's yAdvance so the layout engine
+// reserves the right amount of vertical space per row. Pixel fonts pack
+// taller ascenders/descenders than FreeSans, so these are bumped up from
+// the previous values; see tools/fonts/bake.py for the source pt sizes.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:   return 36;
-    case TextSize::H2:   return 28;
-    case TextSize::Body: return 18;
+    case TextSize::H1:   return 40;
+    case TextSize::H2:   return 30;
+    case TextSize::Body: return 20;
     case TextSize::Sm:
-    default:             return 14;
+    default:             return 16;
   }
 }
 
 #ifdef ARDUINO
 
-// Use M5GFX's built-in scalable fonts (no asset baking required for v1).
-// FreeSans is bundled; bold variants where available.
-const lgfx::IFont* font_for(TextSize size, Weight weight) {
+// VT323 is single-weight; the same baked glyph table serves both Regular and
+// Bold lookups. The preview accepts browser-synthesized bold; firmware here
+// just lets the pixel-y rendering stand for both.
+const lgfx::IFont* font_for(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:
-      return weight == Weight::Bold ? &fonts::FreeSansBold24pt7b
-                                    : &fonts::FreeSans24pt7b;
-    case TextSize::H2:
-      return weight == Weight::Bold ? &fonts::FreeSansBold18pt7b
-                                    : &fonts::FreeSans18pt7b;
-    case TextSize::Body:
-      return weight == Weight::Bold ? &fonts::FreeSansBold12pt7b
-                                    : &fonts::FreeSans12pt7b;
+    case TextSize::H1:   return &baked_fonts::VT323_24pt7b;
+    case TextSize::H2:   return &baked_fonts::VT323_18pt7b;
+    case TextSize::Body: return &baked_fonts::VT323_12pt7b;
     case TextSize::Sm:
-    default:
-      return weight == Weight::Bold ? &fonts::FreeSansBold9pt7b
-                                    : &fonts::FreeSans9pt7b;
+    default:             return &baked_fonts::VT323_9pt7b;
   }
 }
 

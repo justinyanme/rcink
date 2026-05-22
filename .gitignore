@@ -16,5 +16,8 @@ producer/*.egg-info/
 __pycache__/
 *.pyc
 
+# Font bake cache — VT323-Regular.ttf is fetched on demand by bake.py
+tools/fonts/*.ttf
+
 # macOS
 .DS_Store

@@ -33,6 +33,16 @@ static Size natural_size(const LayoutNode& n, const Measurer& m, int16_t parent_
     case NodeType::Sparkline:
       return vertical ? Size{parent_cross, n.as_sparkline.height}
                       : Size{n.as_sparkline.height, parent_cross};
+    case NodeType::Grid: {
+      // Mirror the design preview: in a vstack, fill the parent cross axis
+      // and claim `height` on main; in an hstack, fill cross and claim
+      // `width` on main. Either dimension defaults to 60 if unset, matching
+      // protocol.jsx::naturalSize.
+      const int16_t h = n.as_grid.height > 0 ? n.as_grid.height : 60;
+      const int16_t w = n.as_grid.width  > 0 ? n.as_grid.width  : 60;
+      return vertical ? Size{parent_cross, h}
+                      : Size{w, parent_cross};
+    }
     case NodeType::Marker:    return Size{1, 0};
     case NodeType::VStack:
     case NodeType::HStack:    return Size{0, 0};  // resolved recursively
@@ -250,6 +260,7 @@ void draw_icon(LovyanGFX&, const IconNode&, Rect);
 void draw_image(LovyanGFX&, const ImageNode&, Rect);
 void draw_sparkline(LovyanGFX&, const SparklineNode&, Rect);
 void draw_marker(LovyanGFX&, const MarkerNode&, Rect);
+void draw_grid(LovyanGFX&, const GridNode&, Rect);
 
 static void paint_node(LovyanGFX& gfx, const LaidOutNode& laid) {
   if (!laid.node) return;
@@ -270,6 +281,7 @@ static void paint_node(LovyanGFX& gfx, const LaidOutNode& laid) {
     case NodeType::Image:     draw_image(gfx,     laid.node->as_image,     laid.rect); break;
     case NodeType::Sparkline: draw_sparkline(gfx, laid.node->as_sparkline, laid.rect); break;
     case NodeType::Marker:    draw_marker(gfx,    laid.node->as_marker,    laid.rect); break;
+    case NodeType::Grid:      draw_grid(gfx,      laid.node->as_grid,      laid.rect); break;
     case NodeType::Unknown:
     default: break;
   }

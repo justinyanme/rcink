@@ -9,6 +9,10 @@ Sources:
 - **Calendar** — today's events from all macOS Calendars (EventKit).
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
+- **GitHub** — today's commits, current streak, open + review-requested PRs,
+  and a 14-week contribution heatmap via the GitHub GraphQL API. Reads
+  `GITHUB_TOKEN` + `GITHUB_USERNAME` from env; the token needs `read:user`
+  and `repo` scopes.
 - **Quote** — one of a curated set, rotated by date ordinal.
 - **Image** — one-off remote image URL pages pushed manually with `uv run image-fetch ...`.
 
@@ -22,13 +26,15 @@ Sources:
    ```bash
    export AXIOM_TOKEN=xaat-...
    export AXIOM_DATASET=rcpapercolor
+   export GITHUB_TOKEN=ghp-...      # only needed for the github page
+   export GITHUB_USERNAME=rocry     # who the github page reports on
    uv run fetch-all
    uv run image-fetch 'https://example.com/frame.png'   # optional, ad-hoc image push
    ```
 
    `fetch-all` runs every page fetcher in one process, logging one line per
    page; individual failures degrade that page only. Each invocation should
-   write 6 `type=rcpaper_page` events to the Axiom dataset.
+   write 7 `type=rcpaper_page` events to the Axiom dataset.
 
 ## Schedule with launchd
 

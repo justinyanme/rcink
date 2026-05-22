@@ -61,7 +61,12 @@ def _build_local(page_id: str) -> dict[str, Any]:
 
         now = dt.datetime.now()
         return build_quote_page(pick_quote(now.date()), now=now)
-    raise ValueError(f"unknown page id: {page_id} (expected 'claude'/'codex'/'calendar'/'todo'/'quote')")
+    if page_id == "github":
+        from rcpaper.pages.github import build_github_page
+        from rcpaper.sources.github import fetch_github_activity
+
+        return build_github_page(fetch_github_activity(), now=dt.datetime.now())
+    raise ValueError(f"unknown page id: {page_id} (expected 'claude'/'codex'/'calendar'/'todo'/'quote'/'github')")
 
 
 def _pull_axiom(page_id: str) -> dict[str, Any]:

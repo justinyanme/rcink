@@ -113,6 +113,45 @@ void draw_marker(LovyanGFX& gfx, const MarkerNode& m, Rect r) {
   gfx.drawFastVLine(x, r.y - 4, r.h + 8, color_to_m5gfx(m.color));
 }
 
+void draw_grid(LovyanGFX& gfx, const GridNode& g, Rect r) {
+  if (g.cols <= 0 || g.rows <= 0) return;
+  const int16_t gap = g.gap;
+  const int16_t avail_w = (int16_t)(r.w - (g.cols - 1) * gap);
+  const int16_t avail_h = (int16_t)(r.h - (g.rows - 1) * gap);
+  if (avail_w <= 0 || avail_h <= 0) return;
+  const int16_t cell_w = (int16_t)(avail_w / g.cols);
+  const int16_t cell_h = (int16_t)(avail_h / g.rows);
+  const int16_t cell = std::min(cell_w, cell_h);
+  if (cell <= 0) return;
+
+  // Centre the grid inside its rect so cells aren't pinned to the top-left
+  // when the rect is wider/taller than the square cell footprint demands.
+  const int16_t total_w = (int16_t)(g.cols * cell + (g.cols - 1) * gap);
+  const int16_t total_h = (int16_t)(g.rows * cell + (g.rows - 1) * gap);
+  const int16_t off_x = (int16_t)(r.x + (r.w - total_w) / 2);
+  const int16_t off_y = (int16_t)(r.y + (r.h - total_h) / 2);
+
+  // Six-ink intensity ramp; matches protocol.jsx::paintGrid::colorFor.
+  auto ink_for = [&](int16_t v) -> uint32_t {
+    if (v <= 0) return color_to_m5gfx(Color::White);
+    if (v < 30) return color_to_m5gfx(Color::Yellow);
+    if (v < 65) return color_to_m5gfx(Color::Green);
+    if (v < 90) return color_to_m5gfx(Color::Blue);
+    return color_to_m5gfx(Color::Red);
+  };
+
+  for (int16_t c = 0; c < g.cols; ++c) {
+    for (int16_t row = 0; row < g.rows; ++row) {
+      const size_t idx = (size_t)c * g.rows + row;
+      const int16_t v = idx < g.values.size() ? g.values[idx] : 0;
+      const int16_t x = (int16_t)(off_x + c * (cell + gap));
+      const int16_t y = (int16_t)(off_y + row * (cell + gap));
+      gfx.fillRect(x, y, cell, cell, ink_for(v));
+      gfx.drawRect(x, y, cell, cell, kE6Black);
+    }
+  }
+}
+
 void draw_sparkline(LovyanGFX& gfx, const SparklineNode& s, Rect r) {
   if (s.values.empty()) return;
   uint32_t fg = color_to_m5gfx(s.color);

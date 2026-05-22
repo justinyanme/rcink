@@ -120,3 +120,25 @@ def sparkline(
 
 def marker(*, pct: float, color: ColorToken | None = None) -> dict:
     return _node("marker", pct=pct, color=color)
+
+
+def grid(
+    *,
+    cols: int,
+    rows: int,
+    values: list[int | float | None],
+    color: ColorToken | None = None,
+    gap: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> dict:
+    return _node(
+        "grid",
+        cols=cols,
+        rows=rows,
+        gap=gap,
+        color=color,
+        values=list(values),
+        width=width,
+        height=height,
+    )

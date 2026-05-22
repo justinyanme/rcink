@@ -37,6 +37,7 @@ static NodeType parse_type(const char* s) {
   if (std::strcmp(s, "image")     == 0) return NodeType::Image;
   if (std::strcmp(s, "sparkline") == 0) return NodeType::Sparkline;
   if (std::strcmp(s, "marker")    == 0) return NodeType::Marker;
+  if (std::strcmp(s, "grid")      == 0) return NodeType::Grid;
   return NodeType::Unknown;
 }
 
@@ -139,6 +140,24 @@ LayoutNode parse_layout(JsonVariantConst v) {
     case NodeType::Marker:
       n.as_marker.pct   = v["pct"] | 0.0f;
       if (!read_color(v, "color", Color::Red, n.as_marker.color)) { reject_node(n); break; }
+      break;
+
+    case NodeType::Grid:
+      n.as_grid.cols   = v["cols"]   | 0;
+      n.as_grid.rows   = v["rows"]   | 0;
+      n.as_grid.gap    = v["gap"]    | 2;
+      n.as_grid.width  = v["width"]  | 0;
+      n.as_grid.height = v["height"] | 0;
+      if (!read_color(v, "color", Color::Green, n.as_grid.color)) { reject_node(n); break; }
+      if (v["values"].is<JsonArrayConst>()) {
+        n.as_grid.values.reserve(v["values"].size());
+        for (JsonVariantConst x : v["values"].as<JsonArrayConst>()) {
+          int raw = x.as<int>();
+          if (raw < 0) raw = 0;
+          if (raw > 100) raw = 100;
+          n.as_grid.values.push_back((int16_t)raw);
+        }
+      }
       break;
 
     case NodeType::Unknown:
