@@ -10,6 +10,7 @@
 #include "render/nav_strip.h"
 #include "render/palette.h"
 #include "render/status_bar.h"
+#include "render/warnings.h"
 #endif
 
 namespace rcpaper {
@@ -82,6 +83,10 @@ static void quantize_canvas_to_e6(M5Canvas& canvas) {
 void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
                  const DeviceState& state,
                  const BatteryReading& batt, const EnvReading& env) {
+  // Reset the warning flag so this paint pass starts clean; the badge below
+  // only fires if some painter raises a fresh warning during this render.
+  render_warn_clear();
+
   M5GFXMeasurer m(M5.Display);
   int16_t W = (int16_t)M5.Display.width();
   int16_t H = (int16_t)M5.Display.height();
@@ -127,13 +132,30 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   paint_status_bar(canvas, rec, batt, env, state.last_fetch_s);
   paint_indicator(canvas, state.pages, state.page_index);
 
+  // STALE pill (bottom-right) + WARN "!" badge (just left of STALE). The
+  // WARN badge fires whenever any painter called render_warn() this pass —
+  // visible on the panel so the operator knows to grep the serial log for
+  // `[warn]` lines instead of having to re-flash to add prints.
+  int16_t pill_right = W - 8;
   if (stale) {
-    // "STALE" pill in the bottom-right
     canvas.setFont(&fonts::FreeSansBold9pt7b);
     const char* label = "STALE";
     int16_t tw = canvas.textWidth(label);
     int16_t pw = tw + 12, ph = 18;
-    int16_t px = W - pw - 8;
+    int16_t px = pill_right - pw;
+    int16_t py = H - ph - 6;
+    canvas.fillRect(px, py, pw, ph, kE6Red);
+    canvas.setTextColor(kE6White);
+    canvas.setCursor(px + 6, py + 3);
+    canvas.print(label);
+    pill_right = px - 6;
+  }
+  if (render_has_warnings()) {
+    canvas.setFont(&fonts::FreeSansBold9pt7b);
+    const char* label = "!";
+    int16_t tw = canvas.textWidth(label);
+    int16_t pw = tw + 12, ph = 18;
+    int16_t px = pill_right - pw;
     int16_t py = H - ph - 6;
     canvas.fillRect(px, py, pw, ph, kE6Red);
     canvas.setTextColor(kE6White);

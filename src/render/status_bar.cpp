@@ -10,6 +10,7 @@
 #include "config.h"
 #include "render/icons_data.h"
 #include "render/palette.h"
+#include "render/warnings.h"
 
 namespace rcpaper {
 
@@ -43,6 +44,15 @@ static void blit_icon16(M5Canvas& canvas, int16_t x, int16_t y, const char* name
   Serial.printf("[blit_icon16] unknown icon: %s\n", name);
 }
 
+// One status-bar group = "[icon?] text". Battery is the only group with no
+// icon flag here (its glyph is custom-drawn, not bitmap), but its fixed-width
+// content is folded into `fixed_pre` below so the measure/pack code stays
+// uniform.
+struct Group {
+  const char* icon;   // nullptr to skip icon blit
+  String      text;
+};
+
 void paint_status_bar(M5Canvas& canvas,
                       const PageRecord& rec,
                       const BatteryReading& batt,
@@ -51,6 +61,7 @@ void paint_status_bar(M5Canvas& canvas,
   const int16_t W = canvas.width();
   const int16_t y = 0;
   const int16_t kRightMargin = 6;
+  const int16_t kIconW = 18;  // 16px glyph + 2px breathing room
 
   canvas.fillRect(0, y, W, TOP_STRIP_H, kE6White);
   canvas.drawFastHLine(0, y + TOP_STRIP_H - 1, W, kE6Black);
@@ -58,25 +69,61 @@ void paint_status_bar(M5Canvas& canvas,
   canvas.setFont(&fonts::FreeSansBold9pt7b);
   canvas.setTextColor(kE6Black);
 
-  int16_t x = 6;
   const int16_t y_text = y + 4;
   const int16_t y_icon = y + 3;
-  // Inter-group gap. 4px is the smallest that still reads as separated once
-  // each group has its own icon to anchor it; tightened from 8 so we can
-  // fit six groups (battery, batt%, temp, humid, data, refresh, next) into
-  // the 400-px-wide PaperColor S3 status strip.
-  const int16_t kGap = 4;
 
-  auto fits = [&](int16_t need) {
-    if (x + need + kRightMargin <= W) return true;
-    Serial.printf("[status] overflow at x=%d need=%d W=%d\n", x, need, W);
-    return false;
-  };
+  // --- Build the group list. Order matters: leftmost = highest priority. ---
+  char num[16];
+  Group groups[6];
+  // batt%
+  if (batt.ok) snprintf(num, sizeof(num), "%d%%", (int)batt.pct);
+  else         snprintf(num, sizeof(num), "--");
+  groups[0] = {nullptr, String(num)};
+  // temp
+  if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
+  else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
+  groups[1] = {"thermometer", String(num)};
+  // humidity
+  if (env.ok) snprintf(num, sizeof(num), "%d%%", (int)(env.humidity_pct + 0.5f));
+  else        snprintf(num, sizeof(num), "--%%");
+  groups[2] = {"droplet", String(num)};
+  // data_ts (when the producer built this page)
+  groups[3] = {"download", format_local_hhmm(rec.data_ts)};
+  // last refresh (when this device last fetched)
+  groups[4] = {"refresh", format_local_hhmm(last_fetch_s)};
+  // next refresh (scheduled wake)
+  uint64_t next_s = last_fetch_s ? last_fetch_s + FETCH_INTERVAL_SEC : 0;
+  groups[5] = {"clock", format_local_hhmm(next_s)};
+  const int n = (int)(sizeof(groups) / sizeof(groups[0]));
+
+  // --- Measure: fixed pre-content (battery glyph + leading margin) + each
+  // group's icon+text. Then pick the largest gap from {8,6,4,2} that fits all
+  // groups within the strip; fall back to 2 + warn if even that is too tight.
+  const int16_t batt_w = 22;
+  int16_t fixed_pre = 6 /*left margin*/ + batt_w + 6 /*post-batt gap*/;
+  int16_t content_w = fixed_pre;
+  for (int i = 0; i < n; ++i) {
+    if (groups[i].icon) content_w += kIconW;
+    content_w += canvas.textWidth(groups[i].text.c_str());
+  }
+  const int n_gaps = n - 1;  // gaps between adjacent groups
+  int16_t gap = 2;
+  for (int g : {8, 6, 4, 2}) {
+    if (content_w + n_gaps * g + kRightMargin <= W) { gap = g; break; }
+  }
+  if (content_w + n_gaps * 2 + kRightMargin > W) {
+    char buf[80];
+    snprintf(buf, sizeof(buf),
+             "status_bar: doesn't fit (need=%d W=%d) — some groups elided",
+             (int)(content_w + n_gaps * 2 + kRightMargin), (int)W);
+    render_warn(buf);
+  }
 
   // --- Battery glyph: outline 22x10 with 2x4 nipple, fill 0..18px wide. ---
-  const int16_t batt_w = 22, batt_h = 10;
+  int16_t x = 6;
+  const int16_t batt_h = 10;
   const int16_t batt_y = y + (TOP_STRIP_H - batt_h) / 2;
-  uint32_t fill_c = kE6Green;          // green (>=30%)
+  uint32_t fill_c = kE6Green;            // green (>=30%)
   if (batt.pct < 30) fill_c = kE6Yellow; // yellow (10..29%)
   if (batt.pct < 10) fill_c = kE6Red;    // red   (<10%)
   canvas.drawRect(x, batt_y, batt_w, batt_h, kE6Black);
@@ -87,54 +134,23 @@ void paint_status_bar(M5Canvas& canvas,
   }
   x += batt_w + 6;
 
-  char num[16];
-  if (batt.ok) snprintf(num, sizeof(num), "%d%%", (int)batt.pct);
-  else         snprintf(num, sizeof(num), "--");
-  canvas.setCursor(x, y_text);
-  canvas.print(num);
-  x += canvas.textWidth(num) + kGap;
-
-  // --- Temperature ---
-  if (env.ok) snprintf(num, sizeof(num), "%ld\xC2\xB0""C", lroundf(env.temp_c));
-  else        snprintf(num, sizeof(num), "--\xC2\xB0""C");
-  int16_t temp_w = 18 + canvas.textWidth(num) + kGap;
-  if (!fits(temp_w)) return;
-  blit_icon16(canvas, x, y_icon, "thermometer"); x += 18;
-  canvas.setCursor(x, y_text); canvas.print(num);
-  x += canvas.textWidth(num) + kGap;
-
-  // --- Humidity ---
-  if (env.ok) snprintf(num, sizeof(num), "%d%%", (int)(env.humidity_pct + 0.5f));
-  else        snprintf(num, sizeof(num), "--%%");
-  int16_t humid_w = 18 + canvas.textWidth(num) + kGap;
-  if (!fits(humid_w)) return;
-  blit_icon16(canvas, x, y_icon, "droplet"); x += 18;
-  canvas.setCursor(x, y_text); canvas.print(num);
-  x += canvas.textWidth(num) + kGap;
-
-  // --- Data time (page's data_ts) ---
-  String s = format_local_hhmm(rec.data_ts);
-  int16_t data_w = 18 + canvas.textWidth(s.c_str()) + kGap;
-  if (!fits(data_w)) return;
-  blit_icon16(canvas, x, y_icon, "download"); x += 18;
-  canvas.setCursor(x, y_text); canvas.print(s.c_str());
-  x += canvas.textWidth(s.c_str()) + kGap;
-
-  // --- Last refresh time (device last_fetch_s) ---
-  s = format_local_hhmm(last_fetch_s);
-  int16_t refresh_w = 18 + canvas.textWidth(s.c_str()) + kGap;
-  if (!fits(refresh_w)) return;
-  blit_icon16(canvas, x, y_icon, "refresh"); x += 18;
-  canvas.setCursor(x, y_text); canvas.print(s.c_str());
-  x += canvas.textWidth(s.c_str()) + kGap;
-
-  // --- Next refresh time (last_fetch_s + FETCH_INTERVAL_SEC) ---
-  uint64_t next_s = last_fetch_s ? last_fetch_s + FETCH_INTERVAL_SEC : 0;
-  s = format_local_hhmm(next_s);
-  int16_t next_w = 18 + canvas.textWidth(s.c_str());
-  if (!fits(next_w)) return;
-  blit_icon16(canvas, x, y_icon, "clock"); x += 18;
-  canvas.setCursor(x, y_text); canvas.print(s.c_str());
+  // --- Paint each group, eliding from the right if a group can't fit. ---
+  for (int i = 0; i < n; ++i) {
+    int16_t need = (groups[i].icon ? kIconW : 0)
+                 + canvas.textWidth(groups[i].text.c_str());
+    if (x + need + kRightMargin > W) {
+      char buf[80];
+      snprintf(buf, sizeof(buf),
+               "status_bar: elided group #%d at x=%d need=%d W=%d",
+               i, (int)x, (int)need, (int)W);
+      render_warn(buf);
+      return;
+    }
+    if (groups[i].icon) { blit_icon16(canvas, x, y_icon, groups[i].icon); x += kIconW; }
+    canvas.setCursor(x, y_text); canvas.print(groups[i].text.c_str());
+    x += canvas.textWidth(groups[i].text.c_str());
+    if (i + 1 < n) x += gap;
+  }
 }
 
 }  // namespace rcpaper
