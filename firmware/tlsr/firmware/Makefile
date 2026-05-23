@@ -1,0 +1,35 @@
+SHELL := /bin/bash
+SHELLFLAGS := -euo pipefail -c
+
+.DEFAULT_GOAL := all
+
+PYTHON ?= python3
+BUILD_DIR ?= build
+GENERATOR ?= Ninja
+TOOLCHAIN_PREFIX ?= $(HOME)/w/tc32
+SDK_PREFIX ?= $(HOME)/w/telink_b85m_ble_single_connection_sdk/b85_ble_sdk
+MANUFACTURER_CODE ?= 0x1201
+EPD_PAD_TOP ?= 8
+CMAKE ?= cmake
+BUILD_TARGETS ?= TLSR-LAYOUT TLSR-LAYOUT.bin TLSR-LAYOUT.ota
+EXTRA_CMAKE_ARGS ?=
+
+.PHONY: all configure build clean
+
+all: build
+
+configure: $(BUILD_DIR)/CMakeCache.txt
+
+$(BUILD_DIR)/CMakeCache.txt:
+	$(CMAKE) -S . -B $(BUILD_DIR) -G "$(GENERATOR)" \
+	  -DTOOLCHAIN_PREFIX="$(TOOLCHAIN_PREFIX)" \
+	  -DSDK_PREFIX="$(SDK_PREFIX)" \
+	  -DMANUFACTURER_CODE=$(MANUFACTURER_CODE) \
+	  -DEPD_PAD_TOP=$(EPD_PAD_TOP) \
+	  $(EXTRA_CMAKE_ARGS)
+
+build: $(BUILD_DIR)/CMakeCache.txt
+	$(CMAKE) --build $(BUILD_DIR) --target $(BUILD_TARGETS)
+
+clean:
+	rm -rf "$(BUILD_DIR)"

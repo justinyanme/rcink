@@ -1,0 +1,4 @@
+{"type":"vstack","pad":8,"gap":4,"children":[
+  {"type":"text","value":"HELLO","size":"h1","color":"black","align":"center"},
+  {"type":"text","value":"world","size":"body","color":"black","align":"center"}
+]}

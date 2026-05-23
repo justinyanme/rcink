@@ -1,0 +1,38 @@
+{
+  "type": "vstack",
+  "gap": 3,
+  "pad": 4,
+  "children": [
+    {
+      "type": "text",
+      "value": "CLAUDE",
+      "size": "h1",
+      "color": "white",
+      "weight": "bold",
+      "align": "center",
+      "bg": "red",
+      "pad": 8
+    },
+    {
+      "type": "hbar",
+      "pct": 42,
+      "color": "black",
+      "height": 14
+    },
+    {
+      "type": "sparkline",
+      "values": [12, 18, 14, 22, 19, 28, 31],
+      "color": "red",
+      "height": 32
+    },
+    {
+      "type": "spacer"
+    },
+    {
+      "type": "text",
+      "value": "updated 14:32",
+      "size": "sm",
+      "align": "center"
+    }
+  ]
+}

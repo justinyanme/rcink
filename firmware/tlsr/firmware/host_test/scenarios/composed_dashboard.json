@@ -1,0 +1,12 @@
+{"type":"vstack","pad":6,"gap":5,"children":[
+  {"type":"hstack","gap":4,"align":"center","children":[
+    {"type":"icon","name":"clock","size":16,"color":"red"},
+    {"type":"text","value":"17:24","size":"h2","color":"black"},
+    {"type":"spacer"},
+    {"type":"text","value":"23C","size":"body","color":"black"}
+  ]},
+  {"type":"divider","color":"black","thickness":1},
+  {"type":"hbar","pct":64,"height":14,"color":"red","label_left":"CPU","label_right":"64"},
+  {"type":"sparkline","height":26,"color":"black","values":[20,22,21,28,35,30,32,44,39,50]},
+  {"type":"image","width":44,"height":24}
+]}

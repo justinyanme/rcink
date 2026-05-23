@@ -1,0 +1,36 @@
+{
+  "type": "vstack",
+  "gap": 3,
+  "pad": 4,
+  "children": [
+    {
+      "type": "text",
+      "value": "CODEX",
+      "size": "h1",
+      "color": "white",
+      "weight": "bold",
+      "align": "center",
+      "bg": "red",
+      "pad": 4
+    },
+    {
+      "type": "hbar",
+      "pct": 84,
+      "color": "red",
+      "height": 24,
+      "label_left": "5H",
+      "label_right": "84%"
+    },
+    {
+      "type": "text",
+      "value": "reset 2h 12m",
+      "size": "sm",
+      "weight": "bold"
+    },
+    {
+      "type": "text",
+      "value": "7D 37% reset 5d 1h",
+      "size": "sm"
+    }
+  ]
+}
