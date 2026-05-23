@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-import unicodedata
 from urllib.parse import urlparse
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcpaper.pages._common import _trim, relative_short, visual_width, wrap_visual
 from rcpaper.palette import ColorToken
 from rcpaper.sources.reminders import Reminder, TodaysReminders
 
@@ -22,15 +22,6 @@ VISIBLE_ITEMS = 10
 # ~12 px/cell → ~32 cells. We stay a touch under so descenders + the wide
 # efontCN glyphs (which are ~16 px each, i.e. ~2 cells) don't kiss the edge.
 LINE_LIMIT = 28
-
-
-def _cell_width(c: str) -> int:
-    """1 for narrow / 2 for wide. Matches the VT323-vs-efontCN width ratio."""
-    return 2 if unicodedata.east_asian_width(c) in ("W", "F") else 1
-
-
-def _visual_width(s: str) -> int:
-    return sum(_cell_width(c) for c in s)
 
 
 def _extract_hosts(raw: str) -> tuple[list[str], str]:
@@ -57,74 +48,8 @@ def _extract_hosts(raw: str) -> tuple[list[str], str]:
     return hosts, residual
 
 
-def _trim(s: str, *, limit: int) -> str:
-    """Truncate `s` to ≤ `limit` visual cells, appending `…` if cut."""
-    if _visual_width(s) <= limit:
-        return s
-    # Reserve 1 cell for the ellipsis.
-    out = ""
-    width = 0
-    for c in s:
-        w = _cell_width(c)
-        if width + w + 1 > limit:
-            break
-        out += c
-        width += w
-    return out.rstrip() + "…"
-
-
-def _relative_short(when: dt.datetime | None, *, now: dt.datetime) -> str:
-    if when is None:
-        return ""
-    delta = now - when
-    seconds = max(0, int(delta.total_seconds()))
-    if seconds < 60:
-        return "now"
-    minutes = seconds // 60
-    if minutes < 60:
-        return f"{minutes}m"
-    hours = minutes // 60
-    if hours < 24:
-        return f"{hours}h"
-    days = hours // 24
-    if days < 7:
-        return f"{days}d"
-    weeks = days // 7
-    if weeks < 5:
-        return f"{weeks}w"
-    months = max(1, days // 30)
-    return f"{months}mo"
-
-
 def _split_two_lines(body: str, *, line_limit: int) -> list[str]:
-    """Wrap `body` into at most 2 lines of ~`line_limit` visual cells each.
-
-    Visual cells, not Python chars: a CJK glyph counts as 2 so a row of
-    Chinese characters wraps at the same physical width as a row of Latin
-    letters. Prefer a space boundary; for spaceless CJK, fall back to a
-    hard character break. The second line gets an ellipsis if it overflows.
-    """
-    if _visual_width(body) <= line_limit:
-        return [body]
-
-    # Walk char-by-char, tracking visual width + the last whitespace index
-    # whose run still fits inside the budget.
-    width = 0
-    last_space = -1
-    hard_break = len(body)
-    for i, c in enumerate(body):
-        w = _cell_width(c)
-        if width + w > line_limit:
-            hard_break = i
-            break
-        width += w
-        if c.isspace():
-            last_space = i
-
-    cut = last_space if last_space > 0 else hard_break
-    line1 = body[:cut].rstrip()
-    rest = body[cut:].lstrip()
-    return [line1, _trim(rest, limit=line_limit)]
+    return wrap_visual(body, line_limit=line_limit, max_lines=2)
 
 
 def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
@@ -140,7 +65,7 @@ def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
         # link icon + first hostname (matters most for scannability); show
         # the second hostname inline if there's room.
         head = hosts[0]
-        if len(hosts) > 1 and _visual_width(head) + 3 + _visual_width(hosts[1]) <= line_limit:
+        if len(hosts) > 1 and visual_width(head) + 3 + visual_width(hosts[1]) <= line_limit:
             head = f"{head} · {hosts[1]}"
         url_row = hstack(
             gap=6,
@@ -156,8 +81,8 @@ def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
         # an ASCII separator — VT323 has no em-dash glyph, so "—" renders as
         # a missing-glyph box). Otherwise drop the residual onto line 2.
         # +3 covers the link icon's cell budget and the inter-node gap.
-        inline_budget = line_limit - _visual_width(head) - 3
-        if _visual_width(residual) + 2 <= inline_budget:
+        inline_budget = line_limit - visual_width(head) - 3
+        if visual_width(residual) + 2 <= inline_budget:
             url_row["children"].append(text(f"- {residual}", size="sm"))
             return url_row
         return vstack(
@@ -206,7 +131,7 @@ def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
         # Reserve the priority slot so titles align across rows.
         children.append(spacer(size=10))
     children.append(render_title_node(item))
-    relative = _relative_short(item.updated, now=now)
+    relative = relative_short(item.updated, now=now)
     if relative:
         children.append(spacer())
         children.append(text(relative, size="sm", weight="bold", color="blue"))
