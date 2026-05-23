@@ -83,3 +83,21 @@ BLE transport adds zlib + chunking on top — see `producer/rcink/transport/ble_
 ## Versioning
 
 `version` is an integer. Bump on breaking changes. Adding new primitives or props is additive and does not bump version — devices skip unknown nodes.
+
+## Golden testing
+
+Each (device, page) pair has a checked-in PNG at `dsl/golden/<device>/<page>.png`. These are the visual contract every firmware's `host_test/` must match.
+
+**CI / pytest:** `producer/tests/test_goldens.py` re-renders each page via the Python reference renderer (`rcink.preview_png`) at each device viewport and asserts byte-equal with the on-disk PNG. Any drift fails the test.
+
+**Deliberate update** — when a producer change is supposed to alter visual output:
+
+```bash
+cd producer && uv run rcink-goldens
+```
+
+Inspect the resulting PNGs (open `dsl/golden/s3/overview.png` etc.), then commit them alongside the producer change.
+
+**Per-firmware cross-validation** (future): each firmware's `host_test/` shim renders the same page set on the host (cross-compiled with stub I/O) and produces PNGs. CI compares those PNGs against the device's golden. Divergence between the Python reference and a firmware's C/C++ output indicates a bug in one side.
+
+The Python reference renderer is "good enough not pixel-perfect" — font glyph anti-aliasing differs from each firmware's bundled font stack. What it does enforce strictly: layout math, color-token-to-ink mapping, primitive geometry, truncation thresholds. Those are what we want golden coverage on.
