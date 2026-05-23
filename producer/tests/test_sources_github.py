@@ -73,7 +73,7 @@ def test_aggregate_languages_weighted_by_commits():
         ("rocry/b", 2, [("Python", 1000)]),
     ]
     langs = _aggregate_languages(repos)
-    by_name = {l.name: l.pct for l in langs}
+    by_name = {lang.name: lang.pct for lang in langs}
     assert by_name["Go"] == 64
     assert by_name["Python"] == 36
 
@@ -88,7 +88,7 @@ def test_aggregate_languages_caps_to_top_five():
     ]
     langs = _aggregate_languages(repos)
     assert len(langs) == 5
-    assert [l.name for l in langs] == ["L0", "L1", "L2", "L3", "L4"]
+    assert [lang.name for lang in langs] == ["L0", "L1", "L2", "L3", "L4"]
 
 
 def test_lang_week_and_repo_week_exported():

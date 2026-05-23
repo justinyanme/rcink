@@ -54,13 +54,13 @@ def _repos_section(repos: list[RepoWeek]) -> list[dict]:
 def _langs_section(langs: list[LangWeek]) -> list[dict]:
     if not langs:
         return []
-    total_pct = sum(l.pct for l in langs) or 1
+    total_pct = sum(lang.pct for lang in langs) or 1
     legend_children: list[dict] = []
-    for i, l in enumerate(langs):
+    for i, lang in enumerate(langs):
         color = _LANG_COLORS[i % len(_LANG_COLORS)]
         if i > 0:
             legend_children.append(text("·", size="sm"))
-        legend_children.append(text(f"{l.name} {l.pct}", size="sm", weight="bold", color=color))
+        legend_children.append(text(f"{lang.name} {lang.pct}", size="sm", weight="bold", color=color))
     return [
         text("LANGUAGES · 7D", size="sm", weight="bold"),
         spacer(size=2),
