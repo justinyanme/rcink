@@ -8,12 +8,20 @@ typedef struct {
 } pname_t;
 
 static const pname_t names[] = {
+    // Concrete tokens (BWR-reduced; legacy: blue and yellow have no native
+    // representation, so they collapse to red and black respectively).
     {"black", PAL_BLACK},
     {"white", PAL_WHITE},
     {"red", PAL_RED},
     {"yellow", PAL_BLACK},
     {"green", PAL_BLACK},
     {"blue", PAL_RED},
+    // Semantic tokens (DSL v1, BWR-reduced).
+    {"accent", PAL_RED},
+    {"warning", PAL_RED},
+    {"success", PAL_BLACK},
+    {"info", PAL_BLACK},
+    {"muted", PAL_BLACK},
 };
 
 palette_t palette_from_token(const char *s, size_t n)
