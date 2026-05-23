@@ -132,20 +132,26 @@ def test_image_requires_exactly_one_source():
         raise AssertionError("image() should reject missing source")
 
 
-def test_color_tokens_are_strict_e6_palette():
+def test_color_tokens_concrete_e6_palette():
     assert E6_COLOR_TOKENS == ("black", "white", "red", "yellow", "green", "blue")
-    assert E6_HEX == {
-        "black": "#000000",
-        "white": "#FFFFFF",
-        "red": "#FF0000",
-        "yellow": "#FFFF00",
-        "green": "#00FF00",
-        "blue": "#0000FF",
-    }
+    # The 6 concrete inks must each have a hex mapping
+    for token in E6_COLOR_TOKENS:
+        assert token in E6_HEX
 
-    with pytest.raises(ValueError, match="six E6 colors"):
+
+def test_color_tokens_semantic_aliases_resolve_to_s3_inks():
+    # Semantic tokens preview as their s3 (6-ink) target color
+    assert E6_HEX["accent"] == E6_HEX["red"]
+    assert E6_HEX["warning"] == E6_HEX["yellow"]
+    assert E6_HEX["success"] == E6_HEX["green"]
+    assert E6_HEX["info"] == E6_HEX["blue"]
+    assert E6_HEX["muted"] == E6_HEX["black"]
+
+
+def test_color_tokens_reject_unknown():
+    with pytest.raises(ValueError, match="DSL color tokens"):
         text("X", color="magenta")
-    with pytest.raises(ValueError, match="six E6 colors"):
+    with pytest.raises(ValueError, match="DSL color tokens"):
         text("X", bg="gray")
 
 
