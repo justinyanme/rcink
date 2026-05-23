@@ -38,12 +38,12 @@ def test_body_color_cycle_matches_design():
     page = build_quote_page(_quote(), now=dt.datetime(2026, 5, 18))
     body_texts = [c for c in page["children"] if c.get("type") == "text" and c.get("size") == "h1"]
     # Opening glyph is red; body cycles black/blue/black/red.
-    assert body_texts[0].get("color") == "red"
+    assert body_texts[0].get("color") == "accent"
     # Line 1: black (no color = default black ink).
     assert body_texts[1].get("color") is None
-    assert body_texts[2].get("color") == "blue"
+    assert body_texts[2].get("color") == "info"
     assert body_texts[3].get("color") is None
-    assert body_texts[4].get("color") == "red"
+    assert body_texts[4].get("color") == "accent"
 
 
 def test_short_quote_does_not_pad_extra_lines():

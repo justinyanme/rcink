@@ -13,7 +13,7 @@ from rcink.palette import ColorToken
 from rcink.sources.github import GRID_WEEKS, GitHubActivity, LangWeek, RepoWeek
 
 # Cycle for language legend colors (kept in sync with the rest of the producer).
-_LANG_COLORS: tuple[ColorToken, ...] = ("green", "blue", "red", "yellow", "black")
+_LANG_COLORS: tuple[ColorToken, ...] = ("success", "info", "accent", "warning", "black")
 
 
 def _kpi_cell(label: str, value: str, color: ColorToken, sub: str) -> dict:
@@ -43,7 +43,7 @@ def _repos_section(repos: list[RepoWeek]) -> list[dict]:
                 align="center",
                 children=[
                     text(r.name, size="body", weight="bold"),
-                    hbar(pct=pct, color="green", height=10),
+                    hbar(pct=pct, color="success", height=10),
                     text(str(r.commits), size="sm", weight="bold"),
                 ],
             )
@@ -64,14 +64,14 @@ def _langs_section(langs: list[LangWeek]) -> list[dict]:
     return [
         text("LANGUAGES · 7D", size="sm", weight="bold"),
         spacer(size=2),
-        hbar(pct=min(100.0, total_pct), color="green", height=10),
+        hbar(pct=min(100.0, total_pct), color="success", height=10),
         spacer(size=2),
         hstack(gap=6, align="center", children=legend_children),
     ]
 
 
 def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
-    streak_color: ColorToken = "red" if activity.streak >= 7 else "yellow" if activity.streak >= 3 else "green"
+    streak_color: ColorToken = "accent" if activity.streak >= 7 else "warning" if activity.streak >= 3 else "success"
     streak_text = f"{activity.streak}d streak" if activity.streak > 0 else "no streak"
 
     children: list[dict] = [
@@ -99,9 +99,9 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
         hstack(
             gap=12,
             children=[
-                _kpi_cell("TODAY", str(activity.today_commits), "green", "COMMITS"),
-                _kpi_cell("WEEK", str(activity.week_commits), "blue", "COMMITS"),
-                _kpi_cell("14W", str(activity.total_14w), "red", "TOTAL"),
+                _kpi_cell("TODAY", str(activity.today_commits), "success", "COMMITS"),
+                _kpi_cell("WEEK", str(activity.week_commits), "info", "COMMITS"),
+                _kpi_cell("14W", str(activity.total_14w), "accent", "TOTAL"),
             ],
         ),
         spacer(size=6),
@@ -124,7 +124,7 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
             children=[
                 text(f"CONTRIBUTIONS · {GRID_WEEKS}W", size="sm", weight="bold"),
                 spacer(),
-                text(f"{activity.total_14w} TOTAL", size="sm", weight="bold", color="green"),
+                text(f"{activity.total_14w} TOTAL", size="sm", weight="bold", color="success"),
             ],
         ),
         spacer(size=4),
@@ -132,7 +132,7 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
             cols=GRID_WEEKS,
             rows=7,
             gap=3,
-            color="green",
+            color="success",
             values=activity.contrib,
             width=360,
             height=168,

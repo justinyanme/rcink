@@ -35,7 +35,7 @@ def build_codex_page(
             "CODEX",
             size="h1",
             color="white",
-            bg="green",
+            bg="success",
             pad=8,
             align="center",
             weight="bold",
@@ -45,7 +45,7 @@ def build_codex_page(
             _window_label(usage.primary_window_min),
             usage.primary_pct,
             usage.primary_reset,
-            "blue",
+            "info",
         ),
     ]
 
@@ -56,14 +56,14 @@ def build_codex_page(
                 _window_label(usage.secondary_window_min),
                 usage.secondary_pct,
                 usage.secondary_reset,
-                "blue",
+                "info",
             )
         )
 
     if sparkline:
         children.append(spacer(size=12))
         children.append(text("USAGE · LAST 24H", size="sm", weight="bold"))
-        children.append(spark(sparkline, color="blue", height=56))
+        children.append(spark(sparkline, color="info", height=56))
 
     if usage.credits_dollars is not None:
         children.append(spacer(size=12))
@@ -73,7 +73,7 @@ def build_codex_page(
                 size="body",
                 weight="bold",
                 color="black",
-                bg="yellow",
+                bg="warning",
                 pad=6,
                 align="center",
             )

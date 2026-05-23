@@ -26,7 +26,7 @@ def test_header_is_red_knockout_title():
     assert header["type"] == "text"
     assert header["value"] == "CLAUDE"
     assert header["color"] == "white"
-    assert header["bg"] == "red"
+    assert header["bg"] == "accent"
 
 
 def test_no_brand_footer_row():

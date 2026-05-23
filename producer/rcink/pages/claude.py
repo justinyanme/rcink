@@ -16,7 +16,7 @@ from rcink.sources.claude import ClaudeUsage
 
 
 def _model_cell(label: str, pct: float) -> dict:
-    color: ColorToken = "red" if pct >= 80 else "green"
+    color: ColorToken = "accent" if pct >= 80 else "success"
     return vstack(
         pad=4,
         gap=2,
@@ -42,15 +42,15 @@ def build_claude_page(
             "CLAUDE",
             size="h1",
             color="white",
-            bg="red",
+            bg="accent",
             pad=8,
             align="center",
             weight="bold",
         ),
         spacer(size=8),
-        kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "blue"),
+        kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "info"),
         spacer(size=10),
-        kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "green"),
+        kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "success"),
     ]
 
     model_cells = []
@@ -66,6 +66,6 @@ def build_claude_page(
     if sparkline:
         children.append(spacer(size=10))
         children.append(text("USAGE · LAST 24H", size="sm", weight="bold"))
-        children.append(spark(sparkline, color="blue", height=56))
+        children.append(spark(sparkline, color="info", height=56))
 
     return vstack(pad=14, gap=6, children=children)

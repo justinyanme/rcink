@@ -20,7 +20,7 @@ def test_root_is_vstack_with_green_header():
     assert page["type"] == "vstack"
     header = page["children"][0]
     assert header["value"] == "CODEX"
-    assert header["bg"] == "green"
+    assert header["bg"] == "success"
 
 
 def test_window_labels_match_window_minutes():
@@ -38,7 +38,7 @@ def test_window_labels_match_window_minutes():
 def test_credits_ribbon_present():
     page = build_codex_page(make_usage(), sparkline=None)
     # Look for the yellow text node carrying credits info
-    credits_nodes = [c for c in page["children"] if c["type"] == "text" and c.get("bg") == "yellow"]
+    credits_nodes = [c for c in page["children"] if c["type"] == "text" and c.get("bg") == "warning"]
     assert credits_nodes
     assert "$18.42" in credits_nodes[0]["value"]
 
@@ -54,4 +54,4 @@ def test_credits_omitted_when_none():
         credits_dollars=None,
     )
     page = build_codex_page(usage, sparkline=None)
-    assert not any(c["type"] == "text" and c.get("bg") == "yellow" for c in page["children"])
+    assert not any(c["type"] == "text" and c.get("bg") == "warning" for c in page["children"])

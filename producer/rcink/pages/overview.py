@@ -57,9 +57,9 @@ def _github_row(gh: GitHubActivity | None) -> dict:
                 spacer(),
             ],
         )
-    today_color: ColorToken = "green" if gh.today_commits > 0 else "black"
-    week_color: ColorToken = "green" if gh.week_commits > 0 else "black"
-    streak_color: ColorToken = "red" if gh.streak >= 7 else "yellow" if gh.streak >= 3 else "green"
+    today_color: ColorToken = "success" if gh.today_commits > 0 else "black"
+    week_color: ColorToken = "success" if gh.week_commits > 0 else "black"
+    streak_color: ColorToken = "accent" if gh.streak >= 7 else "warning" if gh.streak >= 3 else "success"
     children: list[dict] = [
         icon("github", size=16, color="black"),
         text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
@@ -84,10 +84,10 @@ def _pct_color(pct: float | None) -> ColorToken:
     if pct is None:
         return "black"
     if pct >= 80:
-        return "red"
+        return "accent"
     if pct >= 50:
-        return "yellow"
-    return "green"
+        return "warning"
+    return "success"
 
 
 def _usage_row(
@@ -125,8 +125,8 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="blue"),
-                text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
+                icon("calendar", size=16, color="info"),
+                text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
                 text("—", size="body", weight="bold"),
                 spacer(),
             ],
@@ -151,9 +151,9 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="blue"),
-                text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
-                text(when, size="body", color="blue", weight="bold"),
+                icon("calendar", size=16, color="info"),
+                text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
+                text(when, size="body", color="info", weight="bold"),
                 text(title, size="body", weight="bold"),
                 spacer(),
                 text(sub, size="sm"),
@@ -171,9 +171,9 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="blue"),
-                text("SOON", size="sm", weight="bold", color="white", bg="blue", pad=4),
-                text(f"{dow} {when}", size="body", color="blue", weight="bold"),
+                icon("calendar", size=16, color="info"),
+                text("SOON", size="sm", weight="bold", color="white", bg="info", pad=4),
+                text(f"{dow} {when}", size="body", color="info", weight="bold"),
                 text(title, size="body", weight="bold"),
                 spacer(),
             ],
@@ -183,9 +183,9 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
         gap=8,
         align="center",
         children=[
-            icon("calendar", size=16, color="blue"),
-            text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
-            text("CLEAR", size="body", weight="bold", color="green"),
+            icon("calendar", size=16, color="info"),
+            text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
+            text("CLEAR", size="body", weight="bold", color="success"),
             spacer(),
             text("nothing this week", size="sm"),
         ],
@@ -208,7 +208,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
             ],
         )
     count = rem.incomplete_total
-    count_color: ColorToken = "red" if count >= 20 else "yellow" if count >= 5 else "green"
+    count_color: ColorToken = "accent" if count >= 20 else "warning" if count >= 5 else "success"
     children: list[dict] = [
         icon("todo", size=16, color="black"),
         text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
@@ -216,7 +216,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     ]
     if not rem.items:
         children += [
-            text("ALL CLEAR", size="body", weight="bold", color="green"),
+            text("ALL CLEAR", size="body", weight="bold", color="success"),
             spacer(),
             text(rem.list_name, size="sm"),
         ]
@@ -230,7 +230,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     children += [
         text(title_display, size="body", weight="bold"),
         spacer(),
-        text(rel, size="sm", weight="bold", color="blue"),
+        text(rel, size="sm", weight="bold", color="info"),
     ]
     return hstack(gap=8, align="center", children=children)
 
@@ -254,7 +254,7 @@ def build_overview_page(
 
     claude_row = _usage_row(
         brand="CLAUDE",
-        brand_color="red",
+        brand_color="accent",
         icon_name="claude",
         primary_pct=claude.five_hour_pct if claude else None,
         primary_label="5H",
@@ -264,7 +264,7 @@ def build_overview_page(
     )
     codex_row = _usage_row(
         brand="CODEX",
-        brand_color="green",
+        brand_color="success",
         icon_name="codex",
         primary_pct=codex.primary_pct if codex else None,
         primary_label="5H",

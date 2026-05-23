@@ -13,7 +13,7 @@ from rcink.palette import ColorToken
 from rcink.sources.quotes import Quote
 
 # Color cycle for body lines. Index = line position.
-_LINE_COLORS: tuple[ColorToken | None, ...] = (None, "blue", None, "red")
+_LINE_COLORS: tuple[ColorToken | None, ...] = (None, "info", None, "accent")
 
 
 def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
@@ -40,7 +40,7 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
         line_size = "body"
 
     body: list[dict] = [
-        text('"', size=line_size, color="red", weight="bold"),
+        text('"', size=line_size, color="accent", weight="bold"),
     ]
     for i, line in enumerate(quote.lines[:4]):
         body.append(
@@ -70,7 +70,7 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
             align="center",
             gap=6,
             children=[
-                icon("quote", size=16, color="red"),
+                icon("quote", size=16, color="accent"),
                 text("QUOTE OF THE DAY", size="sm", weight="bold"),
             ],
         ),

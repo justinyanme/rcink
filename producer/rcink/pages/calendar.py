@@ -16,7 +16,7 @@ from rcink.sources.calendar import CalEvent, TodaysCalendar
 # Cycle of "ink" colors for event ticks in the UP NEXT list. Per-calendar
 # coloring (mapping EKCalendar.color to palette) is overkill for a 6-color
 # E6 panel; cycling through saturated swatches keeps the list readable.
-_TICK_COLORS: tuple[ColorToken, ...] = ("blue", "red", "green", "yellow")
+_TICK_COLORS: tuple[ColorToken, ...] = ("info", "accent", "success", "warning")
 
 
 def _fmt_time(when: dt.datetime, all_day: bool) -> str:
@@ -59,13 +59,13 @@ def _append_today_body(children: list[dict], events: list[CalEvent], now: dt.dat
     nxt = _next_event(events, now)
     if nxt is not None:
         children += [
-            text("NEXT", size="sm", weight="bold", color="white", bg="red", pad=4),
+            text("NEXT", size="sm", weight="bold", color="white", bg="accent", pad=4),
             spacer(size=4),
             hstack(
                 align="end",
                 gap=6,
                 children=[
-                    text(_fmt_time(nxt.start, nxt.is_all_day), size="h1", color="red", weight="bold"),
+                    text(_fmt_time(nxt.start, nxt.is_all_day), size="h1", color="accent", weight="bold"),
                     vstack(
                         gap=2,
                         children=[
@@ -148,7 +148,7 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
                 align="center",
                 gap=6,
                 children=[
-                    text("NO EVENTS", size="body", weight="bold", color="green"),
+                    text("NO EVENTS", size="body", weight="bold", color="success"),
                     text("clear runway", size="sm"),
                 ],
             ),
@@ -176,7 +176,7 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
     else:
         children += [
             spacer(size=20),
-            text("NOTHING UNTIL NEXT WEEK", size="h1", color="green", weight="bold", align="center"),
+            text("NOTHING UNTIL NEXT WEEK", size="h1", color="success", weight="bold", align="center"),
             spacer(size=8),
             text("clear runway", size="body", align="center"),
         ]

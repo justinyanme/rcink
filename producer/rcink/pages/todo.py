@@ -71,7 +71,7 @@ def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
             gap=6,
             align="center",
             children=[
-                icon("link", size=16, color="blue"),
+                icon("link", size=16, color="info"),
                 text(head, size="body", weight="bold"),
             ],
         )
@@ -112,10 +112,10 @@ def _prio_color(p: int) -> ColorToken | None:
     if p == 0:
         return None
     if p <= 3:
-        return "red"
+        return "accent"
     if p <= 6:
-        return "yellow"
-    return "blue"
+        return "warning"
+    return "info"
 
 
 def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
@@ -134,7 +134,7 @@ def _item_row(item: Reminder, *, now: dt.datetime) -> dict:
     relative = relative_short(item.updated, now=now)
     if relative:
         children.append(spacer())
-        children.append(text(relative, size="sm", weight="bold", color="blue"))
+        children.append(text(relative, size="sm", weight="bold", color="info"))
     return hstack(gap=8, align="center", children=children)
 
 
@@ -150,7 +150,7 @@ def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> 
             children=[
                 text("TODO", size="h1", color="white", bg="black", pad=6, weight="bold"),
                 spacer(),
-                text(count_chip, size="sm", weight="bold", bg="yellow", pad=6),
+                text(count_chip, size="sm", weight="bold", bg="warning", pad=6),
             ],
         ),
         spacer(size=6),
@@ -159,7 +159,7 @@ def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> 
     if not visible:
         children += [
             spacer(size=20),
-            text("ALL CLEAR", size="h1", color="green", weight="bold", align="center"),
+            text("ALL CLEAR", size="h1", color="success", weight="bold", align="center"),
             spacer(size=8),
             text("inbox zero", size="body", align="center"),
         ]
@@ -176,8 +176,8 @@ def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> 
             gap=6,
             align="center",
             children=[
-                text("DONE", size="sm", weight="bold", bg="green", color="white", pad=4),
-                hbar(pct=pct, color="green", height=12),
+                text("DONE", size="sm", weight="bold", bg="success", color="white", pad=4),
+                hbar(pct=pct, color="success", height=12),
                 text(f"{pct}%", size="sm", weight="bold"),
             ],
         ),
