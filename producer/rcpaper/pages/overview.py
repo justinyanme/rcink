@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcpaper.pages._common import wrap_visual
 from rcpaper.palette import ColorToken
 from rcpaper.sources.calendar import TodaysCalendar
 from rcpaper.sources.claude import ClaudeUsage
@@ -19,28 +20,32 @@ from rcpaper.sources.github import GitHubActivity
 from rcpaper.sources.quotes import Quote
 from rcpaper.sources.reminders import TodaysReminders
 
-# Soft cap on the quote string when it sits in the header. Past this we
-# truncate with an ellipsis so the row still shows *something* alongside the
-# date stamp. Calibrated for VT323 body-bold + sm-bold on a 400-px panel.
-_HEADER_QUOTE_MAX = 30
+# Visual-cell budget for one wrapped quote line at h2-bold on a 540px panel.
+_QUOTE_LINE_LIMIT = 30
+_QUOTE_MAX_LINES = 3
 
 
-def _quote_inline(q: Quote | None) -> str | None:
-    """Flatten a multi-line Quote into a single header string, truncating
-    with `…` if it would push the date off the row. None means hide it."""
+def _quote_block(q: Quote | None) -> list[dict]:
+    """Return 0..N text nodes for the multi-line quote block.
+
+    Empty list when there's nothing to show — header omits the block entirely.
+    """
     if q is None:
-        return None
+        return []
     joined = " ".join(line.strip() for line in q.lines if line.strip())
     if not joined:
-        return None
-    if len(joined) > _HEADER_QUOTE_MAX:
-        return joined[: _HEADER_QUOTE_MAX - 1].rstrip(" ,.") + "…"
-    return joined
+        return []
+    lines = wrap_visual(joined, line_limit=_QUOTE_LINE_LIMIT, max_lines=_QUOTE_MAX_LINES)
+    out: list[dict] = []
+    for i, line in enumerate(lines):
+        prefix = '"' if i == 0 else ""
+        suffix = '"' if i == len(lines) - 1 else ""
+        out.append(text(f"{prefix}{line}{suffix}", size="h2", weight="bold"))
+    return out
 
 
 def _github_row(gh: GitHubActivity | None) -> dict:
-    """One row mirroring the CLAUDE / CODEX rhythm:
-    [github icon] [GITHUB chip] [N today] [Md streak] [pr_open/pr_review PRs]."""
+    """One row: [github icon] [GITHUB chip] [N today] [N week] [top:repo] [streak]."""
     if gh is None:
         return hstack(
             gap=8,
@@ -52,23 +57,27 @@ def _github_row(gh: GitHubActivity | None) -> dict:
                 spacer(),
             ],
         )
-    # Today color matches the CLAUDE/CODEX usage palette: 0=green low, scales up.
     today_color: ColorToken = "green" if gh.today_commits > 0 else "black"
+    week_color: ColorToken = "green" if gh.week_commits > 0 else "black"
     streak_color: ColorToken = "red" if gh.streak >= 7 else "yellow" if gh.streak >= 3 else "green"
-    return hstack(
-        gap=8,
-        align="center",
-        children=[
-            icon("github", size=16, color="black"),
-            text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
-            text(str(gh.today_commits), size="h2", color=today_color, weight="bold"),
-            text("today", size="sm", weight="bold"),
-            text(f"{gh.streak}d", size="h2", color=streak_color, weight="bold"),
-            text("streak", size="sm", weight="bold"),
-            spacer(),
-            text(f"{gh.pr_open}/{gh.pr_review} PRs", size="sm", weight="bold"),
-        ],
-    )
+    children: list[dict] = [
+        icon("github", size=16, color="black"),
+        text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+        text(str(gh.today_commits), size="h2", color=today_color, weight="bold"),
+        text("today", size="sm", weight="bold"),
+        text(str(gh.week_commits), size="h2", color=week_color, weight="bold"),
+        text("week", size="sm", weight="bold"),
+    ]
+    if gh.repos_week:
+        children += [
+            text("top:", size="sm"),
+            text(gh.repos_week[0].name, size="body", weight="bold"),
+        ]
+    children += [
+        spacer(),
+        text(f"{gh.streak}d", size="sm", weight="bold", color=streak_color),
+    ]
+    return hstack(gap=8, align="center", children=children)
 
 
 def _pct_color(pct: float | None) -> ColorToken:
@@ -203,24 +212,11 @@ def build_overview_page(
     now: dt.datetime,
 ) -> dict:
     date_label = text(now.strftime("%a · %b %d").upper(), size="sm", weight="bold")
-    # Inline quote replaces the old OVERVIEW h1 sticker when it fits. The
-    # header always shows the date stamp on the right; when no quote is
-    # available the left side just stays empty so the date floats right.
-    inline = _quote_inline(quote)
-    if inline:
-        header = hstack(
-            align="center",
-            children=[
-                text(f'"{inline}"', size="body", weight="bold"),
-                spacer(),
-                date_label,
-            ],
-        )
-    else:
-        header = hstack(
-            align="center",
-            children=[spacer(), date_label],
-        )
+    header = hstack(
+        align="center",
+        children=[spacer(), date_label],
+    )
+    quote_nodes = _quote_block(quote)
 
     claude_row = _usage_row(
         brand="CLAUDE",
@@ -244,21 +240,21 @@ def build_overview_page(
     )
     github_row = _github_row(github)
 
-    return vstack(
-        pad=16,
-        gap=10,
-        children=[
-            header,
-            divider(color="black", thickness=2),
-            spacer(size=4),
-            claude_row,
-            codex_row,
-            github_row,
-            spacer(size=4),
-            divider(color="black", thickness=1),
-            spacer(size=4),
-            _next_event_row(calendar, now),
-            _todos_row(reminders),
-            spacer(),
-        ],
-    )
+    page_children: list[dict] = [header]
+    if quote_nodes:
+        page_children.append(spacer(size=2))
+        page_children.extend(quote_nodes)
+    page_children += [
+        divider(color="black", thickness=2),
+        spacer(size=4),
+        claude_row,
+        codex_row,
+        github_row,
+        spacer(size=4),
+        divider(color="black", thickness=1),
+        spacer(size=4),
+        _next_event_row(calendar, now),
+        _todos_row(reminders),
+        spacer(),
+    ]
+    return vstack(pad=16, gap=10, children=page_children)
