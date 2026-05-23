@@ -1,7 +1,7 @@
 import datetime as dt
 
 from rcpaper.pages.overview import build_overview_page
-from rcpaper.sources.calendar import TodaysCalendar
+from rcpaper.sources.calendar import CalEvent, TodaysCalendar
 from rcpaper.sources.github import GRID_CELLS, GitHubActivity, RepoWeek
 from rcpaper.sources.quotes import Quote
 from rcpaper.sources.reminders import Reminder, TodaysReminders
@@ -227,3 +227,70 @@ def test_overview_todos_row_truncates_long_title():
     texts = _all_text(page)
     # Some node ends with ellipsis (overflow truncation).
     assert any(t.endswith("…") for t in texts)
+
+
+def _ev(when_str: str, title: str, *, all_day: bool = False) -> CalEvent:
+    start = dt.datetime.fromisoformat(when_str)
+    return CalEvent(
+        start=start,
+        end=start + dt.timedelta(minutes=30),
+        title=title,
+        calendar="Personal",
+        is_all_day=all_day,
+    )
+
+
+def test_overview_next_row_soon_when_today_empty_but_upcoming():
+    cal = TodaysCalendar(
+        today=_NOW.date(),
+        events=[],
+        upcoming=[_ev("2026-05-25T09:00", "Standup")],
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=cal,
+        reminders=_empty_reminders(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert "SOON" in texts
+    assert "Standup" in texts
+    assert any("MON" in t and "09:00" in t for t in texts)
+
+
+def test_overview_next_row_nothing_this_week_when_all_empty():
+    cal = TodaysCalendar(today=_NOW.date(), events=[], upcoming=[])
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=cal,
+        reminders=_empty_reminders(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert any("nothing this week" in t for t in texts)
+
+
+def test_overview_next_row_today_event_unchanged():
+    cal = TodaysCalendar(
+        today=_NOW.date(),
+        events=[_ev("2026-05-23T11:00", "Lunch")],
+        upcoming=[],
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=cal,
+        reminders=_empty_reminders(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert "NEXT" in texts
+    assert "Lunch" in texts

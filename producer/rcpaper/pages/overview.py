@@ -131,44 +131,63 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
                 spacer(),
             ],
         )
-    upcoming = [e for e in cal.events if (e.is_all_day or e.end > now)]
-    if not upcoming:
+    today_upcoming = [e for e in cal.events if (e.is_all_day or e.end > now)]
+    if today_upcoming:
+        nxt = today_upcoming[0]
+        when = "ALL" if nxt.is_all_day else nxt.start.strftime("%H:%M")
+        if nxt.is_all_day:
+            sub = "all day"
+        else:
+            delta_min = max(0, int((nxt.start - now).total_seconds() // 60))
+            if delta_min < 60:
+                sub = f"in {delta_min}m"
+            else:
+                h, m = divmod(delta_min, 60)
+                sub = f"in {h}h" if m == 0 else f"in {h}h {m}m"
+        title = nxt.title
+        if len(title) > 24:
+            title = title[:23] + "…"
         return hstack(
             gap=8,
             align="center",
             children=[
                 icon("calendar", size=16, color="blue"),
                 text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
-                text("CLEAR", size="body", weight="bold", color="green"),
+                text(when, size="body", color="blue", weight="bold"),
+                text(title, size="body", weight="bold"),
                 spacer(),
-                text(f"{len(cal.events)} today", size="sm"),
+                text(sub, size="sm"),
             ],
         )
-    nxt = upcoming[0]
-    when = "ALL" if nxt.is_all_day else nxt.start.strftime("%H:%M")
-    if nxt.is_all_day:
-        sub = "all day"
-    else:
-        delta_min = max(0, int((nxt.start - now).total_seconds() // 60))
-        if delta_min < 60:
-            sub = f"in {delta_min}m"
-        else:
-            h, m = divmod(delta_min, 60)
-            sub = f"in {h}h" if m == 0 else f"in {h}h {m}m"
-    # Truncate event title at the source so the row stays single-line.
-    title = nxt.title
-    if len(title) > 24:
-        title = title[:23] + "…"
+
+    if cal.upcoming:
+        nxt = cal.upcoming[0]
+        dow = nxt.start.strftime("%a").upper()
+        when = "ALL" if nxt.is_all_day else nxt.start.strftime("%H:%M")
+        title = nxt.title
+        if len(title) > 22:
+            title = title[:21] + "…"
+        return hstack(
+            gap=8,
+            align="center",
+            children=[
+                icon("calendar", size=16, color="blue"),
+                text("SOON", size="sm", weight="bold", color="white", bg="blue", pad=4),
+                text(f"{dow} {when}", size="body", color="blue", weight="bold"),
+                text(title, size="body", weight="bold"),
+                spacer(),
+            ],
+        )
+
     return hstack(
         gap=8,
         align="center",
         children=[
             icon("calendar", size=16, color="blue"),
             text("NEXT", size="sm", weight="bold", color="white", bg="blue", pad=4),
-            text(when, size="body", color="blue", weight="bold"),
-            text(title, size="body", weight="bold"),
+            text("CLEAR", size="body", weight="bold", color="green"),
             spacer(),
-            text(sub, size="sm"),
+            text("nothing this week", size="sm"),
         ],
     )
 
