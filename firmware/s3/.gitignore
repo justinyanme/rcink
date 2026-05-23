@@ -1,0 +1,23 @@
+# Brainstorming companion artifacts (transient mockups)
+.superpowers/
+
+# PlatformIO build/cache
+.pio/
+.vscode/
+
+# Local config with secrets (config.h.example is committed)
+src/config.h
+
+# Python producer
+producer/.venv/
+producer/dist/
+producer/build/
+producer/*.egg-info/
+__pycache__/
+*.pyc
+
+# Font bake cache — VT323-Regular.ttf is fetched on demand by bake.py
+tools/fonts/*.ttf
+
+# macOS
+.DS_Store

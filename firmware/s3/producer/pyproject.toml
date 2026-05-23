@@ -1,0 +1,46 @@
+[project]
+name = "rcpaper"
+version = "0.1.0"
+description = "rcpapercolor producer: pushes AI usage dashboards to Axiom."
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.27",
+    "typer>=0.12",
+    "loguru>=0.7",
+    # dev-cli serial console helper (RCPAPER_DEV_CONSOLE build).
+    "pyserial>=3.5",
+    # macOS-only EventKit bridge for the Apple Calendar + Reminders sources.
+    # pyobjc-framework-EventKit pulls in the Core/Foundation bridges it needs.
+    'pyobjc-framework-EventKit>=10.3; sys_platform == "darwin"',
+]
+
+[project.scripts]
+claude-fetch   = "scripts.claude_fetch:app"
+codex-fetch    = "scripts.codex_fetch:app"
+quote-fetch    = "scripts.quote_fetch:app"
+calendar-fetch = "scripts.calendar_fetch:app"
+todo-fetch     = "scripts.todo_fetch:app"
+github-fetch   = "scripts.github_fetch:app"
+overview-fetch = "scripts.overview_fetch:app"
+image-fetch    = "scripts.image_fetch:app"
+fetch-all      = "scripts.fetch_all:app"
+preview        = "scripts.preview:app"
+dev-cli        = "scripts.dev_cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-httpx>=0.30",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rcpaper", "scripts"]
+
+[tool.pytest.ini_options]
+addopts = "-ra -q"
+testpaths = ["tests"]

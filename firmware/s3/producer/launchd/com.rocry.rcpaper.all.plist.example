@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.rocry.rcpaper.all</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/CHANGE_ME/.local/bin/uv</string>
+    <string>run</string>
+    <string>--directory</string>
+    <string>/Users/CHANGE_ME/w/_hw/rcpapercolor/producer</string>
+    <string>fetch-all</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AXIOM_TOKEN</key>
+    <string>xaat-CHANGE_ME</string>
+    <key>AXIOM_DATASET</key>
+    <string>rocry</string>
+    <!-- Optional: the github source needs both of these. Without them the
+         overview's github row renders as a dash and the standalone github
+         page won't be pushed (the fetcher fails fast in fetch-all). -->
+    <key>GITHUB_TOKEN</key>
+    <string>ghp-CHANGE_ME</string>
+    <key>GITHUB_USERNAME</key>
+    <string>CHANGE_ME</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/rcpaper.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/rcpaper.log</string>
+</dict>
+</plist>
