@@ -2,7 +2,7 @@ import datetime as dt
 
 from rcpaper.pages.overview import build_overview_page
 from rcpaper.sources.calendar import TodaysCalendar
-from rcpaper.sources.github import GRID_CELLS, GitHubActivity
+from rcpaper.sources.github import GRID_CELLS, GitHubActivity, RepoWeek
 from rcpaper.sources.quotes import Quote
 from rcpaper.sources.reminders import Reminder, TodaysReminders
 
@@ -149,6 +149,63 @@ def test_overview_todos_row_all_clear_when_empty():
     )
     texts = _all_text(page)
     assert any("ALL CLEAR" in t for t in texts)
+
+
+def test_overview_github_row_shows_week_and_top_repo():
+    gh = GitHubActivity(
+        user="rocry",
+        today_commits=3,
+        week_commits=18,
+        streak=5,
+        total_14w=142,
+        total_year=420,
+        contrib=[0] * GRID_CELLS,
+        repos_week=[RepoWeek(name="rcpapercolor", commits=12)],
+        langs_week=[],
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        github=gh,
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert "3" in texts  # today
+    assert "18" in texts  # week
+    assert "rcpapercolor" in texts
+    assert any("5d" in t for t in texts)
+    # PR counts must NOT be on the row anymore.
+    assert not any("/" in t and "PR" in t for t in texts)
+
+
+def test_overview_github_row_no_top_repo_when_quiet_week():
+    gh = GitHubActivity(
+        user="rocry",
+        today_commits=0,
+        week_commits=0,
+        streak=0,
+        total_14w=0,
+        total_year=0,
+        contrib=[0] * GRID_CELLS,
+        repos_week=[],
+        langs_week=[],
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        github=gh,
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    # Row still rendered (label + zero counts), but no "top:" prefix.
+    assert any(t == "GITHUB" for t in texts)
+    assert not any(t.startswith("top:") for t in texts)
 
 
 def test_overview_todos_row_truncates_long_title():
