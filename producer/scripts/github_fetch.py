@@ -18,8 +18,8 @@ def run() -> None:
     activity = fetch_github_activity()
     logger.info(
         f"github @{activity.user}: today={activity.today_commits} "
-        f"streak={activity.streak}d PRs={activity.pr_open}/{activity.pr_review} "
-        f"14w={activity.total_14w}"
+        f"week={activity.week_commits} streak={activity.streak}d "
+        f"repos={len(activity.repos_week)} 14w={activity.total_14w}"
     )
     page = build_github_page(activity, now=dt.datetime.now())
     ingest(id="github", layout=page, order=50)
