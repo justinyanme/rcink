@@ -152,14 +152,21 @@ def _intrinsic_size(node: dict[str, Any], parent: _Rect, prof: DeviceProfile, ax
         children = node.get("children", []) or []
         if not children:
             return (2 * pad, False)
-        if (typ == "vstack" and axis == "v") or (typ == "hstack" and axis == "h"):
+        is_main = (typ == "vstack" and axis == "v") or (typ == "hstack" and axis == "h")
+        if is_main:
             total = 2 * pad + gap * max(0, len(children) - 1)
             for c in children:
                 cs, cf = _intrinsic_size(c, parent, prof, axis)
                 if not cf:
                     total += cs
             return (total, False)
-        return (parent.h if axis == "v" else parent.w, False)
+        # cross-axis: stack height/width is max of children's cross extents + 2*pad
+        max_cross = 0
+        for c in children:
+            cs, _cf = _intrinsic_size(c, parent, prof, axis)
+            if cs > max_cross:
+                max_cross = cs
+        return (max_cross + 2 * pad, False)
     return (0, False)
 
 
