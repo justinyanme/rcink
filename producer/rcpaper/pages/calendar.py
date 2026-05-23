@@ -55,6 +55,74 @@ def _next_in_label(when: dt.datetime, now: dt.datetime) -> str:
     return f"in {h}h" if m == 0 else f"in {h}h {m}m"
 
 
+def _append_today_body(children: list[dict], events: list[CalEvent], now: dt.datetime) -> None:
+    nxt = _next_event(events, now)
+    if nxt is not None:
+        children += [
+            text("NEXT", size="sm", weight="bold", color="white", bg="red", pad=4),
+            spacer(size=4),
+            hstack(
+                align="end",
+                gap=6,
+                children=[
+                    text(_fmt_time(nxt.start, nxt.is_all_day), size="h1", color="red", weight="bold"),
+                    vstack(
+                        gap=2,
+                        children=[
+                            text(nxt.title, size="body", weight="bold"),
+                            text(
+                                f"{_fmt_duration(nxt.start, nxt.end, nxt.is_all_day)} · "
+                                f"{_next_in_label(nxt.start, now)}",
+                                size="sm",
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            spacer(size=10),
+            divider(color="black", thickness=1),
+            spacer(size=6),
+        ]
+
+    # UP NEXT list of remaining events. Two filters:
+    #   1. drop anything that has already ended — once it's past, it stops
+    #      being "up next" (all-day events stay until end-of-day, which
+    #      EventKit reports as the next-midnight, so the time check handles
+    #      them naturally);
+    #   2. dedup by (start, title) — identity dedup (`is not nxt`) misses
+    #      cross-calendar duplicates (same meeting invited via personal +
+    #      work calendars surfaces as separate EKEvent instances), and we
+    #      also collapse any further rest-list duplicates so a triple-
+    #      subscribed event doesn't fill the slot list.
+    nxt_key = (nxt.start, nxt.title) if nxt is not None else None
+    seen: set[tuple[dt.datetime, str]] = {nxt_key} if nxt_key else set()
+    rest: list[CalEvent] = []
+    for e in events:
+        if e.end <= now and not e.is_all_day:
+            continue
+        key = (e.start, e.title)
+        if key in seen:
+            continue
+        seen.add(key)
+        rest.append(e)
+    if rest:
+        children.append(text("UP NEXT", size="sm", weight="bold"))
+        children.append(spacer(size=2))
+        for i, ev in enumerate(rest[:6]):  # cap at 6 to keep the page tidy
+            tick = _TICK_COLORS[i % len(_TICK_COLORS)]
+            children.append(
+                hstack(
+                    gap=8,
+                    align="center",
+                    children=[
+                        text(_fmt_time(ev.start, ev.is_all_day), size="body", weight="bold", color=tick),
+                        hbar(pct=100, color=tick, height=4),
+                        text(ev.title, size="sm", weight="bold"),
+                    ],
+                )
+            )
+
+
 def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
     today_label = cal.today.strftime("%a · %b %d").upper()
 
@@ -72,78 +140,45 @@ def build_calendar_page(cal: TodaysCalendar, *, now: dt.datetime) -> dict:
         spacer(size=8),
     ]
 
-    if not cal.events:
+    if cal.events:
+        _append_today_body(children, cal.events, now)
+    elif cal.upcoming:
+        children += [
+            hstack(
+                align="center",
+                gap=6,
+                children=[
+                    text("NO EVENTS", size="body", weight="bold", color="green"),
+                    text("clear runway", size="sm"),
+                ],
+            ),
+            spacer(size=10),
+            divider(color="black", thickness=1),
+            spacer(size=6),
+            text("UPCOMING", size="sm", weight="bold"),
+            spacer(size=2),
+        ]
+        for i, ev in enumerate(cal.upcoming[:6]):
+            tick = _TICK_COLORS[i % len(_TICK_COLORS)]
+            dow = ev.start.strftime("%a").upper()
+            when = "ALL" if ev.is_all_day else ev.start.strftime("%H:%M")
+            children.append(
+                hstack(
+                    gap=8,
+                    align="center",
+                    children=[
+                        text(f"{dow} {when}", size="body", weight="bold", color=tick),
+                        hbar(pct=100, color=tick, height=4),
+                        text(ev.title, size="sm", weight="bold"),
+                    ],
+                )
+            )
+    else:
         children += [
             spacer(size=20),
-            text("NO EVENTS", size="h1", color="green", weight="bold", align="center"),
+            text("NOTHING UNTIL NEXT WEEK", size="h1", color="green", weight="bold", align="center"),
             spacer(size=8),
             text("clear runway", size="body", align="center"),
         ]
-    else:
-        nxt = _next_event(cal.events, now)
-        if nxt is not None:
-            children += [
-                text("NEXT", size="sm", weight="bold", color="white", bg="red", pad=4),
-                spacer(size=4),
-                hstack(
-                    align="end",
-                    gap=6,
-                    children=[
-                        text(_fmt_time(nxt.start, nxt.is_all_day), size="h1", color="red", weight="bold"),
-                        vstack(
-                            gap=2,
-                            children=[
-                                text(nxt.title, size="body", weight="bold"),
-                                text(
-                                    f"{_fmt_duration(nxt.start, nxt.end, nxt.is_all_day)} · "
-                                    f"{_next_in_label(nxt.start, now)}",
-                                    size="sm",
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-                spacer(size=10),
-                divider(color="black", thickness=1),
-                spacer(size=6),
-            ]
-
-        # UP NEXT list of remaining events. Two filters:
-        #   1. drop anything that has already ended — once it's past, it stops
-        #      being "up next" (all-day events stay until end-of-day, which
-        #      EventKit reports as the next-midnight, so the time check handles
-        #      them naturally);
-        #   2. dedup by (start, title) — identity dedup (`is not nxt`) misses
-        #      cross-calendar duplicates (same meeting invited via personal +
-        #      work calendars surfaces as separate EKEvent instances), and we
-        #      also collapse any further rest-list duplicates so a triple-
-        #      subscribed event doesn't fill the slot list.
-        nxt_key = (nxt.start, nxt.title) if nxt is not None else None
-        seen: set[tuple[dt.datetime, str]] = {nxt_key} if nxt_key else set()
-        rest: list[CalEvent] = []
-        for e in cal.events:
-            if e.end <= now and not e.is_all_day:
-                continue
-            key = (e.start, e.title)
-            if key in seen:
-                continue
-            seen.add(key)
-            rest.append(e)
-        if rest:
-            children.append(text("UP NEXT", size="sm", weight="bold"))
-            children.append(spacer(size=2))
-            for i, ev in enumerate(rest[:6]):  # cap at 6 to keep the page tidy
-                tick = _TICK_COLORS[i % len(_TICK_COLORS)]
-                children.append(
-                    hstack(
-                        gap=8,
-                        align="center",
-                        children=[
-                            text(_fmt_time(ev.start, ev.is_all_day), size="body", weight="bold", color=tick),
-                            hbar(pct=100, color=tick, height=4),
-                            text(ev.title, size="sm", weight="bold"),
-                        ],
-                    )
-                )
 
     return vstack(pad=18, gap=6, children=children)
