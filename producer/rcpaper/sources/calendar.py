@@ -30,7 +30,8 @@ class CalEvent:
 @dataclass(slots=True)
 class TodaysCalendar:
     today: dt.date
-    events: list[CalEvent]
+    events: list[CalEvent]  # today only
+    upcoming: list[CalEvent]  # days +1..+6, sorted; both timed and all-day
 
 
 def _nsdate_to_dt(d: F.NSDate) -> dt.datetime:
@@ -47,13 +48,14 @@ def fetch_todays_events(now: dt.datetime | None = None) -> TodaysCalendar:
     units = F.NSCalendarUnitYear | F.NSCalendarUnitMonth | F.NSCalendarUnitDay
     today_comps = cal_obj.components_fromDate_(units, F.NSDate.date())
     midnight = cal_obj.dateFromComponents_(today_comps)
-    end_of_day = midnight.dateByAddingTimeInterval_(86400)
+    week_end = midnight.dateByAddingTimeInterval_(7 * 86400)
 
     cals = store.calendarsForEntityType_(ek.EKEntityTypeEvent)
-    pred = store.predicateForEventsWithStartDate_endDate_calendars_(midnight, end_of_day, cals)
+    pred = store.predicateForEventsWithStartDate_endDate_calendars_(midnight, week_end, cals)
     ns_events = store.eventsMatchingPredicate_(pred) or []
 
-    out: list[CalEvent] = []
+    today = now.date()
+    all_events: list[CalEvent] = []
     for ev in ns_events:
         title = (ev.title() or "").strip()
         if not title:
@@ -63,7 +65,7 @@ def fetch_todays_events(now: dt.datetime | None = None) -> TodaysCalendar:
         # rendered as events but they're not user-scheduled and crowd the list.
         if cal_name.startswith("Weather for"):
             continue
-        out.append(
+        all_events.append(
             CalEvent(
                 start=_nsdate_to_dt(ev.startDate()),
                 end=_nsdate_to_dt(ev.endDate()),
@@ -72,5 +74,8 @@ def fetch_todays_events(now: dt.datetime | None = None) -> TodaysCalendar:
                 is_all_day=bool(ev.isAllDay()),
             )
         )
-    out.sort(key=lambda e: e.start)
-    return TodaysCalendar(today=now.date(), events=out)
+    all_events.sort(key=lambda e: e.start)
+
+    events_today = [e for e in all_events if e.start.date() == today]
+    events_upcoming = [e for e in all_events if e.start.date() > today]
+    return TodaysCalendar(today=today, events=events_today, upcoming=events_upcoming)
