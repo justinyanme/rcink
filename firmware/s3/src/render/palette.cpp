@@ -9,12 +9,19 @@ namespace rcpaper {
 
 bool color_from_token(const char* token, Color* out) {
   if (!token || !*token || !out) return false;
+  // Concrete E6 inks.
   if (std::strcmp(token, "black")  == 0) { *out = Color::Black;  return true; }
   if (std::strcmp(token, "white")  == 0) { *out = Color::White;  return true; }
   if (std::strcmp(token, "red")    == 0) { *out = Color::Red;    return true; }
   if (std::strcmp(token, "yellow") == 0) { *out = Color::Yellow; return true; }
   if (std::strcmp(token, "green")  == 0) { *out = Color::Green;  return true; }
   if (std::strcmp(token, "blue")   == 0) { *out = Color::Blue;   return true; }
+  // Semantic tokens (DSL v1) — s3 has the full 6-ink palette so each maps to its natural ink.
+  if (std::strcmp(token, "accent")  == 0) { *out = Color::Red;    return true; }
+  if (std::strcmp(token, "warning") == 0) { *out = Color::Yellow; return true; }
+  if (std::strcmp(token, "success") == 0) { *out = Color::Green;  return true; }
+  if (std::strcmp(token, "info")    == 0) { *out = Color::Blue;   return true; }
+  if (std::strcmp(token, "muted")   == 0) { *out = Color::Black;  return true; }
   return false;
 }
 
