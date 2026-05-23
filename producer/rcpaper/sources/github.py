@@ -1,23 +1,24 @@
-"""Fetch GitHub activity (commits today, streak, PR counts, contribution grid).
+"""Fetch GitHub activity (commits today, week breakdown, streak, heatmap).
 
-Single GraphQL roundtrip via the v4 API. Returns the dense 14-week heatmap
-the producer's github page renders. Token + username come from env:
-GITHUB_TOKEN must have `read:user` + `repo` scopes; GITHUB_USERNAME is the
-login whose activity we report on.
+Two aliased queries in one GraphQL roundtrip:
+  - the rolling 12-month contributionCalendar (drives the 14w heatmap + streak)
+  - the rolling 7-day commitContributionsByRepository (drives weekly velocity)
+
+GITHUB_TOKEN needs `read:user`; GITHUB_USERNAME is the login to report on.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 
 _QUERY = """
-query($user: String!, $reviewQuery: String!) {
+query($user: String!, $weekFrom: DateTime!, $weekTo: DateTime!) {
   user(login: $user) {
     contributionsCollection {
       contributionCalendar {
@@ -27,28 +28,53 @@ query($user: String!, $reviewQuery: String!) {
         }
       }
     }
-    pullRequests(states: OPEN) { totalCount }
+    week: contributionsCollection(from: $weekFrom, to: $weekTo) {
+      commitContributionsByRepository(maxRepositories: 10) {
+        repository {
+          nameWithOwner
+          languages(first: 5, orderBy: {field: SIZE, direction: DESC}) {
+            edges { size node { name } }
+          }
+        }
+        contributions { totalCount }
+      }
+    }
   }
-  search(query: $reviewQuery, type: ISSUE) { issueCount }
 }
 """
 
-# How many weeks of the heatmap we surface. 14 cols × 7 rows = 98 cells —
-# matches the `grid` primitive's default footprint on the page.
+# 14 cols × 7 rows = 98 cells — matches the device-side grid primitive footprint.
 GRID_WEEKS = 14
 GRID_CELLS = GRID_WEEKS * 7
+
+# How many top repos / languages we surface on the page.
+TOP_REPOS = 5
+TOP_LANGS = 5
+
+
+@dataclass(slots=True)
+class RepoWeek:
+    name: str  # short display name (see _short_repo_name)
+    commits: int
+
+
+@dataclass(slots=True)
+class LangWeek:
+    name: str  # e.g. "Go", "Python"
+    pct: int  # 0..100, top-5 normalised to sum ≤ 100
 
 
 @dataclass(slots=True)
 class GitHubActivity:
     user: str
     today_commits: int
-    streak: int  # consecutive contribution days, today-inclusive
-    pr_open: int  # PRs the user has open
-    pr_review: int  # PRs awaiting the user's review
-    total_14w: int  # sum of contributions across the 14-week window
-    total_year: int  # totalContributions from the calendar (rolling 12mo)
-    contrib: list[int]  # 98 ints in [0, 100], normalised vs window max
+    week_commits: int
+    streak: int
+    total_14w: int
+    total_year: int
+    contrib: list[int]
+    repos_week: list[RepoWeek] = field(default_factory=list)
+    langs_week: list[LangWeek] = field(default_factory=list)
 
 
 def _env(key: str) -> str:
@@ -59,7 +85,6 @@ def _env(key: str) -> str:
 
 
 def _normalize(counts: list[int]) -> list[int]:
-    """Scale raw counts to 0–100 relative to the window max."""
     if not counts:
         return []
     max_v = max(counts) or 1
@@ -67,12 +92,6 @@ def _normalize(counts: list[int]) -> list[int]:
 
 
 def _compute_streak(days: list[tuple[str, int]]) -> int:
-    """Consecutive contribution days ending today. Grace today if it's 0.
-
-    We allow `today == 0` because the device may render before the user has
-    committed yet; in that case the streak reflects "yesterday-anchored"
-    counting. Once they push anything today, the streak ticks up.
-    """
     if not days:
         return 0
     i = len(days) - 1
@@ -86,6 +105,37 @@ def _compute_streak(days: list[tuple[str, int]]) -> int:
     return streak
 
 
+def _short_repo_name(name_with_owner: str, *, user: str) -> str:
+    """`owner/repo` → `repo` when owner == user (case-insensitive), else unchanged."""
+    if "/" not in name_with_owner:
+        return name_with_owner
+    owner, repo = name_with_owner.split("/", 1)
+    if owner.lower() == user.lower():
+        return repo
+    return name_with_owner
+
+
+def _aggregate_languages(
+    repos: list[tuple[str, int, list[tuple[str, int]]]],
+) -> list[LangWeek]:
+    """Commit-weighted language aggregation.
+
+    `repos` is a list of (display_name, commits_this_week, [(lang_name, size_bytes), ...]).
+    For each repo we multiply each language size by the repo's commit count,
+    sum across repos, take top 5 by weighted size, normalize to integer
+    percentages (top-5 share, not total share).
+    """
+    weighted: dict[str, int] = {}
+    for _name, commits, langs in repos:
+        for lang, size in langs:
+            weighted[lang] = weighted.get(lang, 0) + commits * size
+    if not weighted:
+        return []
+    top = sorted(weighted.items(), key=lambda kv: kv[1], reverse=True)[:TOP_LANGS]
+    total = sum(size for _, size in top) or 1
+    return [LangWeek(name=name, pct=int(round(size * 100 / total))) for name, size in top]
+
+
 def fetch_github_activity(
     *,
     user: str | None = None,
@@ -94,13 +144,15 @@ def fetch_github_activity(
 ) -> GitHubActivity:
     user = user or _env("GITHUB_USERNAME")
     token = token or _env("GITHUB_TOKEN")
-    review_query = f"is:open is:pr review-requested:{user}"
+    now = now or dt.datetime.now(tz=dt.timezone.utc)
+    week_from = (now - dt.timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    week_to = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     r = httpx.post(
         GRAPHQL_URL,
         json={
             "query": _QUERY,
-            "variables": {"user": user, "reviewQuery": review_query},
+            "variables": {"user": user, "weekFrom": week_from, "weekTo": week_to},
         },
         headers={
             "Authorization": f"Bearer {token}",
@@ -119,9 +171,6 @@ def fetch_github_activity(
         raise RuntimeError(f"GitHub user not found: {user}")
 
     cal = u["contributionsCollection"]["contributionCalendar"]
-
-    # Flatten weeks → (date, count). GitHub returns weeks chronological,
-    # each week Sun→Sat — exactly the column-major order the grid wants.
     days: list[tuple[str, int]] = []
     for week in cal["weeks"]:
         for d in week["contributionDays"]:
@@ -130,22 +179,37 @@ def fetch_github_activity(
     today_commits = days[-1][1] if days else 0
     streak = _compute_streak(days)
 
-    # Last 14 full weeks → 98 cells.
     window_days = days[-GRID_CELLS:]
     window_counts = [c for _, c in window_days]
     total_14w = sum(window_counts)
     contrib = _normalize(window_counts)
-    # Pad at the front if the account is younger than 98 days.
     while len(contrib) < GRID_CELLS:
         contrib.insert(0, 0)
+
+    week_buckets = u.get("week", {}).get("commitContributionsByRepository") or []
+    raw_repos: list[tuple[str, int, list[tuple[str, int]]]] = []
+    for bucket in week_buckets:
+        commits = int(bucket["contributions"]["totalCount"])
+        if commits <= 0:
+            continue
+        nwo = bucket["repository"]["nameWithOwner"]
+        langs = [
+            (edge["node"]["name"], int(edge["size"])) for edge in (bucket["repository"]["languages"]["edges"] or [])
+        ]
+        raw_repos.append((_short_repo_name(nwo, user=user), commits, langs))
+    raw_repos.sort(key=lambda r: r[1], reverse=True)
+    week_commits = sum(c for _, c, _ in raw_repos)
+    repos_week = [RepoWeek(name=n, commits=c) for n, c, _ in raw_repos[:TOP_REPOS]]
+    langs_week = _aggregate_languages(raw_repos[:TOP_REPOS])
 
     return GitHubActivity(
         user=user,
         today_commits=today_commits,
+        week_commits=week_commits,
         streak=streak,
-        pr_open=int(u["pullRequests"]["totalCount"]),
-        pr_review=int(payload["data"]["search"]["issueCount"]),
         total_14w=total_14w,
         total_year=int(cal["totalContributions"]),
         contrib=contrib,
+        repos_week=repos_week,
+        langs_week=langs_week,
     )
