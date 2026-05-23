@@ -12,6 +12,8 @@ dependencies = [
     # macOS-only EventKit bridge for the Apple Calendar + Reminders sources.
     # pyobjc-framework-EventKit pulls in the Core/Foundation bridges it needs.
     'pyobjc-framework-EventKit>=10.3; sys_platform == "darwin"',
+    "bleak>=3.0.1",
+    "xxhash>=3.7.0",
 ]
 
 [project.scripts]
@@ -31,6 +33,7 @@ dev-cli        = "scripts.dev_cli:main"
 dev = [
     "pytest>=8",
     "pytest-httpx>=0.30",
+    "pytest-asyncio>=1.3",
     "ruff>=0.6",
 ]
 
@@ -44,3 +47,4 @@ packages = ["rcink", "scripts"]
 [tool.pytest.ini_options]
 addopts = "-ra -q"
 testpaths = ["tests"]
+asyncio_mode = "auto"
