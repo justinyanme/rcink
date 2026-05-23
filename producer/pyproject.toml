@@ -29,6 +29,7 @@ image-fetch    = "scripts.image_fetch:app"
 fetch-all      = "scripts.fetch_all:app"
 preview        = "scripts.preview:app"
 dev-cli        = "scripts.dev_cli:main"
+rcink-goldens  = "rcink.cli_goldens:main"
 
 [dependency-groups]
 dev = [
