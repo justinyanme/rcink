@@ -4,7 +4,7 @@ from rcpaper.pages.overview import build_overview_page
 from rcpaper.sources.calendar import TodaysCalendar
 from rcpaper.sources.github import GRID_CELLS, GitHubActivity
 from rcpaper.sources.quotes import Quote
-from rcpaper.sources.reminders import TodaysReminders
+from rcpaper.sources.reminders import Reminder, TodaysReminders
 
 
 def _all_text(node: dict) -> list[str]:
@@ -104,3 +104,69 @@ def test_overview_missing_quote_omits_quote_block():
     assert any("MAY 23" in t.upper() for t in texts)
     # No leading `"` decoration when quote is absent.
     assert '"' not in texts
+
+
+def _reminder(title: str, *, updated_min_ago: int) -> Reminder:
+    return Reminder(
+        title=title,
+        due=None,
+        updated=_NOW - dt.timedelta(minutes=updated_min_ago),
+        priority=0,
+    )
+
+
+def test_overview_todos_row_peeks_at_top_reminder():
+    rem = TodaysReminders(
+        list_name="Inbox",
+        items=[_reminder("fix the foo bug", updated_min_ago=5)],
+        incomplete_total=12,
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=rem,
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert any("fix the foo bug" in t for t in texts)
+    assert any(t == "12" for t in texts)
+    # Relative-updated chip.
+    assert any(t == "5m" for t in texts)
+
+
+def test_overview_todos_row_all_clear_when_empty():
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=TodaysReminders(list_name="Inbox", items=[], incomplete_total=0),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    assert any("ALL CLEAR" in t for t in texts)
+
+
+def test_overview_todos_row_truncates_long_title():
+    long_title = "rewrite the producer pipeline to support multi-list reminders"
+    rem = TodaysReminders(
+        list_name="Inbox",
+        items=[_reminder(long_title, updated_min_ago=2)],
+        incomplete_total=1,
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=rem,
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+    texts = _all_text(page)
+    # Some node ends with ellipsis (overflow truncation).
+    assert any(t.endswith("…") for t in texts)

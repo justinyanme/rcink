@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 
 from rcpaper.layout import divider, hbar, hstack, icon, spacer, text, vstack
-from rcpaper.pages._common import wrap_visual
+from rcpaper.pages._common import relative_short, wrap_visual
 from rcpaper.palette import ColorToken
 from rcpaper.sources.calendar import TodaysCalendar
 from rcpaper.sources.claude import ClaudeUsage
@@ -173,7 +173,10 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
     )
 
 
-def _todos_row(rem: TodaysReminders | None) -> dict:
+_TODO_PEEK_LIMIT = 24
+
+
+def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     if rem is None:
         return hstack(
             gap=8,
@@ -186,19 +189,31 @@ def _todos_row(rem: TodaysReminders | None) -> dict:
             ],
         )
     count = rem.incomplete_total
-    color: ColorToken = "red" if count >= 20 else "yellow" if count >= 5 else "green"
-    return hstack(
-        gap=8,
-        align="center",
-        children=[
-            icon("todo", size=16, color="black"),
-            text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
-            text(str(count), size="h2", color=color, weight="bold"),
-            text("OPEN", size="sm", weight="bold"),
+    count_color: ColorToken = "red" if count >= 20 else "yellow" if count >= 5 else "green"
+    children: list[dict] = [
+        icon("todo", size=16, color="black"),
+        text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
+        text(str(count), size="h2", color=count_color, weight="bold"),
+    ]
+    if not rem.items:
+        children += [
+            text("ALL CLEAR", size="body", weight="bold", color="green"),
             spacer(),
             text(rem.list_name, size="sm"),
-        ],
-    )
+        ]
+        return hstack(gap=8, align="center", children=children)
+    top = rem.items[0]
+    title_lines = wrap_visual(top.title, line_limit=_TODO_PEEK_LIMIT, max_lines=1)
+    title_text = title_lines[0] if title_lines else top.title
+    # Omit closing quote when title was truncated so the node ends with `…`.
+    title_display = f'"{title_text}' if title_text.endswith("…") else f'"{title_text}"'
+    rel = relative_short(top.updated, now=now)
+    children += [
+        text(title_display, size="body", weight="bold"),
+        spacer(),
+        text(rel, size="sm", weight="bold", color="blue"),
+    ]
+    return hstack(gap=8, align="center", children=children)
 
 
 def build_overview_page(
@@ -254,7 +269,7 @@ def build_overview_page(
         divider(color="black", thickness=1),
         spacer(size=4),
         _next_event_row(calendar, now),
-        _todos_row(reminders),
+        _todos_row(reminders, now=now),
         spacer(),
     ]
     return vstack(pad=16, gap=10, children=page_children)
