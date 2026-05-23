@@ -20,11 +20,20 @@ Two halves of one repo:
    Axiom token, and the Axiom Root CA PEM.
 2. Make sure the producer has written at least one event to the
    `rcpapercolor` Axiom dataset (run `cd producer && uv run claude-fetch`).
-3. Build + flash:
+3. Build + flash the production (deep-sleep) firmware — this is the default
+   env, the one to run on battery:
 
    ```bash
    pio run -e m5stack-papercolor -t upload
    pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
+   ```
+
+   For cable-driven iteration use the dev env instead — it adds the USB-CDC
+   command console and **disables deep sleep** (stays awake, does not refresh
+   on the timer, drains the battery — never leave this on battery):
+
+   ```bash
+   pio run -e m5stack-papercolor-dev -t upload
    ```
 
 4. Device boot sequence (first time): WiFi → NTP → Axiom query → render →
