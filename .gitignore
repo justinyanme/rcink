@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# uv
+uv.lock
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+.cache/
+
+# CMake / TLSR
+build/
+*.elf
+*.bin
+*.lst
+*.lds
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+*.swp
