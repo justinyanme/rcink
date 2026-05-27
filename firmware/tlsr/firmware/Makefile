@@ -14,7 +14,11 @@ CMAKE ?= cmake
 BUILD_TARGETS ?= TLSR-LAYOUT TLSR-LAYOUT.bin TLSR-LAYOUT.ota
 EXTRA_CMAKE_ARGS ?=
 
-.PHONY: all configure build clean
+# Flashing over the Telink BDT debugger (reverse-engineered tool).
+BURN_TOOL ?= $(HOME)/w/telink_burn_tool
+FIRMWARE_BIN ?= $(abspath $(BUILD_DIR)/src/TLSR-LAYOUT.bin)
+
+.PHONY: all configure build clean flash
 
 all: build
 
@@ -33,3 +37,9 @@ build: $(BUILD_DIR)/CMakeCache.txt
 
 clean:
 	rm -rf "$(BUILD_DIR)"
+
+# Flash the prebuilt image to a chip connected via the BDT debugger.
+# Run `make build` first. The tool self-activates, programs, then resets to boot.
+flash:
+	@test -f "$(FIRMWARE_BIN)" || { echo "Missing $(FIRMWARE_BIN) — run 'make build' first"; exit 1; }
+	uv run --directory "$(BURN_TOOL)" python telink_tool.py -f "$(FIRMWARE_BIN)"
