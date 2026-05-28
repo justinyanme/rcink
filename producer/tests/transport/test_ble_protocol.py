@@ -1,7 +1,6 @@
 import struct
 
 import pytest
-
 from rcink.transport.ble_protocol import (
     DSL_FORMAT_ZLIB_JSON_V1,
     XFER_ABORT,

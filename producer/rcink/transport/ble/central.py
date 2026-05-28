@@ -26,7 +26,8 @@ log = logging.getLogger(__name__)
 
 class PushError(RuntimeError):
     def __init__(self, code: int, message: str) -> None:
-        super().__init__(f"push failed: {message} (code 0x{code:02X})")
+        code_text = f"0x{code:02X}" if code >= 0 else "none"
+        super().__init__(f"push failed: {message} (code {code_text})")
         self.code = code
 
 
@@ -92,7 +93,10 @@ async def _transfer_once(
             dsl_format=DSL_FORMAT_ZLIB_JSON_V1,
         )
     )
-    ack = parse_ack(await transport.next_ack(ack_timeout_s))
+    try:
+        ack = parse_ack(await transport.next_ack(ack_timeout_s))
+    except TimeoutError as exc:
+        raise PushError(-1, f"BEGIN ack timeout after {ack_timeout_s:g}s") from exc
     if ack.code != ACK_OK_BEGIN:
         raise _push_error_for_ack(ack, phase="BEGIN")
 

@@ -10,6 +10,11 @@ TOOLCHAIN_PREFIX ?= $(HOME)/w/tc32
 SDK_PREFIX ?= $(HOME)/w/telink_b85m_ble_single_connection_sdk/b85_ble_sdk
 MANUFACTURER_CODE ?= 0x1201
 EPD_PAD_TOP ?= 8
+# Peek mode: after the 5-min boot sync window, the tag wakes briefly every
+# BLE_PEEK_INTERVAL_SECONDS to advertise (default 5 s / 60 s in src/CMakeLists.txt).
+# Required for any scheduled / auto-update workflow; tradeoff is higher idle
+# current than deep-sleep-forever. Override with ENABLE_BLE_PEEK=OFF make ...
+ENABLE_BLE_PEEK ?= ON
 CMAKE ?= cmake
 BUILD_TARGETS ?= TLSR-LAYOUT TLSR-LAYOUT.bin TLSR-LAYOUT.ota
 EXTRA_CMAKE_ARGS ?=
@@ -30,6 +35,7 @@ $(BUILD_DIR)/CMakeCache.txt:
 	  -DSDK_PREFIX="$(SDK_PREFIX)" \
 	  -DMANUFACTURER_CODE=$(MANUFACTURER_CODE) \
 	  -DEPD_PAD_TOP=$(EPD_PAD_TOP) \
+	  -DENABLE_BLE_PEEK=$(ENABLE_BLE_PEEK) \
 	  $(EXTRA_CMAKE_ARGS)
 
 build: $(BUILD_DIR)/CMakeCache.txt

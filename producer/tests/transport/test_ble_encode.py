@@ -1,7 +1,6 @@
 import zlib
 
 import pytest
-
 from rcink.transport.ble_encode import EncodedPage, chunk_payload, encode_page
 
 

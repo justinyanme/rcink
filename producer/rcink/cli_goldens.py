@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -111,19 +112,18 @@ app = typer.Typer(add_completion=False, help="Regenerate per-device golden PNGs.
 
 def _layout_of(result: dict) -> dict:
     """Page builders may return either {layout: {...}} or the layout root directly."""
-    return result["layout"] if "layout" in result else result
+    return result.get("layout", result)
 
 
 @app.command()
 def regen(
-    pages: list[str] = typer.Option(None, "--page", "-p", help="Only these page ids; default = all"),
-    devices: list[str] = typer.Option(None, "--device", "-d", help="Only these device profiles; default = all"),
+    pages: Annotated[list[str] | None, typer.Option("--page", "-p", help="Only these page ids; default = all")] = None,
+    devices: Annotated[
+        list[str] | None, typer.Option("--device", "-d", help="Only these device profiles; default = all")
+    ] = None,
 ) -> None:
     selected_pages = pages or list(_BUILDERS.keys())
-    if devices:
-        selected_devices = [next(d for d in DEVICES if d.name == name) for name in devices]
-    else:
-        selected_devices = list(DEVICES)
+    selected_devices = [next(d for d in DEVICES if d.name == name) for name in devices] if devices else list(DEVICES)
 
     for page in selected_pages:
         layout = _layout_of(_BUILDERS[page]())

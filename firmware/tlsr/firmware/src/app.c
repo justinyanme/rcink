@@ -91,6 +91,7 @@ _attribute_ram_code_ void user_init_deepRetn(void) {
     rf_set_power_level_index(MY_RF_POWER_INDEX);
 
     blc_ll_recoverDeepRetention();
+    layout_xfer_service_init();
 
     /* ADC settings will lost during deepsleep retention mode, so here need clear flag */
     _battery_clear_adc_setting_flag();

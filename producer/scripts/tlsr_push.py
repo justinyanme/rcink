@@ -72,7 +72,11 @@ def run(
     page: str = typer.Argument("claude", help="page to show: claude | quote"),
     address: str | None = typer.Option(None, help="CoreBluetooth UUID / MAC to target directly"),
     force: bool = typer.Option(False, help="ignore dedup; always transfer + redraw"),
-    timeout: float = typer.Option(20.0, help="discovery timeout in seconds"),
+    timeout: float = typer.Option(
+        70.0,
+        help="discovery timeout (s). Default 70 reliably catches a 5 s peek window "
+        "inside a 60 s peek interval; use --timeout 10 for fresh-reset interactive use.",
+    ),
 ) -> None:
     asyncio.run(_push(page, address=address, force=force, timeout_s=timeout))
 

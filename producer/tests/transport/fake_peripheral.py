@@ -35,6 +35,7 @@ class FakePeripheral:
     forced_crc_error: bool = False
     crc_errors_remaining: int = 0
     forced_inflate_error: bool = False
+    drop_begin_ack: bool = False
     drop_chunks: list[int] = field(default_factory=list)
     stale_progress_before_commit: bool = False
 
@@ -69,10 +70,7 @@ class FakePeripheral:
                 0,
             )
         if uuid == CHAR_META:
-            return (
-                struct.pack("<HIHHBHIH", 1, 0x040000, 250, 128, 2, 0b111, 131072, 185)
-                + b"\x00" * 13
-            )
+            return struct.pack("<HIHHBHIH", 1, 0x040000, 250, 128, 2, 0b111, 131072, 185) + b"\x00" * 13
         return b""
 
     async def write_gatt_char(
@@ -99,9 +97,7 @@ class FakePeripheral:
             if self.forced_low_batt or self.battery_mV < 2400:
                 self._ack(0, ACK_ERR_LOW_BATT)
                 return
-            data_ver, total_len, total_chunks, crc32, dsl_format = struct.unpack_from(
-                "<IHHIB", frame, 1
-            )
+            data_ver, total_len, total_chunks, crc32, dsl_format = struct.unpack_from("<IHHIB", frame, 1)
             self._begin = {
                 "data_ver": data_ver,
                 "total_len": total_len,
@@ -111,7 +107,8 @@ class FakePeripheral:
             }
             self._staging = bytearray()
             self._expected_seq = 0
-            self._ack(0, ACK_OK_BEGIN)
+            if not self.drop_begin_ack:
+                self._ack(0, ACK_OK_BEGIN)
             return
         if cmd == XFER_ABORT:
             self._begin = None

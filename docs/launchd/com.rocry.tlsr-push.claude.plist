@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.rocry.tlsr-push.claude</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/rocry/.local/bin/uv</string>
+		<string>run</string>
+		<string>--directory</string>
+		<string>/Users/rocry/w/_hw/rcink/producer</string>
+		<string>tlsr-push</string>
+		<string>claude</string>
+		<string>--timeout</string>
+		<string>90</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/tmp/tlsr-push.log</string>
+	<key>StandardOutPath</key>
+	<string>/tmp/tlsr-push.log</string>
+	<key>StartInterval</key>
+	<integer>900</integer>
+</dict>
+</plist>

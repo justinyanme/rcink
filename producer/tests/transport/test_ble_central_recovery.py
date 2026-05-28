@@ -1,9 +1,9 @@
 import pytest
-
 from rcink.transport.ble.central import PushError, push_page
 from rcink.transport.ble.transport import Transport
-from tests.transport._example_page import example_page
 from rcink.transport.ble_protocol import ACK_ERR_CRC, ACK_ERR_LOW_BATT
+
+from tests.transport._example_page import example_page
 
 from .fake_peripheral import FakePeripheral
 
@@ -34,6 +34,16 @@ async def test_push_raises_on_low_batt():
             await push_page(transport, example_page())
 
     assert exc_info.value.code == ACK_ERR_LOW_BATT
+
+
+async def test_push_raises_clear_error_when_begin_ack_missing():
+    peripheral = FakePeripheral(drop_begin_ack=True)
+
+    async with Transport(peripheral) as transport:
+        with pytest.raises(PushError, match="BEGIN ack timeout") as exc_info:
+            await push_page(transport, example_page(), ack_timeout_s=0.01)
+
+    assert exc_info.value.code == -1
 
 
 async def test_push_raises_on_persistent_crc():
