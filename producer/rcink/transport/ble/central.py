@@ -34,14 +34,25 @@ async def push_page(
     transport: Transport,
     page: dict,
     *,
+    current_data_ver: int | None = None,
     chunk_payload_size: int = 180,
     ack_timeout_s: float = 5.0,
     commit_timeout_s: float = 45.0,
     crc_retries: int = 1,
 ) -> EncodedPage:
-    """Push one page. Recovers GAPs in-place and retries once on CRC failure."""
+    """Push one page. Recovers GAPs in-place and retries once on CRC failure.
+
+    Content-addressed dedup: when ``current_data_ver`` (e.g. the value the tag
+    advertises) equals this page's ``data_ver``, the tag already displays this
+    content, so the transfer — and the tag's expensive full EPD refresh — is
+    skipped entirely. Mirrors OpenEPaperLink's "already have it" short-circuit.
+    """
 
     encoded = encode_page(page)
+    if current_data_ver is not None and current_data_ver == encoded.data_ver:
+        log.info("data_ver 0x%08X unchanged, skipping push", encoded.data_ver)
+        return encoded
+
     chunks = chunk_payload(encoded.compressed, max_payload=chunk_payload_size)
 
     for attempt in range(crc_retries + 1):

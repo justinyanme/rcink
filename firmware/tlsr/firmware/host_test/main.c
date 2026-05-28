@@ -682,8 +682,124 @@ static int xfer_test(const char *scenario)
         return 0;
     }
 
+    if (strcmp(scenario, "commit-skip-duplicate") == 0) {
+        const uint32_t dv = 0xC0DEC00Au;
+        const uint16_t len = sizeof(valid_layout_payload);
+        const uint32_t crc = crc32_zlib(valid_layout_payload, len);
+
+        /* first push: full transfer renders and stores the slot */
+        send_one_chunk_transfer(dv, valid_layout_payload, len, crc);
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_OK_COMMIT) != 0 || g_host_epd_display_count != 1) {
+            fprintf(stderr, "commit-skip-duplicate: first push failed (count=%u)\n", g_host_epd_display_count);
+            return 1;
+        }
+
+        /* second push of identical content: acked OK but EPD refresh skipped */
+        send_one_chunk_transfer(dv, valid_layout_payload, len, crc);
+        xfer_run_pending_render();
+        if (expect_last_ack(0, XFER_OK_COMMIT) != 0 || xfer_state() != XFER_IDLE ||
+            g_host_epd_display_count != 1) {
+            fprintf(stderr, "commit-skip-duplicate: second push re-rendered (count=%u)\n", g_host_epd_display_count);
+            return 1;
+        }
+        puts("OK commit-skip-duplicate");
+        return 0;
+    }
+
+    if (strcmp(scenario, "boot-redraw") == 0) {
+        const uint16_t len = sizeof(valid_layout_payload);
+        const uint32_t dv = 0xA0000001u; /* write_slot_fixture sets data_ver = 0xA0000000|seq */
+        if (write_slot_fixture(SLOT_A, valid_layout_payload, len, 1, crc32_zlib(valid_layout_payload, len)) != 0) {
+            return 1;
+        }
+        xfer_request_boot_render();
+        xfer_run_boot_render();
+        if (g_host_epd_display_count != 1 || g_host_fix_buffer_count != 1 ||
+            g_host_scene != EPD_SCENE_IMAGE ||
+            layout_status_buf[0] != (uint8_t)(dv & 0xFF) ||
+            layout_status_buf[3] != (uint8_t)(dv >> 24)) {
+            fprintf(stderr, "boot-redraw failed (count=%u scene=%d)\n", g_host_epd_display_count, g_host_scene);
+            return 1;
+        }
+        /* one-shot: a second run must not redraw */
+        xfer_run_boot_render();
+        if (g_host_epd_display_count != 1) {
+            fprintf(stderr, "boot-redraw not one-shot (count=%u)\n", g_host_epd_display_count);
+            return 1;
+        }
+        puts("OK boot-redraw");
+        return 0;
+    }
+
+    if (strcmp(scenario, "boot-redraw-empty") == 0) {
+        host_flash_reset();
+        xfer_request_boot_render();
+        xfer_run_boot_render();
+        if (g_host_epd_display_count != 0) {
+            fprintf(stderr, "boot-redraw-empty drew with no slot (count=%u)\n", g_host_epd_display_count);
+            return 1;
+        }
+        puts("OK boot-redraw-empty");
+        return 0;
+    }
+
     fprintf(stderr, "unknown xfer-test scenario: %s\n", scenario);
     return 1;
+}
+
+static int float_pct_test(void)
+{
+    /* Regression: JSON floats (e.g. "pct":50.0, sparkline number[]) must parse,
+     * not silently fall back to 0. Renders a half-full bar and checks the fill. */
+    static uint8_t parse_buf[8192];
+    static uint8_t layout_buf[8192];
+    arena_t pa;
+    arena_t la;
+    arena_init(&pa, parse_buf, sizeof(parse_buf));
+    arena_init(&la, layout_buf, sizeof(layout_buf));
+
+    const char *json =
+        "{\"type\":\"vstack\",\"pad\":2,\"children\":"
+        "[{\"type\":\"hbar\",\"pct\":50.0,\"color\":\"black\",\"height\":60}]}";
+    parse_result_t pr;
+    layout_node_t *root = parse_layout(json, strlen(json), &pa, &pr);
+    if (root == NULL) {
+        fprintf(stderr, "float-pct: parse failed (%d)\n", pr.status);
+        return 1;
+    }
+    laid_out_node_t *laid = run_layout(root, (rect_t){0, 0, 250, 128}, &host_measurer, &la);
+    if (laid == NULL) {
+        fprintf(stderr, "float-pct: layout failed\n");
+        return 1;
+    }
+    host_canvas_init(250, 128);
+    host_canvas_clear(1);
+    paint_layout(laid);
+
+    int16_t w = 0;
+    int16_t h = 0;
+    const uint8_t *buf = host_canvas_buffer(&w, &h);
+    const int y = 30; /* inside the 60px bar */
+    int left = 0;
+    int right = 0;
+    for (int x = 0; x < w / 2; x++) {
+        if (buf[y * w + x] == 0) {
+            left++;
+        }
+    }
+    for (int x = w / 2; x < w; x++) {
+        if (buf[y * w + x] == 0) {
+            right++;
+        }
+    }
+    /* pct=50 → left half substantially filled, right half ~empty (borders only). */
+    if (left < w / 4 || right > w / 8) {
+        fprintf(stderr, "float-pct fill wrong: left=%d right=%d (w=%d)\n", left, right, w);
+        return 1;
+    }
+    puts("OK float-pct");
+    return 0;
 }
 
 static uint8_t *read_stdin(size_t *len)
@@ -787,6 +903,9 @@ int main(int argc, char **argv)
     }
     if (argc >= 2 && strcmp(argv[1], "pipeline-e2e") == 0) {
         return pipeline_e2e(argc, argv);
+    }
+    if (argc >= 2 && strcmp(argv[1], "float-pct-test") == 0) {
+        return float_pct_test();
     }
     if (argc < 3) {
         fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario> | ringlog-test <scenario> | xfer-test <scenario> | pipeline-e2e --uncompressed-len n --png out.png\n");

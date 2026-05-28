@@ -218,6 +218,19 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
             emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_CRC);
             return;
         }
+        {
+            /* Content-addressed dedup: if the active slot already holds this exact
+             * data_ver, the panel already shows it. Confirm the commit but skip the
+             * redundant full EPD refresh (its ~100-200 mA × ~2 s + ghosting). */
+            slot_header_t active;
+            if (slot_active(&active) != SLOT_NONE && active.data_ver == g_xfer.data_ver) {
+                clear_xfer_error();
+                publish_data_ver(g_xfer.data_ver);
+                emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_OK_COMMIT);
+                g_xfer.state = XFER_IDLE;
+                return;
+            }
+        }
         g_xfer.state = XFER_COMMITTED;
         return;
 
@@ -252,19 +265,19 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
     }
 }
 
-static xfer_code_t render_staging(uint16_t *out_uncompressed_len)
+static xfer_code_t render_slot_payload(uint32_t addr, uint16_t compressed_len, uint16_t *out_uncompressed_len)
 {
     uint8_t compressed[SLOT_MAX_PAYLOAD];
     uint8_t inflate_buf[4096];
     uint8_t arena_buf[4096];
-    if (slot_read_payload(slot_addr(g_xfer.staging), compressed, g_xfer.total_len) != 0) {
+    if (slot_read_payload(addr, compressed, compressed_len) != 0) {
         return XFER_ERR_RENDER;
     }
 
     epd_clear_buffer();
     pipeline_status_t status = pipeline_run(
         compressed,
-        g_xfer.total_len,
+        compressed_len,
         sizeof(inflate_buf),
         inflate_buf,
         arena_buf,
@@ -286,6 +299,11 @@ static xfer_code_t render_staging(uint16_t *out_uncompressed_len)
     }
     change_scene(EPD_SCENE_IMAGE);
     return XFER_OK_COMMIT;
+}
+
+static xfer_code_t render_staging(uint16_t *out_uncompressed_len)
+{
+    return render_slot_payload(slot_addr(g_xfer.staging), g_xfer.total_len, out_uncompressed_len);
 }
 
 static void finish_pending_render(void)
@@ -337,4 +355,41 @@ void xfer_run_pending_render(void)
 
     g_xfer.rendered_uncompressed_len = uncompressed_len;
     finish_pending_render();
+}
+
+static uint8_t g_boot_render_pending;
+
+void xfer_request_boot_render(void)
+{
+    g_boot_render_pending = 1;
+}
+
+void xfer_run_boot_render(void)
+{
+    if (!g_boot_render_pending) {
+        return;
+    }
+    g_boot_render_pending = 0; /* one-shot, regardless of outcome below */
+
+    if (g_xfer.state != XFER_IDLE) {
+        return; /* a live push owns the EPD and will draw the fresh content */
+    }
+
+    slot_header_t active;
+    slot_id_t id = slot_active(&active);
+    if (id == SLOT_NONE) {
+        return; /* nothing stored yet — leave whatever the panel retains */
+    }
+    if (xfer_battery_mv() < XFER_MIN_BATTERY_MV) {
+        return; /* don't drive a full refresh on a depleted cell */
+    }
+
+    uint16_t uncompressed_len = 0;
+    xfer_code_t result = render_slot_payload(slot_addr(id), active.compressed_len, &uncompressed_len);
+    if (result != XFER_OK_COMMIT) {
+        ringlog_append((uint8_t)result, active.data_ver, 0, xfer_error_message(result));
+        mark_xfer_error();
+        return;
+    }
+    publish_data_ver(active.data_ver);
 }

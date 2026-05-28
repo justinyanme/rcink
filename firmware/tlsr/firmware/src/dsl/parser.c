@@ -92,11 +92,25 @@ static bool token_number(parser_t *p, int idx, int32_t *out)
         return false;
     }
     int32_t v = 0;
-    for (; pos < n; pos++) {
-        if (s[pos] < '0' || s[pos] > '9') {
-            return false;
-        }
+    bool saw_digit = false;
+    for (; pos < n && s[pos] >= '0' && s[pos] <= '9'; pos++) {
         v = (int32_t)(v * 10 + (s[pos] - '0'));
+        saw_digit = true;
+    }
+    /* DSL number[] (sparkline/grid) and pct may arrive as JSON floats (e.g.
+     * "68.0"). The fields here are integers, so round to nearest on the first
+     * fractional digit, then skip the rest of the fraction. */
+    if (pos < n && s[pos] == '.') {
+        pos++;
+        if (pos < n && s[pos] >= '5' && s[pos] <= '9') {
+            v = (int32_t)(v + 1);
+        }
+        while (pos < n && s[pos] >= '0' && s[pos] <= '9') {
+            pos++;
+        }
+    }
+    if (!saw_digit || pos != n) {
+        return false;  /* reject exponents / trailing junk */
     }
     *out = neg ? -v : v;
     return true;

@@ -71,6 +71,11 @@ _attribute_no_inline_ void user_init_normal(void) {
 #if !(DISABLE_BLE)
     init_ble();
 #endif
+
+    /* Cold boot (not deep-retention wake): restore the panel from the stored
+     * slot so the tag is a self-sufficient display endpoint after power loss /
+     * data reflash, without needing the producer present. */
+    xfer_request_boot_render();
 }
 
 
@@ -209,6 +214,7 @@ _attribute_no_inline_ void main_loop(void) {
     battery_try_update();
     xfer_tick(clock_time() / (sys_tick_per_us * 1000u));
     xfer_run_pending_render();
+    xfer_run_boot_render();
     layout_xfer_service_tick();
 
 	const bool epd_trying_update = epd_try_update();
