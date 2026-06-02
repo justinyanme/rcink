@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["pillow"]
+# ///
 """Bake Lucide/Phosphor SVGs into a 1-bit C header for the firmware.
 
 Reads SVGs from tools/icons/src/, rasterizes each to 16x16 and 24x24 PNG via
@@ -5,7 +10,7 @@ Reads SVGs from tools/icons/src/, rasterizes each to 16x16 and 24x24 PNG via
 two arrays per glyph (`icon_<name>_16` and `icon_<name>_24`) plus an alias
 mapping (icon name → bitmap). Run once after changing the SVG set:
 
-    uv run --with pillow python tools/icons/bake.py
+    uv run tools/icons/bake.py
 
 Pure build-time tool. No firmware-side dependencies.
 """

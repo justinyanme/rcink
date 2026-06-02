@@ -1,3 +1,8 @@
+#!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["freetype-py", "httpx"]
+# ///
 """Bake VT323.ttf into Adafruit/M5GFX-compatible GFXfont C headers.
 
 Mirrors the algorithm of Adafruit-GFX-Library's `fontconvert.c`:
@@ -16,7 +21,7 @@ Each declares a single `const lgfx::v1::GFXfont` named `VT323_<pt>pt7b` in the
 
 Run once after touching the source TTF or the sizes/range:
 
-    uv run --with freetype-py --with httpx python tools/fonts/bake.py
+    uv run tools/fonts/bake.py
 
 Pure build-time tool; no firmware-side deps.
 """
