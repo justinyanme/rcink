@@ -1,16 +1,9 @@
 // src/net/axiom.h
 #pragma once
-#include <Arduino.h>
 #include <vector>
+#include "proto/envelope.h"  // PageRecord + envelope parsing (natively tested)
 
 namespace rcpaper {
-
-struct PageRecord {
-  String   id;
-  int      order = 0;
-  uint64_t data_ts = 0;     // producer build-time (epoch seconds); 0 = missing
-  String   layout_json;     // raw JSON substring; parsed on-demand by the renderer.
-};
 
 // Returns true on success and fills `out`. On failure, `out` is unchanged.
 bool axiom_fetch_pages(std::vector<PageRecord>& out);

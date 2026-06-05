@@ -54,21 +54,12 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   }
 
   out.clear();
-  JsonArrayConst matches = doc["matches"].as<JsonArrayConst>();
-  if (matches.isNull()) {
+  if (!parse_axiom_envelope(doc.as<JsonVariantConst>(), out)) {
     Serial.println("[axiom] no matches[] in response");
     return false;
   }
-  for (JsonVariantConst m : matches) {
-    JsonVariantConst data = m["data"];
-    if (data.isNull()) continue;
-    PageRecord rec;
-    rec.id          = (const char*)(data["id"] | "");
-    rec.order       = data["order"] | 0;
-    rec.data_ts     = (uint64_t)(data["data_ts"] | (uint64_t)0);
-    rec.layout_json = (const char*)(data["layout_json"] | "");
-    out.push_back(std::move(rec));
-  }
+  // 0 here also covers the empty-window all-null row (see proto/envelope.h);
+  // the caller treats an empty result as failure and keeps its cached pages.
   Serial.printf("[axiom] %u pages\n", (unsigned)out.size());
   return true;
 }

@@ -24,8 +24,8 @@ void paint_indicator(M5Canvas& canvas,
   const uint8_t prev_idx = (uint8_t)((idx + n - 1) % n);
   const uint8_t next_idx = (uint8_t)((idx + 1) % n);
 
-  auto upper = [](const String& s) {
-    String out = s;
+  auto upper = [](const std::string& s) {
+    String out = s.c_str();
     out.toUpperCase();
     return out;
   };
