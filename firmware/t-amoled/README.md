@@ -19,6 +19,10 @@ pio run -e lilygo-t-amoled-dev
 pio run -e lilygo-t-amoled-dev -t upload --upload-port /dev/cu.usbmodem83401
 ```
 
+`esptool.cfg` contains the tested USB Serial/JTAG reset sequence for this
+board. It should enter `DOWNLOAD(USB/UART0)` automatically during PlatformIO
+upload on macOS.
+
 Monitor without DTR/RTS toggling the S3 into download mode:
 
 ```bash
