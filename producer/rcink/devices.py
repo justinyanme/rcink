@@ -19,7 +19,10 @@ class Device:
 
 
 # Default registry — overridable via environment in v1.1+.
-DEVICES: tuple[Device, ...] = (Device(name="s3-home", kind="s3", transport="axiom"),)
+DEVICES: tuple[Device, ...] = (
+    Device(name="s3-home", kind="s3", transport="axiom"),
+    Device(name="t-amoled-desk", kind="t-amoled", transport="axiom"),
+)
 
 
 def get(name: str) -> Device:

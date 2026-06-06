@@ -17,11 +17,11 @@ from typing import Annotated
 
 import typer
 
-from rcink.devices_profile import C3_X4, S3, TLSR, DeviceProfile
+from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR, DeviceProfile
 from rcink.preview_png import render_to_png
 
 GOLDEN_ROOT = Path(__file__).resolve().parent.parent.parent / "dsl" / "golden"
-DEVICES: tuple[DeviceProfile, ...] = (S3, C3_X4, TLSR)
+DEVICES: tuple[DeviceProfile, ...] = (S3, C3_X4, TLSR, T_AMOLED)
 
 
 # ---- frozen fixtures + builder invocations ------------------------------

@@ -1,11 +1,12 @@
 import pytest
-from rcink.devices_profile import C3_X4, S3, TLSR, get_profile
+from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR, get_profile
 
 
 def test_get_profile_known():
     assert get_profile("s3") is S3
     assert get_profile("c3-x4") is C3_X4
     assert get_profile("tlsr") is TLSR
+    assert get_profile("t-amoled") is T_AMOLED
 
 
 def test_get_profile_unknown_raises():
@@ -57,3 +58,23 @@ def test_c3_x4_only_white_stays_white():
 )
 def test_tlsr_bwr_reduction(token, expect):
     assert TLSR.resolve_color(token) == expect
+
+
+@pytest.mark.parametrize(
+    "token,expect",
+    [
+        ("black", "#000000"),
+        ("white", "#FFFFFF"),
+        ("red", "#FF3333"),
+        ("yellow", "#FFC533"),
+        ("green", "#30D158"),
+        ("blue", "#3B82F6"),
+        ("accent", "#FF3333"),
+        ("warning", "#FFC533"),
+        ("success", "#30D158"),
+        ("info", "#3B82F6"),
+        ("muted", "#000000"),
+    ],
+)
+def test_t_amoled_resolves_rgb_palette(token, expect):
+    assert T_AMOLED.resolve_color(token) == expect

@@ -45,6 +45,29 @@ def _resolve_c3_x4(token: str) -> str:
     return "#000000"
 
 
+_AMOLED_TABLE: dict[str, str] = {
+    "black": "#000000",
+    "white": "#FFFFFF",
+    "red": "#FF3333",
+    "yellow": "#FFC533",
+    "green": "#30D158",
+    "blue": "#3B82F6",
+    "accent": "#FF3333",
+    "warning": "#FFC533",
+    "success": "#30D158",
+    "info": "#3B82F6",
+    "muted": "#000000",
+}
+
+
+def _resolve_t_amoled(token: str) -> str:
+    """t-amoled is full RGB; semantic tokens map to saturated UI colors."""
+    c = normalize_color(token)
+    if c is None:
+        return _AMOLED_TABLE["black"]
+    return _AMOLED_TABLE.get(c, _AMOLED_TABLE["black"])
+
+
 # tlsr (BWR) physical inks
 _TLSR_BLACK = "#000000"
 _TLSR_WHITE = "#FFFFFF"
@@ -106,13 +129,30 @@ _TLSR_SIZES: dict[str, int] = {
     "body": 12,
     "sm": 10,
 }
+_T_AMOLED_SIZES: dict[str, int] = {
+    "H1": 52,
+    "H2": 26,
+    "Body": 16,
+    "Sm": 8,
+    "h1": 52,
+    "h2": 26,
+    "body": 16,
+    "sm": 8,
+}
 
 
 S3 = DeviceProfile(name="s3", width=400, height=600, resolve_color=_resolve_s3, sizes=_S3_SIZES)
 C3_X4 = DeviceProfile(name="c3-x4", width=800, height=480, resolve_color=_resolve_c3_x4, sizes=_C3_X4_SIZES)
 TLSR = DeviceProfile(name="tlsr", width=250, height=128, resolve_color=_resolve_tlsr, sizes=_TLSR_SIZES)
+T_AMOLED = DeviceProfile(
+    name="t-amoled",
+    width=240,
+    height=536,
+    resolve_color=_resolve_t_amoled,
+    sizes=_T_AMOLED_SIZES,
+)
 
-PROFILES: dict[str, DeviceProfile] = {S3.name: S3, C3_X4.name: C3_X4, TLSR.name: TLSR}
+PROFILES: dict[str, DeviceProfile] = {S3.name: S3, C3_X4.name: C3_X4, TLSR.name: TLSR, T_AMOLED.name: T_AMOLED}
 
 
 def get_profile(name: str) -> DeviceProfile:

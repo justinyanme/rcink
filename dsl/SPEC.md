@@ -45,26 +45,26 @@ Unknown node types are skipped at render time — they don't bump version.
 
 ### Color (semantic + concrete, both accepted)
 
-| Token       | Intent              | s3 (6-ink) | c3-x4 (B&W) | tlsr (BWR) |
-|-------------|---------------------|-----------|--------------|------------|
-| `black`     | foreground default  | black     | black        | black      |
-| `white`     | background          | white     | white        | white      |
-| `accent`    | primary emphasis    | red       | black        | red        |
-| `warning`   | secondary emphasis  | yellow    | black        | red        |
-| `success`   | positive state      | green     | black        | black      |
-| `info`      | informational       | blue      | black        | black      |
-| `muted`     | de-emphasised fg    | black     | black        | black      |
+| Token       | Intent              | s3 (6-ink) | t-amoled (RGB) | c3-x4 (B&W) | tlsr (BWR) |
+|-------------|---------------------|------------|----------------|--------------|------------|
+| `black`     | foreground default  | black      | black          | black        | black      |
+| `white`     | background          | white      | white          | white        | white      |
+| `accent`    | primary emphasis    | red        | red            | black        | red        |
+| `warning`   | secondary emphasis  | yellow     | yellow         | black        | red        |
+| `success`   | positive state      | green      | green          | black        | black      |
+| `info`      | informational       | blue       | blue           | black        | black      |
+| `muted`     | de-emphasised fg    | black      | black          | black        | black      |
 
 Concrete tokens (`red`, `yellow`, `green`, `blue`) remain accepted; firmware maps each to the same ink as the semantic alias it most resembles. New code SHOULD use semantic tokens.
 
 ### Size
 
-| Token  | Intent                  | s3 px | c3-x4 px | tlsr px |
-|--------|-------------------------|-------|----------|---------|
-| `H1`   | big number / page title | 60    | 56       | 24      |
-| `H2`   | section header          | 32    | 28       | 16      |
-| `Body` | default body            | 20    | 18       | 12      |
-| `Sm`   | caption / status bar    | 14    | 12       | 10      |
+| Token  | Intent                  | s3 px | t-amoled px | c3-x4 px | tlsr px |
+|--------|-------------------------|-------|-------------|----------|---------|
+| `H1`   | big number / page title | 60    | 52          | 56       | 24      |
+| `H2`   | section header          | 32    | 26          | 28       | 16      |
+| `Body` | default body            | 20    | 16          | 18       | 12      |
+| `Sm`   | caption / status bar    | 14    | 8           | 12       | 10      |
 
 ### Weight, Align
 

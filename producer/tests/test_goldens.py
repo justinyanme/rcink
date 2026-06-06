@@ -12,11 +12,11 @@ from pathlib import Path
 
 import pytest
 from rcink.cli_goldens import _BUILDERS, _layout_of
-from rcink.devices_profile import C3_X4, S3, TLSR
+from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR
 from rcink.preview_png import render_to_png
 
 GOLDEN_ROOT = Path(__file__).resolve().parent.parent.parent / "dsl" / "golden"
-DEVICES = (S3, C3_X4, TLSR)
+DEVICES = (S3, C3_X4, TLSR, T_AMOLED)
 
 _pairs = [(prof, page) for prof in DEVICES for page in _BUILDERS]
 
