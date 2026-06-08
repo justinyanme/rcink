@@ -74,6 +74,27 @@ String format_local_hhmm(uint64_t epoch_s) {
   return String(buf);
 }
 
+String format_local_wday(uint64_t epoch_s) {
+  static const char* kW[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+  if (epoch_s == 0) return String("");
+  time_t t = (time_t)epoch_s;
+  struct tm tm {};
+  if (!localtime_r(&t, &tm)) return String("");
+  return String(kW[tm.tm_wday]);
+}
+
+String format_local_md(uint64_t epoch_s) {
+  static const char* kM[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+                             "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+  if (epoch_s == 0) return String("--");
+  time_t t = (time_t)epoch_s;
+  struct tm tm {};
+  if (!localtime_r(&t, &tm)) return String("--");
+  char buf[12];
+  snprintf(buf, sizeof(buf), "%s %d", kM[tm.tm_mon], tm.tm_mday);
+  return String(buf);
+}
+
 void push_canvas() {
   if (!g_canvas_ready) return;
   lcd_PushColors(0, 0, SCREEN_W, SCREEN_H, (uint16_t*)g_canvas.getPointer());
@@ -106,7 +127,7 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.setTextSize(1);
   g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
 
-  // --- status block (top) ---
+  // --- status block (top): battery, weekday + date, clock, page index ---
   draw_battery(cx, 8, batt);
   char pct[8];
   if (batt.ok) snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
@@ -115,6 +136,10 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.print(pct);
 
   g_canvas.setCursor(cx, 38);
+  g_canvas.print(format_local_wday(last_fetch_s));
+  g_canvas.setCursor(cx, 50);
+  g_canvas.print(format_local_md(last_fetch_s));
+  g_canvas.setCursor(cx, 62);
   g_canvas.print(format_local_hhmm(last_fetch_s));
 
   char idx[16];
@@ -122,29 +147,28 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
            (unsigned)(state.pages.empty() ? 0 : state.page_index + 1),
            (unsigned)state.pages.size());
   g_canvas.setTextSize(2);
-  g_canvas.setCursor(cx, 54);
+  g_canvas.setCursor(cx, 78);
   g_canvas.print(idx);
   g_canvas.setTextSize(1);
 
   if (stale) {
-    g_canvas.fillRect(cx, 78, 42, 11, c565(Color::Red));
+    g_canvas.fillRect(cx, 102, 42, 11, c565(Color::Red));
     g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Red));
-    g_canvas.setCursor(cx + 4, 80);
+    g_canvas.setCursor(cx + 4, 104);
     g_canvas.print("STALE");
     g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   }
 
   // --- nav hints (bottom, by the buttons) ---
-  // On this unit the upper button is GPIO21 (next) and the lower is GPIO0
-  // (prev), so NEXT sits on top and PREV below — matching the physical order.
-  const int16_t next_y = SCREEN_H - 58;
-  const int16_t prev_y = SCREEN_H - 26;
-  g_canvas.fillTriangle(cx + 4, next_y, cx, next_y + 7, cx + 8, next_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, next_y + 1);
-  g_canvas.print("NEXT");
-  g_canvas.fillTriangle(cx, prev_y, cx + 8, prev_y, cx + 4, prev_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, prev_y);
+  // Upper button (GPIO21) = prev, lower (GPIO0) = next, so PREV sits on top.
+  const int16_t prev_y = SCREEN_H - 58;
+  const int16_t next_y = SCREEN_H - 26;
+  g_canvas.fillTriangle(cx + 4, prev_y, cx, prev_y + 7, cx + 8, prev_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, prev_y + 1);
   g_canvas.print("PREV");
+  g_canvas.fillTriangle(cx, next_y, cx + 8, next_y, cx + 4, next_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, next_y);
+  g_canvas.print("NEXT");
 }
 
 class SpriteMeasurer : public Measurer {
@@ -223,6 +247,31 @@ void clear_screen() {
   push_canvas();
 }
 
+// Producer page mastheads emit the date as `now.strftime("%a · %b %d").upper()`
+// — e.g. "MON · JUN 08". On the landscape t-amoled the weekday/date already
+// live in the right sidebar, so this node is redundant. The shared layout_json
+// can't be changed per-device (s3's full status bar relies on this content
+// date), so we drop it here, on this target only. Matched by the specific
+// weekday-led "AAA · " prefix so it can't collide with body content.
+static bool is_masthead_date(const std::string& v) {
+  static const char* kW[] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+  for (const char* w : kW) {
+    const std::string prefix = std::string(w) + " \xC2\xB7 ";  // "AAA · "
+    if (v.size() >= prefix.size() && v.compare(0, prefix.size(), prefix) == 0) return true;
+  }
+  return false;
+}
+
+static void prune_masthead_date(LayoutNode& n) {
+  if (n.type != NodeType::VStack && n.type != NodeType::HStack) return;
+  auto& kids = n.as_stack.children;
+  kids.erase(std::remove_if(kids.begin(), kids.end(), [](const LayoutNode& c) {
+               return c.type == NodeType::Text && is_masthead_date(c.as_text.value);
+             }),
+             kids.end());
+  for (auto& c : kids) prune_masthead_date(c);
+}
+
 bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, rec.layout_json);
@@ -231,6 +280,7 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
     return false;
   }
   root = parse_layout(doc.as<JsonVariantConst>());
+  prune_masthead_date(root);  // de-dup: sidebar already shows weekday/date
   if (layout_has_unknown_node(root)) {
     Serial.println("[render] layout rejected: unknown node type or invalid color token");
     return false;

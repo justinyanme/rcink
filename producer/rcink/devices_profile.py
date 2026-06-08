@@ -129,17 +129,19 @@ _TLSR_SIZES: dict[str, int] = {
     "body": 12,
     "sm": 10,
 }
-# Tuned for the 536x240 landscape bar; mirrors firmware render/fonts.cpp
-# font_height(). H1 kept modest so dense dashboard pages fit ~188px usable.
+# Mirrors firmware render/fonts.cpp font_height() — nominal FreeSans ladder
+# rungs at scale 1.0. The firmware fit-to-height pass shrinks these per page;
+# the producer renders at nominal size (no fit pass), so goldens are a
+# layout-logic reference, not a pixel match.
 _T_AMOLED_SIZES: dict[str, int] = {
-    "H1": 32,
-    "H2": 26,
-    "Body": 16,
-    "Sm": 8,
-    "h1": 32,
-    "h2": 26,
-    "body": 16,
-    "sm": 8,
+    "H1": 40,
+    "H2": 30,
+    "Body": 21,
+    "Sm": 16,
+    "h1": 40,
+    "h2": 30,
+    "body": 21,
+    "sm": 16,
 }
 
 

@@ -220,8 +220,8 @@ struct Button {
 };
 
 Button g_buttons[] = {
-  {PIN_BUTTON_1, 'b', false, 0, false},  // GPIO0  -> prev page
-  {PIN_BUTTON_2, 'n', false, 0, false},  // GPIO21 -> next page
+  {PIN_BUTTON_1, 'n', false, 0, false},  // GPIO0  = lower button -> next page
+  {PIN_BUTTON_2, 'b', false, 0, false},  // GPIO21 = upper button -> prev page
 };
 
 constexpr uint32_t kLongPressMs = 800;

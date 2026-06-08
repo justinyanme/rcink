@@ -2,18 +2,17 @@
 
 namespace rcpaper {
 
-// Pixel heights tuned for the 536x240 landscape bar (only ~188px usable after
-// the top/bottom strips). H1 is deliberately modest — a 52px header ate a
-// quarter of the screen and overflowed the dense dashboard pages. CJK glyphs
-// render at 16px regardless (see kCjkLineH). Mirror in producer
-// devices_profile._T_AMOLED_SIZES.
+// Nominal line heights (px) at scale 1.0, matching the FreeSans GFX ladder
+// rungs (see kLadder). The fit-to-height pass scales these down; the ladder
+// then picks the tallest crisp font that fits. CJK renders at 16px regardless
+// (see kCjkLineH). Mirror in producer devices_profile._T_AMOLED_SIZES.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:   return 32;
-    case TextSize::H2:   return 26;
-    case TextSize::Body: return 16;
+    case TextSize::H1:   return 40;
+    case TextSize::H2:   return 30;
+    case TextSize::Body: return 21;
     case TextSize::Sm:
-    default:             return 8;
+    default:             return 16;
   }
 }
 
@@ -34,24 +33,31 @@ const uint8_t* cjk_font_for(TextSize /*size*/, Weight /*weight*/) {
   return u8g2_font_wqy16_t_gb2312;
 }
 
-// Discrete built-in font ladder (GLCD + Font2 + Font4 with setTextSize
-// multipliers). The fit-to-height pass steps Latin text down this ladder by
-// picking the tallest entry whose height fits the scaled target px.
-struct FontPick { uint8_t font; uint8_t mult; int16_t height; };
-constexpr FontPick kLadder[] = {
-  {1, 1, 8},   // GLCD
-  {2, 1, 16},  // Font2
-  {1, 3, 24},  // GLCD x3
-  {4, 1, 26},  // Font4
-  {2, 2, 32},  // Font2 x2
+// Crisp Latin font ladder: FreeSans/FreeSansBold GFX fonts (honouring weight)
+// above a GLCD floor for the smallest scales. The fit-to-height pass picks the
+// tallest rung whose line height fits the scaled target px. Heights are the
+// visual line height (cap + descender), tighter than the fonts' generous
+// yAdvance leading so dashboard rows pack reasonably.
+struct FontPick {
+  bool gfx;               // false = GLCD built-in floor
+  const GFXfont* reg;
+  const GFXfont* bold;
+  int16_t height;
+};
+const FontPick kLadder[] = {
+  {false, nullptr,         nullptr,             10},
+  {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  16},
+  {true,  &FreeSans12pt7b, &FreeSansBold12pt7b, 21},
+  {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 30},
+  {true,  &FreeSans24pt7b, &FreeSansBold24pt7b, 40},
 };
 
-FontPick pick_font(int16_t target_px) {
-  FontPick best = kLadder[0];
+const FontPick& pick_font(int16_t target_px) {
+  const FontPick* best = &kLadder[0];
   for (const auto& f : kLadder) {
-    if (f.height <= target_px) best = f;
+    if (f.height <= target_px) best = &f;
   }
-  return best;
+  return *best;
 }
 
 int16_t scaled_target_px(TextSize size) {
@@ -71,10 +77,14 @@ int16_t scale_px(int16_t v) { return (int16_t)(v * g_text_scale + 0.5f); }
 
 int16_t text_line_height(TextSize size) { return pick_font(scaled_target_px(size)).height; }
 
-static void select_font(TFT_eSprite& canvas, TextSize size, Weight /*weight*/) {
-  const FontPick p = pick_font(scaled_target_px(size));
-  canvas.setTextFont(p.font);
-  canvas.setTextSize(p.mult);
+static void select_font(TFT_eSprite& canvas, TextSize size, Weight weight) {
+  const FontPick& p = pick_font(scaled_target_px(size));
+  if (p.gfx) {
+    canvas.setFreeFont(weight == Weight::Bold ? p.bold : p.reg);
+  } else {
+    canvas.setTextFont(1);
+    canvas.setTextSize(1);
+  }
 }
 
 bool string_needs_cjk(const std::string& s) {
@@ -127,10 +137,12 @@ void draw_utf8(TFT_eSprite& canvas, int16_t x, int16_t y_top, TextSize size,
   }
   select_font(canvas, size, weight);
   canvas.setTextWrap(false, false);
+  // TL_DATUM + drawString places the text's top-left at (x, y_top) regardless
+  // of whether a GFX free font (baseline-based) or the GLCD floor is active.
+  canvas.setTextDatum(TL_DATUM);
   if (opaque) canvas.setTextColor(fg, bg);
   else        canvas.setTextColor(fg);
-  canvas.setCursor(x, y_top);
-  canvas.print(printable_text(s).c_str());
+  canvas.drawString(printable_text(s).c_str(), x, y_top);
 }
 
 #endif  // ARDUINO
