@@ -92,57 +92,59 @@ void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
   if (fill_w > 0) g_canvas.fillRect(x + 2, y + 2, fill_w, h - 4, c565(fill));
 }
 
-void paint_status_bar(const PageRecord& rec, const BatteryReading& batt, uint64_t last_fetch_s) {
-  g_canvas.fillRect(0, 0, SCREEN_W, TOP_STRIP_H, rgb565(kRgbWhite));
-  g_canvas.drawFastHLine(0, TOP_STRIP_H - 1, SCREEN_W, c565(Color::Black));
+// Right-edge chrome strip, next to the two physical buttons. Top block =
+// status (battery, clock, page index); bottom block = prev/next hints aligned
+// to the buttons. STALE shows as a red chip when the cache is past its window.
+void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
+                   uint64_t last_fetch_s, bool stale) {
+  const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 480
+  const int16_t cx = x0 + 6;                // text inset inside the sidebar
+  g_canvas.fillRect(x0, 0, SIDEBAR_W, SCREEN_H, rgb565(kRgbWhite));
+  g_canvas.drawFastVLine(x0, 0, SCREEN_H, c565(Color::Black));
 
-  draw_battery(4, 6, batt);
   g_canvas.setTextFont(1);
   g_canvas.setTextSize(1);
   g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
 
+  // --- status block (top) ---
+  draw_battery(cx, 8, batt);
   char pct[8];
   if (batt.ok) snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
   else snprintf(pct, sizeof(pct), "--");
-  g_canvas.setCursor(38, 7);
+  g_canvas.setCursor(cx, 24);
   g_canvas.print(pct);
 
-  const String page = printable_text(rec.id).c_str();
-  const int16_t page_w = g_canvas.textWidth(page);
-  g_canvas.setCursor((SCREEN_W - page_w) / 2, 7);
-  g_canvas.print(page);
+  g_canvas.setCursor(cx, 38);
+  g_canvas.print(format_local_hhmm(last_fetch_s));
 
-  const String stamp = format_local_hhmm(last_fetch_s);
-  const int16_t stamp_w = g_canvas.textWidth(stamp);
-  g_canvas.setCursor(SCREEN_W - stamp_w - 4, 7);
-  g_canvas.print(stamp);
-}
-
-void paint_nav_strip(const DeviceState& state) {
-  g_canvas.fillRect(0, SCREEN_H - BOT_STRIP_H, SCREEN_W, BOT_STRIP_H, rgb565(kRgbWhite));
-  g_canvas.drawFastHLine(0, SCREEN_H - BOT_STRIP_H, SCREEN_W, c565(Color::Black));
-  g_canvas.setTextFont(1);
-  g_canvas.setTextSize(1);
-  g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
-
-  char left[24];
-  snprintf(left, sizeof(left), "%u/%u",
+  char idx[16];
+  snprintf(idx, sizeof(idx), "%u/%u",
            (unsigned)(state.pages.empty() ? 0 : state.page_index + 1),
            (unsigned)state.pages.size());
-  g_canvas.setCursor(6, SCREEN_H - BOT_STRIP_H + 10);
-  g_canvas.print(left);
+  g_canvas.setTextSize(2);
+  g_canvas.setCursor(cx, 54);
+  g_canvas.print(idx);
+  g_canvas.setTextSize(1);
 
-  if (!state.pages.empty()) {
-    const std::string current = printable_text(state.pages[state.page_index].id);
-    const int16_t current_w = g_canvas.textWidth(current.c_str());
-    g_canvas.setCursor((SCREEN_W - current_w) / 2, SCREEN_H - BOT_STRIP_H + 10);
-    g_canvas.print(current.c_str());
+  if (stale) {
+    g_canvas.fillRect(cx, 78, 42, 11, c565(Color::Red));
+    g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Red));
+    g_canvas.setCursor(cx + 4, 80);
+    g_canvas.print("STALE");
+    g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   }
 
-  const char* right = "NEXT";
-  const int16_t right_w = g_canvas.textWidth(right);
-  g_canvas.setCursor(SCREEN_W - right_w - 6, SCREEN_H - BOT_STRIP_H + 10);
-  g_canvas.print(right);
+  // --- nav hints (bottom, by the buttons) ---
+  // PREV = upper button (▲), NEXT = lower button (▼). If the physical order is
+  // reversed on this unit, swap these two y-offsets.
+  const int16_t prev_y = SCREEN_H - 58;
+  const int16_t next_y = SCREEN_H - 26;
+  g_canvas.fillTriangle(cx + 4, prev_y, cx, prev_y + 7, cx + 8, prev_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, prev_y + 1);
+  g_canvas.print("PREV");
+  g_canvas.fillTriangle(cx, next_y, cx + 8, next_y, cx + 4, next_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, next_y);
+  g_canvas.print("NEXT");
 }
 
 class SpriteMeasurer : public Measurer {
@@ -150,11 +152,12 @@ class SpriteMeasurer : public Measurer {
   explicit SpriteMeasurer(TFT_eSprite& canvas) : canvas_(canvas) {}
 
   Size text_size(const TextNode& t) const override {
-    TextNode copy = t;
-    const std::string value = printable_text(t.value);
-    const int16_t w = text_width(canvas_, copy, value.c_str());
-    const int16_t h = font_height(t.size, t.weight) + 2 * t.pad;
-    return Size{w, h};
+    const int16_t w = measured_width(canvas_, t.size, t.weight, t.value) + 2 * t.pad;
+    int16_t gh = font_height(t.size, t.weight);
+    // CJK glyphs are 16px tall; widen short rows (e.g. Sm=8) so the baked font
+    // is not clipped by the row above/below.
+    if (string_needs_cjk(t.value) && gh < kCjkLineH) gh = kCjkLineH;
+    return Size{w, (int16_t)(gh + 2 * t.pad)};
   }
 
   Size icon_size(const IconNode& i) const override {
@@ -183,7 +186,7 @@ void display_init() {
 
   Serial.println("[display] rm67162 init");
   rm67162_init();
-  lcd_setRotation(0);
+  lcd_setRotation(1);  // landscape 536x240 (native bar orientation)
 
   g_canvas.setColorDepth(16);
   g_canvas.setSwapBytes(true);
@@ -192,6 +195,7 @@ void display_init() {
     Serial.println("[display] sprite alloc FAILED");
     return;
   }
+  fonts_begin(g_canvas);  // bind the u8g2 CJK renderer to the sprite buffer
   g_canvas.fillSprite(rgb565(kRgbWhite));
   push_canvas();
   Serial.printf("[display] ready %dx%d free_heap=%u psram=%u\n",
@@ -233,22 +237,12 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   }
   const uint32_t t0 = millis();
   SpriteMeasurer m(g_canvas);
-  Rect vp{0, TOP_STRIP_H, SCREEN_W, (int16_t)(SCREEN_H - TOP_STRIP_H - BOT_STRIP_H)};
+  Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
   auto laid = run_layout(root, vp, m);
 
   g_canvas.fillSprite(rgb565(kRgbWhite));
   paint_layout(g_canvas, laid);
-  paint_status_bar(rec, batt, state.last_fetch_s);
-  paint_nav_strip(state);
-
-  if (stale) {
-    g_canvas.setTextFont(1);
-    g_canvas.setTextSize(1);
-    g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Red));
-    g_canvas.fillRect(SCREEN_W - 42, SCREEN_H - BOT_STRIP_H - 14, 38, 10, c565(Color::Red));
-    g_canvas.setCursor(SCREEN_W - 39, SCREEN_H - BOT_STRIP_H - 13);
-    g_canvas.print("STALE");
-  }
+  paint_sidebar(state, batt, state.last_fetch_s, stale);
 
   push_canvas();
   Serial.printf("[render] page=%s pushed in %u ms\n",

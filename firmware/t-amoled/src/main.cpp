@@ -142,6 +142,11 @@ void prev_page() {
   render_current();
 }
 
+void do_refresh() {
+  if (refetch_now()) render_current();
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+}
+
 void console_help() {
   Serial.println("[console] f fetch, r render, n next, b prev, s state, q layout, c clear, R reboot, h help");
 }
@@ -154,8 +159,7 @@ void console_dispatch(char c) {
       break;
     case 'f':
       Serial.println("[console] fetch");
-      if (refetch_now()) render_current();
-      if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+      do_refresh();
       break;
     case 'r':
       Serial.println("[console] render");
@@ -202,37 +206,58 @@ void console_dispatch(char c) {
   }
 }
 
+// Two physical buttons, both active-low. A short tap pages; holding either
+// button past kLongPressMs triggers a refetch (the only "third gesture" two
+// buttons can offer without colliding with rapid paging). GPIO0 doubles as
+// BOOT, but is safe as a runtime button — it only enters download mode when
+// held across a reset.
 struct Button {
   int pin;
-  char command;
-  bool prev_high;
-  uint32_t last_change_ms;
+  char tap_cmd;       // console command dispatched on a short tap
+  bool pressed;       // currently held down
+  uint32_t press_ms;  // millis() when the press began
+  bool long_fired;    // long-press refresh already fired for this press
 };
 
 Button g_buttons[] = {
-  {PIN_BUTTON_1, 'f', true, 0},
-  {PIN_BUTTON_2, 'n', true, 0},
+  {PIN_BUTTON_1, 'b', false, 0, false},  // GPIO0  -> prev page
+  {PIN_BUTTON_2, 'n', false, 0, false},  // GPIO21 -> next page
 };
+
+constexpr uint32_t kLongPressMs = 800;
+constexpr uint32_t kDebounceMs = 40;
 
 void buttons_init() {
   for (auto& b : g_buttons) {
     pinMode(b.pin, INPUT_PULLUP);
-    b.prev_high = digitalRead(b.pin) != 0;
-    b.last_change_ms = millis();
+    b.pressed = digitalRead(b.pin) == 0;
+    b.press_ms = millis();
+    b.long_fired = false;
   }
 }
 
 void buttons_poll() {
   const uint32_t now = millis();
   for (auto& b : g_buttons) {
-    const bool high = digitalRead(b.pin) != 0;
-    if (high == b.prev_high) continue;
-    if (now - b.last_change_ms < 40) continue;
-    b.prev_high = high;
-    b.last_change_ms = now;
-    if (!high) {
-      Serial.printf("[btn] gpio%d -> %c\n", b.pin, b.command);
-      console_dispatch(b.command);
+    const bool down = digitalRead(b.pin) == 0;
+    if (down && !b.pressed) {
+      // Press edge. Bounces just reset the timer until the contact settles.
+      b.pressed = true;
+      b.press_ms = now;
+      b.long_fired = false;
+    } else if (down && b.pressed) {
+      if (!b.long_fired && now - b.press_ms >= kLongPressMs) {
+        b.long_fired = true;
+        Serial.printf("[btn] gpio%d long-press -> refresh\n", b.pin);
+        do_refresh();
+      }
+    } else if (!down && b.pressed) {
+      const uint32_t held = now - b.press_ms;
+      b.pressed = false;
+      if (!b.long_fired && held >= kDebounceMs) {
+        Serial.printf("[btn] gpio%d tap -> %c\n", b.pin, b.tap_cmd);
+        console_dispatch(b.tap_cmd);
+      }
     }
   }
 }

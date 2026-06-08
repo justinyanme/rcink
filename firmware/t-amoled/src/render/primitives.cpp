@@ -22,37 +22,42 @@ static uint16_t c565(Color c) {
   return color_to_rgb565(c);
 }
 
-static std::string fit_text(TFT_eSprite& canvas, const std::string& raw, int16_t max_w) {
-  std::string s = printable_text(raw);
-  if (max_w <= 0 || canvas.textWidth(s.c_str()) <= max_w) return s;
+// Truncate a UTF-8 string with an ellipsis so its rendered width fits `max_w`
+// at (size, weight). Walks one codepoint at a time so multi-byte CJK is never
+// split mid-character; width is measured CJK-aware via measured_width().
+static std::string fit_text(TFT_eSprite& canvas, TextSize size, Weight weight,
+                            const std::string& raw, int16_t max_w) {
+  if (max_w <= 0) return raw;
+  if (measured_width(canvas, size, weight, raw) <= max_w) return raw;
   const char* ell = "...";
-  const int16_t ell_w = canvas.textWidth(ell);
-  if (ell_w >= max_w) return {};
-  while (!s.empty() && canvas.textWidth((s + ell).c_str()) > max_w) {
-    s.pop_back();
+  if (measured_width(canvas, size, weight, ell) >= max_w) return {};
+  std::string out;
+  for (size_t i = 0; i < raw.size();) {
+    const unsigned char c = (unsigned char)raw[i];
+    size_t step = (c < 0x80) ? 1 : (c < 0xC0) ? 1 : (c < 0xE0) ? 2 : (c < 0xF0) ? 3 : 4;
+    if (i + step > raw.size()) step = raw.size() - i;
+    if (measured_width(canvas, size, weight, out + raw.substr(i, step) + ell) > max_w) break;
+    out.append(raw, i, step);
+    i += step;
   }
-  return s + ell;
+  return out + ell;
 }
 
 void draw_text(TFT_eSprite& canvas, const TextNode& t, Rect r) {
   if (r.w <= 0 || r.h <= 0) return;
   if (t.has_bg) canvas.fillRect(r.x, r.y, r.w, r.h, c565(t.bg));
 
-  select_font(canvas, t.size, t.weight);
-  canvas.setTextWrap(false, false);
-  canvas.setTextColor(c565(t.color), t.has_bg ? c565(t.bg) : rgb565(kRgbWhite));
-
   int16_t inner_w = r.w - 2 * t.pad;
   if (inner_w < 0) inner_w = 0;
-  const std::string fitted = fit_text(canvas, t.value, inner_w);
-  const int16_t text_w = canvas.textWidth(fitted.c_str());
+  const std::string fitted = fit_text(canvas, t.size, t.weight, t.value, inner_w);
+  const int16_t text_w = measured_width(canvas, t.size, t.weight, fitted);
 
   int16_t tx = r.x + t.pad;
   if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;
   if (t.align == Align::End) tx = r.x + r.w - text_w - t.pad;
   const int16_t ty = r.y + t.pad;
-  canvas.setCursor(tx, ty);
-  canvas.print(fitted.c_str());
+  const uint16_t bg = t.has_bg ? c565(t.bg) : rgb565(kRgbWhite);
+  draw_utf8(canvas, tx, ty, t.size, t.weight, c565(t.color), t.has_bg, bg, fitted);
 }
 
 void draw_divider(TFT_eSprite& canvas, const DividerNode& d, Rect r) {
@@ -70,20 +75,15 @@ void draw_hbar(TFT_eSprite& canvas, const HBarNode& b, Rect r) {
   const int16_t fill = (int16_t)(((int32_t)inner_w * pct) / 100);
   if (fill > 0) canvas.fillRect(r.x + 2, r.y + 2, fill, r.h - 4, fg);
   if (!b.label_left.empty()) {
-    canvas.setTextFont(1);
-    canvas.setTextSize(1);
-    canvas.setTextColor(rgb565(kRgbWhite), fg);
-    canvas.setCursor(r.x + 4, r.y + (r.h - 8) / 2);
-    canvas.print(printable_text(b.label_left).c_str());
+    const int16_t lh = string_needs_cjk(b.label_left) ? kCjkLineH : 8;
+    draw_utf8(canvas, r.x + 4, r.y + (r.h - lh) / 2, TextSize::Sm, Weight::Regular,
+              rgb565(kRgbWhite), true, fg, b.label_left);
   }
   if (!b.label_right.empty()) {
-    canvas.setTextFont(1);
-    canvas.setTextSize(1);
-    canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
-    const std::string label = printable_text(b.label_right);
-    const int16_t tw = canvas.textWidth(label.c_str());
-    canvas.setCursor(r.x + r.w - tw - 4, r.y + (r.h - 8) / 2);
-    canvas.print(label.c_str());
+    const int16_t lh = string_needs_cjk(b.label_right) ? kCjkLineH : 8;
+    const int16_t tw = measured_width(canvas, TextSize::Sm, Weight::Regular, b.label_right);
+    draw_utf8(canvas, r.x + r.w - tw - 4, r.y + (r.h - lh) / 2, TextSize::Sm,
+              Weight::Regular, c565(Color::Black), false, rgb565(kRgbWhite), b.label_right);
   }
 }
 
@@ -118,9 +118,10 @@ void draw_image(TFT_eSprite& canvas, const ImageNode& i, Rect r) {
   canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   canvas.setCursor(r.x + 4, r.y + 4);
   canvas.print("IMAGE");
-  const std::string label = printable_text(!i.name.empty() ? i.name : i.url);
-  canvas.setCursor(r.x + 4, r.y + 16);
-  canvas.print(fit_text(canvas, label, r.w - 8).c_str());
+  const std::string label = !i.name.empty() ? i.name : i.url;
+  const std::string fitted = fit_text(canvas, TextSize::Sm, Weight::Regular, label, r.w - 8);
+  draw_utf8(canvas, r.x + 4, r.y + 16, TextSize::Sm, Weight::Regular,
+            c565(Color::Black), false, rgb565(kRgbWhite), fitted);
 }
 
 void draw_sparkline(TFT_eSprite& canvas, const SparklineNode& s, Rect r) {

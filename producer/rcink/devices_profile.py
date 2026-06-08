@@ -129,12 +129,14 @@ _TLSR_SIZES: dict[str, int] = {
     "body": 12,
     "sm": 10,
 }
+# Tuned for the 536x240 landscape bar; mirrors firmware render/fonts.cpp
+# font_height(). H1 kept modest so dense dashboard pages fit ~188px usable.
 _T_AMOLED_SIZES: dict[str, int] = {
-    "H1": 52,
+    "H1": 32,
     "H2": 26,
     "Body": 16,
     "Sm": 8,
-    "h1": 52,
+    "h1": 32,
     "h2": 26,
     "body": 16,
     "sm": 8,
@@ -145,9 +147,11 @@ S3 = DeviceProfile(name="s3", width=400, height=600, resolve_color=_resolve_s3, 
 C3_X4 = DeviceProfile(name="c3-x4", width=800, height=480, resolve_color=_resolve_c3_x4, sizes=_C3_X4_SIZES)
 TLSR = DeviceProfile(name="tlsr", width=250, height=128, resolve_color=_resolve_tlsr, sizes=_TLSR_SIZES)
 T_AMOLED = DeviceProfile(
+    # Landscape: the 1.91" RM67162 bar is native 240x536, rotated to 536x240 in
+    # firmware (lcd_setRotation(1)).
     name="t-amoled",
-    width=240,
-    height=536,
+    width=536,
+    height=240,
     resolve_color=_resolve_t_amoled,
     sizes=_T_AMOLED_SIZES,
 )
