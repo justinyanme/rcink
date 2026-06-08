@@ -135,45 +135,54 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   }
 
   // --- nav hints (bottom, by the buttons) ---
-  // PREV = upper button (▲), NEXT = lower button (▼). If the physical order is
-  // reversed on this unit, swap these two y-offsets.
-  const int16_t prev_y = SCREEN_H - 58;
-  const int16_t next_y = SCREEN_H - 26;
-  g_canvas.fillTriangle(cx + 4, prev_y, cx, prev_y + 7, cx + 8, prev_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, prev_y + 1);
-  g_canvas.print("PREV");
-  g_canvas.fillTriangle(cx, next_y, cx + 8, next_y, cx + 4, next_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, next_y);
+  // On this unit the upper button is GPIO21 (next) and the lower is GPIO0
+  // (prev), so NEXT sits on top and PREV below — matching the physical order.
+  const int16_t next_y = SCREEN_H - 58;
+  const int16_t prev_y = SCREEN_H - 26;
+  g_canvas.fillTriangle(cx + 4, next_y, cx, next_y + 7, cx + 8, next_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, next_y + 1);
   g_canvas.print("NEXT");
+  g_canvas.fillTriangle(cx, prev_y, cx + 8, prev_y, cx + 4, prev_y + 7, c565(Color::Black));
+  g_canvas.setCursor(cx + 13, prev_y);
+  g_canvas.print("PREV");
 }
 
 class SpriteMeasurer : public Measurer {
  public:
   explicit SpriteMeasurer(TFT_eSprite& canvas) : canvas_(canvas) {}
 
+  // All extents honour the active fit-to-height scale (set_text_scale): text
+  // shrinks down the font ladder, padding/icons/images scale continuously.
   Size text_size(const TextNode& t) const override {
-    const int16_t w = measured_width(canvas_, t.size, t.weight, t.value) + 2 * t.pad;
-    int16_t gh = font_height(t.size, t.weight);
-    // CJK glyphs are 16px tall; widen short rows (e.g. Sm=8) so the baked font
-    // is not clipped by the row above/below.
+    const int16_t pad = scale_px(t.pad);
+    const int16_t w = measured_width(canvas_, t.size, t.weight, t.value) + 2 * pad;
+    int16_t gh = text_line_height(t.size);
+    // CJK glyphs have a 16px floor; widen short rows so they are not clipped.
     if (string_needs_cjk(t.value) && gh < kCjkLineH) gh = kCjkLineH;
-    return Size{w, (int16_t)(gh + 2 * t.pad)};
+    return Size{w, (int16_t)(gh + 2 * pad)};
   }
 
   Size icon_size(const IconNode& i) const override {
-    int16_t s = i.size > 0 ? i.size : 16;
+    const int16_t s = scale_px(i.size > 0 ? i.size : 16);
     return Size{s, s};
   }
 
   Size image_size(const ImageNode& i) const override {
-    const int16_t w = i.width > 0 ? i.width : 120;
-    const int16_t h = i.height > 0 ? i.height : 80;
+    const int16_t w = scale_px(i.width > 0 ? i.width : 120);
+    const int16_t h = scale_px(i.height > 0 ? i.height : 80);
     return Size{w, h};
   }
 
  private:
   TFT_eSprite& canvas_;
 };
+
+// Deepest pixel a laid-out tree reaches (max bottom edge), for fit-to-height.
+int16_t content_bottom(const LaidOutNode& n) {
+  int16_t b = (int16_t)(n.rect.y + n.rect.h);
+  for (const auto& c : n.children) b = std::max(b, content_bottom(c));
+  return b;
+}
 
 }  // namespace
 
@@ -238,15 +247,33 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   const uint32_t t0 = millis();
   SpriteMeasurer m(g_canvas);
   Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
-  auto laid = run_layout(root, vp, m);
+
+  // Fit-to-height: lay out at nominal size, and if the page overflows the
+  // viewport shrink everything uniformly until it fits on one screen. Two
+  // correction passes settle the discrete font ladder onto the target; a floor
+  // keeps text readable (very dense pages may still clip below it).
+  constexpr float kMinScale = 0.45f;
+  float scale = 1.0f;
+  set_text_scale(scale);
+  auto laid = run_layout(root, vp, m, scale);
+  int16_t used = (int16_t)(content_bottom(laid) - vp.y);
+  for (int pass = 0; pass < 2 && used > SCREEN_H && scale > kMinScale; ++pass) {
+    scale *= (float)SCREEN_H / (float)used * 0.97f;
+    if (scale < kMinScale) scale = kMinScale;
+    set_text_scale(scale);
+    laid = run_layout(root, vp, m, scale);
+    used = (int16_t)(content_bottom(laid) - vp.y);
+  }
 
   g_canvas.fillSprite(rgb565(kRgbWhite));
   paint_layout(g_canvas, laid);
   paint_sidebar(state, batt, state.last_fetch_s, stale);
+  set_text_scale(1.0f);  // chrome + next page render at nominal size
 
   push_canvas();
-  Serial.printf("[render] page=%s pushed in %u ms\n",
-                rec.id.c_str(), (unsigned)(millis() - t0));
+  Serial.printf("[render] page=%s scale=%.2f fit=%d/%d in %u ms\n",
+                rec.id.c_str(), scale, (int)used, (int)SCREEN_H,
+                (unsigned)(millis() - t0));
 }
 
 void render_error(const char* msg) {

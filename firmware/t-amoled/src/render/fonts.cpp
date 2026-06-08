@@ -24,12 +24,39 @@ int16_t font_height(TextSize size, Weight /*weight*/) {
 namespace {
 U8g2_for_TFT_eSPI g_u8f;
 bool g_u8f_ready = false;
+float g_text_scale = 1.0f;
 
 // One baked CJK face serves every text size; u8g2 GB2312 bitmaps top out near
 // 16px, so larger headers render Chinese at 16px inside their taller row (the
-// same fixed-size compromise firmware/s3 makes with efontCN).
+// same fixed-size compromise firmware/s3 makes with efontCN). The 16px floor
+// is also the smallest CJK can scale to.
 const uint8_t* cjk_font_for(TextSize /*size*/, Weight /*weight*/) {
   return u8g2_font_wqy16_t_gb2312;
+}
+
+// Discrete built-in font ladder (GLCD + Font2 + Font4 with setTextSize
+// multipliers). The fit-to-height pass steps Latin text down this ladder by
+// picking the tallest entry whose height fits the scaled target px.
+struct FontPick { uint8_t font; uint8_t mult; int16_t height; };
+constexpr FontPick kLadder[] = {
+  {1, 1, 8},   // GLCD
+  {2, 1, 16},  // Font2
+  {1, 3, 24},  // GLCD x3
+  {4, 1, 26},  // Font4
+  {2, 2, 32},  // Font2 x2
+};
+
+FontPick pick_font(int16_t target_px) {
+  FontPick best = kLadder[0];
+  for (const auto& f : kLadder) {
+    if (f.height <= target_px) best = f;
+  }
+  return best;
+}
+
+int16_t scaled_target_px(TextSize size) {
+  int16_t px = (int16_t)(font_height(size, Weight::Regular) * g_text_scale + 0.5f);
+  return px < 1 ? 1 : px;
 }
 }  // namespace
 
@@ -38,24 +65,16 @@ void fonts_begin(TFT_eSprite& canvas) {
   g_u8f_ready = true;
 }
 
+void set_text_scale(float s) { g_text_scale = s; }
+
+int16_t scale_px(int16_t v) { return (int16_t)(v * g_text_scale + 0.5f); }
+
+int16_t text_line_height(TextSize size) { return pick_font(scaled_target_px(size)).height; }
+
 static void select_font(TFT_eSprite& canvas, TextSize size, Weight /*weight*/) {
-  canvas.setTextSize(1);
-  switch (size) {
-    case TextSize::H1:
-      canvas.setTextFont(2);
-      canvas.setTextSize(2);  // 16px Font2 doubled -> 32px header
-      break;
-    case TextSize::H2:
-      canvas.setTextFont(4);  // 26px
-      break;
-    case TextSize::Body:
-      canvas.setTextFont(2);
-      break;
-    case TextSize::Sm:
-    default:
-      canvas.setTextFont(1);
-      break;
-  }
+  const FontPick p = pick_font(scaled_target_px(size));
+  canvas.setTextFont(p.font);
+  canvas.setTextSize(p.mult);
 }
 
 bool string_needs_cjk(const std::string& s) {

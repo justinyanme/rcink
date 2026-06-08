@@ -47,15 +47,16 @@ void draw_text(TFT_eSprite& canvas, const TextNode& t, Rect r) {
   if (r.w <= 0 || r.h <= 0) return;
   if (t.has_bg) canvas.fillRect(r.x, r.y, r.w, r.h, c565(t.bg));
 
-  int16_t inner_w = r.w - 2 * t.pad;
+  const int16_t pad = scale_px(t.pad);
+  int16_t inner_w = r.w - 2 * pad;
   if (inner_w < 0) inner_w = 0;
   const std::string fitted = fit_text(canvas, t.size, t.weight, t.value, inner_w);
   const int16_t text_w = measured_width(canvas, t.size, t.weight, fitted);
 
-  int16_t tx = r.x + t.pad;
+  int16_t tx = r.x + pad;
   if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;
-  if (t.align == Align::End) tx = r.x + r.w - text_w - t.pad;
-  const int16_t ty = r.y + t.pad;
+  if (t.align == Align::End) tx = r.x + r.w - text_w - pad;
+  const int16_t ty = r.y + pad;
   const uint16_t bg = t.has_bg ? c565(t.bg) : rgb565(kRgbWhite);
   draw_utf8(canvas, tx, ty, t.size, t.weight, c565(t.color), t.has_bg, bg, fitted);
 }
@@ -95,7 +96,8 @@ void draw_marker(TFT_eSprite& canvas, const MarkerNode& m, Rect r) {
 }
 
 void draw_icon(TFT_eSprite& canvas, const IconNode& i, Rect r) {
-  const int16_t s = i.size > 0 ? i.size : (int16_t)std::min(r.w, r.h);
+  // Clamp to the (already fit-scaled) rect so the glyph box never overflows.
+  const int16_t s = std::min<int16_t>(i.size > 0 ? i.size : 16, std::min(r.w, r.h));
   if (s <= 0) return;
   const int16_t x = r.x + (r.w - s) / 2;
   const int16_t y = r.y + (r.h - s) / 2;

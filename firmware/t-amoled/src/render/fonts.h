@@ -22,6 +22,23 @@ int16_t font_height(TextSize size, Weight weight);
 // Reserved row height for CJK glyphs (the baked font is 16px tall).
 static constexpr int16_t kCjkLineH = 16;
 
+// --- fit-to-height scaling ---------------------------------------------------
+// render_page measures a page's natural height and, if it overflows the
+// viewport, re-lays-out at a reduced scale so everything fits on one screen.
+// The scale shrinks Latin text down the discrete TFT font ladder, CJK to its
+// 16px floor, and (via the engine) all pads/gaps/spacers/element heights.
+
+// Set the active text scale (1.0 = nominal). Affects select_font, measured_width
+// and scale_px until changed. Reset to 1.0 after each page.
+void set_text_scale(float s);
+
+// Round `v` by the active text scale (used for per-node text padding).
+int16_t scale_px(int16_t v);
+
+// Rendered line height of `size` at the active scale (what the font ladder
+// actually picks), for the layout measurer.
+int16_t text_line_height(TextSize size);
+
 // Bind the u8g2 renderer to the off-screen sprite. Call once after the sprite
 // is created. U8g2_for_TFT_eSPI draws via the virtual drawFast{H,V}Line, which
 // TFT_eSprite overrides, so glyphs land in the sprite buffer like everything

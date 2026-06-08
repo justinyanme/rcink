@@ -4,8 +4,15 @@
 namespace rcpaper {
 
 // Forward declarations
-static LaidOutNode layout_node(const LayoutNode& n, Rect viewport, const Measurer& m);
-static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m);
+static LaidOutNode layout_node(const LayoutNode& n, Rect viewport, const Measurer& m, float scale);
+static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m, float scale);
+
+// Scale a node-derived dimension (pad, gap, spacer, bar/sparkline/grid extent)
+// by the fit-to-height factor. Text/icon/image extents are scaled by the
+// Measurer itself, so they are NOT scaled again here.
+static inline int16_t scaled(int16_t v, float scale) {
+  return (int16_t)(v * scale + 0.5f);
+}
 
 // Sentinel: a main axis size at or above this is treated as "unbounded"
 // — i.e. we're inside a probe pass whose caller doesn't know its size yet.
@@ -16,30 +23,35 @@ static constexpr int16_t UNBOUNDED_THRESHOLD = 0x4000;
 
 // Compute natural main/cross size for a leaf node.
 // parent_cross is the available cross-axis dimension (used by fill-parent nodes).
-static Size natural_size(const LayoutNode& n, const Measurer& m, int16_t parent_cross, bool vertical) {
+static Size natural_size(const LayoutNode& n, const Measurer& m, int16_t parent_cross,
+                         bool vertical, float scale) {
   switch (n.type) {
     case NodeType::Text:      return m.text_size(n.as_text);
     case NodeType::Icon:      return m.icon_size(n.as_icon);
     case NodeType::Image:     return m.image_size(n.as_image);
     case NodeType::Spacer:
-      if (n.as_spacer.has_size) return Size{n.as_spacer.size, n.as_spacer.size};
+      if (n.as_spacer.has_size) {
+        const int16_t s = scaled(n.as_spacer.size, scale);
+        return Size{s, s};
+      }
       return Size{0, 0};  // flex; caller handles separately
     case NodeType::Divider:
+      // Thickness stays un-scaled so hairlines never vanish at small scales.
       return vertical ? Size{parent_cross, n.as_divider.thickness}
                       : Size{n.as_divider.thickness, parent_cross};
     case NodeType::HBar:
-      return vertical ? Size{parent_cross, n.as_hbar.height}
-                      : Size{n.as_hbar.height, parent_cross};
+      return vertical ? Size{parent_cross, scaled(n.as_hbar.height, scale)}
+                      : Size{scaled(n.as_hbar.height, scale), parent_cross};
     case NodeType::Sparkline:
-      return vertical ? Size{parent_cross, n.as_sparkline.height}
-                      : Size{n.as_sparkline.height, parent_cross};
+      return vertical ? Size{parent_cross, scaled(n.as_sparkline.height, scale)}
+                      : Size{scaled(n.as_sparkline.height, scale), parent_cross};
     case NodeType::Grid: {
       // Mirror the design preview: in a vstack, fill the parent cross axis
       // and claim `height` on main; in an hstack, fill cross and claim
       // `width` on main. Either dimension defaults to 60 if unset, matching
       // protocol.jsx::naturalSize.
-      const int16_t h = n.as_grid.height > 0 ? n.as_grid.height : 60;
-      const int16_t w = n.as_grid.width  > 0 ? n.as_grid.width  : 60;
+      const int16_t h = scaled(n.as_grid.height > 0 ? n.as_grid.height : 60, scale);
+      const int16_t w = scaled(n.as_grid.width  > 0 ? n.as_grid.width  : 60, scale);
       return vertical ? Size{parent_cross, h}
                       : Size{w, parent_cross};
     }
@@ -58,22 +70,24 @@ static LaidOutNode layout_leaf(const LayoutNode& n, Rect vp, const Measurer&) {
   return out;
 }
 
-static LaidOutNode layout_node(const LayoutNode& n, Rect vp, const Measurer& m) {
+static LaidOutNode layout_node(const LayoutNode& n, Rect vp, const Measurer& m, float scale) {
   if (n.type == NodeType::VStack || n.type == NodeType::HStack)
-    return layout_stack(n, vp, m);
+    return layout_stack(n, vp, m, scale);
   return layout_leaf(n, vp, m);
 }
 
-static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m) {
+static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m, float scale) {
   const bool vertical = (root.type == NodeType::VStack);
   const auto& s = root.as_stack;
+  const int16_t pad = scaled(s.pad, scale);
+  const int16_t gap = scaled(s.gap, scale);
 
   // Apply padding to get inner rect.
   Rect inner{
-    (int16_t)(viewport.x + s.pad),
-    (int16_t)(viewport.y + s.pad),
-    (int16_t)(viewport.w - 2 * s.pad),
-    (int16_t)(viewport.h - 2 * s.pad),
+    (int16_t)(viewport.x + pad),
+    (int16_t)(viewport.y + pad),
+    (int16_t)(viewport.w - 2 * pad),
+    (int16_t)(viewport.h - 2 * pad),
   };
 
   // Available space along main / cross axes.
@@ -115,8 +129,8 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
       flex_count++;
       is_flex[i] = true;
       // For HBar/Sparkline/Divider in HStack: cross-axis size = their thickness.
-      if (c.type == NodeType::HBar)       child_cross[i] = c.as_hbar.height;
-      if (c.type == NodeType::Sparkline)  child_cross[i] = c.as_sparkline.height;
+      if (c.type == NodeType::HBar)       child_cross[i] = scaled(c.as_hbar.height, scale);
+      if (c.type == NodeType::Sparkline)  child_cross[i] = scaled(c.as_sparkline.height, scale);
       if (c.type == NodeType::Divider)    child_cross[i] = c.as_divider.thickness;
       if (child_cross[i] > 0) max_cross = std::max(max_cross, child_cross[i]);
       continue;  // main size determined later
@@ -131,7 +145,7 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
       Rect probe = vertical
         ? Rect{0, 0, cross_avail, 0x7FFF}
         : Rect{0, 0, 0x7FFF, cross_avail};
-      LaidOutNode laid = layout_stack(c, probe, m);
+      LaidOutNode laid = layout_stack(c, probe, m, scale);
       // Measure used main extent from children of the nested stack.
       int16_t used_main  = 0;
       int16_t used_cross = 0;
@@ -147,7 +161,7 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
       }
       sz = vertical ? Size{used_cross, used_main} : Size{used_main, used_cross};
     } else {
-      sz = natural_size(c, m, cross_avail, vertical);
+      sz = natural_size(c, m, cross_avail, vertical, scale);
     }
 
     child_main[i]  = vertical ? sz.h : sz.w;
@@ -158,7 +172,7 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
 
   // Gaps between non-zero-height children.
   int16_t gaps_total = n_children > 1
-    ? (int16_t)((n_children - 1) * s.gap)
+    ? (int16_t)((n_children - 1) * gap)
     : (int16_t)0;
 
   // Distribute remaining space to flex spacers. If main_avail is at the
@@ -213,17 +227,17 @@ static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Mea
       ? Rect{cross_pos, cursor, cross_sz, main_sz}
       : Rect{cursor, cross_pos, main_sz, cross_sz};
 
-    out.children.push_back(layout_node(c, child_vp, m));
+    out.children.push_back(layout_node(c, child_vp, m, scale));
 
     cursor += main_sz;
-    if (i + 1 < n_children) cursor += s.gap;
+    if (i + 1 < n_children) cursor += gap;
   }
 
   return out;
 }
 
-LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m) {
-  return layout_node(root, viewport, m);
+LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m, float scale) {
+  return layout_node(root, viewport, m, scale);
 }
 
 }  // namespace rcpaper

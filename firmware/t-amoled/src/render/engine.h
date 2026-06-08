@@ -30,6 +30,9 @@ struct LaidOutNode {
   std::vector<LaidOutNode> children;
 };
 
-LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m);
+// `scale` (<=1.0) shrinks pads/gaps/spacers/bar+grid extents; the Measurer
+// scales text/icon/image to match. Used by the fit-to-height pass; defaults to
+// 1.0 for the unscaled layout and the native tests.
+LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m, float scale = 1.0f);
 
 }  // namespace rcpaper
