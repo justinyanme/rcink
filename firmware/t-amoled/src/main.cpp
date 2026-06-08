@@ -48,12 +48,16 @@ bool refetch_now() {
   g_battery = read_battery();
   Serial.printf("[sense] batt=%u%% (%u mV) ok=%d\n",
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
+  render_status("Connecting Wi-Fi...");
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
+    render_error("Wi-Fi failed");
     return false;
   }
+  render_status("Syncing time...");
   const bool ntp_ok = sync_ntp_once();
 
+  render_status("Fetching data...");
   std::vector<PageRecord> fresh;
   const bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (!ok) {

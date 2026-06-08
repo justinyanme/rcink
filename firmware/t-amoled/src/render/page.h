@@ -31,6 +31,10 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root);
 void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
                  const DeviceState& state, const BatteryReading& batt);
 void render_error(const char* msg);
+
+// Transient centred status (e.g. "Fetching data...") shown during the
+// few-second fetch so the user sees progress instead of a stale page.
+void render_status(const char* msg);
 #endif
 
 }  // namespace rcpaper

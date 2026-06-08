@@ -144,8 +144,10 @@ void draw_sparkline(TFT_eSprite& canvas, const SparklineNode& s, Rect r) {
     const int16_t x1 = r.x + (int16_t)(((int32_t)i * (r.w - 1)) / (int32_t)(n - 1));
     canvas.drawLine(x0, y_of(s.values[i - 1]), x1, y_of(s.values[i]), fg);
   }
-  for (int16_t x = r.x; x < r.x + r.w; x += 4) {
-    canvas.drawPixel(x, r.y + r.h - 1, c565(Color::Black));
+  // int (not int16_t) so the counter can't wrap into an infinite loop if a
+  // bad layout ever hands us a pathologically wide rect.
+  for (int x = r.x; x < (int)r.x + r.w; x += 4) {
+    canvas.drawPixel((int16_t)x, r.y + r.h - 1, c565(Color::Black));
   }
 }
 

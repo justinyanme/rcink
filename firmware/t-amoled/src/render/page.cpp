@@ -298,10 +298,9 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   SpriteMeasurer m(g_canvas);
   Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
 
-  // Fit-to-height: lay out at nominal size, and if the page overflows the
-  // viewport shrink everything uniformly until it fits on one screen. Two
-  // correction passes settle the discrete font ladder onto the target; a floor
-  // keeps text readable (very dense pages may still clip below it).
+  // Fit-to-height: lay out at nominal size and, if the page overflows, shrink
+  // everything uniformly until it fits one screen. Two correction passes settle
+  // the discrete font ladder; a floor keeps text readable (extreme pages clip).
   constexpr float kMinScale = 0.45f;
   float scale = 1.0f;
   set_text_scale(scale);
@@ -318,7 +317,7 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   g_canvas.fillSprite(rgb565(kRgbWhite));
   paint_layout(g_canvas, laid);
   paint_sidebar(state, batt, state.last_fetch_s, stale);
-  set_text_scale(1.0f);  // chrome + next page render at nominal size
+  set_text_scale(1.0f);  // chrome renders at nominal size
 
   push_canvas();
   Serial.printf("[render] page=%s scale=%.2f fit=%d/%d in %u ms\n",
@@ -337,6 +336,20 @@ void render_error(const char* msg) {
   g_canvas.setTextFont(1);
   g_canvas.setCursor(14, 54);
   g_canvas.print(printable_text(msg).c_str());
+  push_canvas();
+}
+
+void render_status(const char* msg) {
+  if (!g_canvas_ready) return;
+  set_text_scale(1.0f);
+  g_canvas.fillSprite(rgb565(kRgbWhite));
+  const std::string s = msg;
+  const int16_t w = measured_width(g_canvas, TextSize::H2, Weight::Bold, s);
+  const int16_t lh = text_line_height(TextSize::H2);
+  int16_t x = (int16_t)((CONTENT_W - w) / 2);
+  if (x < 6) x = 6;
+  draw_utf8(g_canvas, x, (int16_t)((SCREEN_H - lh) / 2), TextSize::H2, Weight::Bold,
+            c565(Color::Black), false, rgb565(kRgbWhite), s);
   push_canvas();
 }
 
