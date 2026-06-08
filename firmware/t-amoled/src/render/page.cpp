@@ -95,9 +95,25 @@ String format_local_md(uint64_t epoch_s) {
   return String(buf);
 }
 
+// Dark AMOLED theme: the layout is composed light (black ink on white, like the
+// e-ink targets), then we swap pure white<->black at push time. Background
+// becomes true black (AMOLED pixels off = power saving), body text becomes
+// white, and every accent (red/green/blue/yellow) stays saturated — glowing on
+// black instead of the flat papercolor look. Fonts are 1-bit so there are no
+// grey anti-alias halos to smear. Set false for the white e-ink look.
+static constexpr bool kDarkTheme = true;
+
 void push_canvas() {
   if (!g_canvas_ready) return;
-  lcd_PushColors(0, 0, SCREEN_W, SCREEN_H, (uint16_t*)g_canvas.getPointer());
+  uint16_t* buf = (uint16_t*)g_canvas.getPointer();
+  if (kDarkTheme) {
+    const size_t n = (size_t)SCREEN_W * SCREEN_H;
+    for (size_t i = 0; i < n; ++i) {
+      if (buf[i] == 0xFFFF) buf[i] = 0x0000;
+      else if (buf[i] == 0x0000) buf[i] = 0xFFFF;
+    }
+  }
+  lcd_PushColors(0, 0, SCREEN_W, SCREEN_H, buf);
 }
 
 void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
