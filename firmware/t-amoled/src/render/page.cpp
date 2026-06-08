@@ -298,19 +298,22 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   SpriteMeasurer m(g_canvas);
   Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
 
-  // Fit-to-height: lay out at nominal size and, if the page overflows, shrink
-  // everything uniformly until it fits one screen. Two correction passes settle
-  // the discrete font ladder; a floor keeps text readable (extreme pages clip).
+  // Spacing compaction: the panel is small but high-res, so we tighten the
+  // producer's whitespace (pads/gaps/spacers/bar heights) to ~half. Text is NOT
+  // compacted — packing the layout tighter leaves more room for the fit pass to
+  // keep fonts large. Text scale (g_text_scale) and the engine's spacing scale
+  // are therefore decoupled: spacing = scale * kSpacingCompact, text = scale.
+  constexpr float kSpacingCompact = 0.55f;
   constexpr float kMinScale = 0.45f;
   float scale = 1.0f;
   set_text_scale(scale);
-  auto laid = run_layout(root, vp, m, scale);
+  auto laid = run_layout(root, vp, m, scale * kSpacingCompact);
   int16_t used = (int16_t)(content_bottom(laid) - vp.y);
   for (int pass = 0; pass < 2 && used > SCREEN_H && scale > kMinScale; ++pass) {
     scale *= (float)SCREEN_H / (float)used * 0.97f;
     if (scale < kMinScale) scale = kMinScale;
     set_text_scale(scale);
-    laid = run_layout(root, vp, m, scale);
+    laid = run_layout(root, vp, m, scale * kSpacingCompact);
     used = (int16_t)(content_bottom(laid) - vp.y);
   }
 
