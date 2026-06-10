@@ -1,7 +1,8 @@
 """KP2 keypoint live-card protocol: format helpers, card cache, frame render.
 
 The wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py:
-ASCII "KP2|ICON|L1|..|L6", 6 lines x 8 chars (0x20..0x7E, no '|'), <=66 bytes.
+ASCII "KP2|IDX|TOTAL|ICON|LED|L1|..|L6", 6 lines x 8 chars
+(0x20..0x7E, no '|'), <=72 bytes.
 """
 
 import datetime as dt
@@ -32,6 +33,7 @@ def make_card(**over) -> Card:
         id="claude",
         icon="CLAUDE",
         title="CLAUDE",
+        led_hint=0,
         rows=[Row("5H", "76%"), Row("WK", "88%"), Row("RST", until=NOW_TS + 90 * 60), Row("OP", "18%")],
         data_ts=NOW_TS - 600,  # fetched 10 min ago
     )
@@ -86,19 +88,32 @@ def test_render_frame_layout():
     assert fields[1] == "0"  # IDX (0-based page)
     assert fields[2] == "1"  # TOTAL (deck size)
     assert fields[3] == "CLAUDE"  # icon
-    assert fields[4] == "CLAUDE  "  # L1 title, left-anchored
-    assert fields[5] == "5H   76%"  # L2 = rows[0] key metric
-    assert fields[6] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
-    assert fields[7] == "WK   88%"
-    assert fields[8] == "RST  90M"  # countdown computed at render time, not fetch time
-    assert fields[9] == "OP   18%"
-    assert len(frame) <= 70
+    assert fields[4] == "0"  # LED hint
+    assert fields[5] == "CLAUDE  "  # L1 title, left-anchored
+    assert fields[6] == "5H   76%"  # L2 = rows[0] key metric
+    assert fields[7] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
+    assert fields[8] == "WK   88%"
+    assert fields[9] == "RST  90M"  # countdown computed at render time, not fetch time
+    assert fields[10] == "OP   18%"
+    assert len(frame) <= 72
 
 
 def test_render_frame_carries_idx_total():
     fields = render_frame(make_card(), now=NOW, index=2, total=5).decode("ascii").split("|")
-    assert (fields[1], fields[2], fields[3]) == ("2", "5", "CLAUDE")
-    assert fields[4] == "CLAUDE  "  # icon now precedes L1 by two page fields
+    assert (fields[1], fields[2], fields[3], fields[4]) == ("2", "5", "CLAUDE", "0")
+    assert fields[5] == "CLAUDE  "  # LED hint now precedes L1
+
+
+def test_render_frame_carries_led_hint():
+    fields = render_frame(make_card(led_hint=3), now=NOW, index=0, total=1).decode("ascii").split("|")
+    assert fields[4] == "3"
+
+
+def test_render_frame_rejects_bad_led_hint():
+    with pytest.raises(ValueError, match="LED hint"):
+        render_frame(make_card(led_hint=5), now=NOW, index=0, total=1)
+    with pytest.raises(ValueError, match="LED hint"):
+        render_frame(make_card(led_hint=True), now=NOW, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_page_args():
@@ -113,15 +128,15 @@ def test_render_frame_rejects_bad_page_args():
 def test_render_frame_l3_is_data_ts_not_now():
     card = make_card(data_ts=NOW_TS - 3600)
     frame = render_frame(card, now=NOW, index=0, total=1)
-    l3 = frame.decode("ascii").split("|")[6]
+    l3 = frame.decode("ascii").split("|")[7]
     assert l3 == (NOW - dt.timedelta(hours=1)).strftime("%H:%M")
 
 
 def test_render_frame_pads_missing_rows_with_empty_lines():
     card = make_card(rows=[Row("EV", "3")])
     fields = render_frame(card, now=NOW, index=0, total=1).decode("ascii").split("|")
-    assert len(fields) == 10  # KP2 + IDX + TOTAL + ICON + 6 lines
-    assert fields[7] == fields[8] == fields[9] == ""
+    assert len(fields) == 11  # KP2 + IDX + TOTAL + ICON + LED + 6 lines
+    assert fields[8] == fields[9] == fields[10] == ""
 
 
 def test_render_frame_rejects_bad_icon():
@@ -177,11 +192,20 @@ def test_load_cards_orders_by_rotation(cache):
     assert CARD_ORDER == ("claude", "codex")
 
 
-def test_load_cards_skips_corrupt_file(cache):
+def test_load_cards_fails_fast_on_corrupt_file(cache):
     write_card(make_card())
     (cache / "junk.json").write_text("{not json")
-    (loaded,) = load_cards()
-    assert loaded.id == "claude"
+    with pytest.raises(ValueError, match="invalid KEYPOINT card cache file"):
+        load_cards()
+
+
+def test_load_cards_fails_fast_on_old_schema(cache):
+    write_card(make_card())
+    data = json.loads((cache / "claude.json").read_text())
+    del data["led_hint"]
+    (cache / "claude.json").write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="led_hint"):
+        load_cards()
 
 
 def test_fresh_cards_drops_stale():
@@ -195,6 +219,7 @@ def test_card_json_is_plain_and_compact(cache):
     write_card(make_card())
     data = json.loads((cache / "claude.json").read_text())
     assert data["icon"] == "CLAUDE"
+    assert data["led_hint"] == 0
     assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 90 * 60}
     assert data["rows"][0] == {"label": "5H", "value": "76%"}
 
@@ -220,7 +245,7 @@ def test_frames_to_push_stamps_index_and_total(cache):
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
     parsed = [f.decode("ascii").split("|") for f in frames]
     # Whole deck pushed: each card stamped with its page index and the deck total.
-    assert [(p[1], p[2], p[3]) for p in parsed] == [("0", "2", "CLAUDE"), ("1", "2", "CODEX")]
+    assert [(p[1], p[2], p[3], p[4]) for p in parsed] == [("0", "2", "CLAUDE", "0"), ("1", "2", "CODEX", "0")]
 
 
 def test_frames_to_push_drops_stale(cache):
