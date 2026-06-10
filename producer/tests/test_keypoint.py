@@ -1,8 +1,9 @@
-"""KP2 keypoint live-card protocol: format helpers, card cache, frame render.
+"""KP3 keypoint live-card protocol: format helpers, card cache, frame render.
 
 The wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py:
-ASCII "KP2|IDX|TOTAL|ICON|LED|L1|..|L6", 6 lines x 8 chars
-(0x20..0x7E, no '|'), <=72 bytes.
+ASCII "KP3|GEN|IDX|TOTAL|ICON|LED|L1|..|L6", 6 lines x 8 chars
+(0x20..0x7E, no '|'), <=75 bytes. GEN is a two-digit uppercase hex deck
+transaction id.
 """
 
 import datetime as dt
@@ -82,78 +83,88 @@ def test_fmt_countdown(seconds, expected):
 
 
 def test_render_frame_layout():
-    frame = render_frame(make_card(), now=NOW, index=0, total=1)
+    frame = render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=1)
     fields = frame.decode("ascii").split("|")
-    assert fields[0] == "KP2"
-    assert fields[1] == "0"  # IDX (0-based page)
-    assert fields[2] == "1"  # TOTAL (deck size)
-    assert fields[3] == "CLAUDE"  # icon
-    assert fields[4] == "0"  # LED hint
-    assert fields[5] == "CLAUDE  "  # L1 title, left-anchored
-    assert fields[6] == "5H   76%"  # L2 = rows[0] key metric
-    assert fields[7] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
-    assert fields[8] == "WK   88%"
-    assert fields[9] == "RST  90M"  # countdown computed at render time, not fetch time
-    assert fields[10] == "OP   18%"
-    assert len(frame) <= 72
+    assert fields[0] == "KP3"
+    assert fields[1] == "A0"  # GEN (deck transaction)
+    assert fields[2] == "0"  # IDX (0-based page)
+    assert fields[3] == "1"  # TOTAL (deck size)
+    assert fields[4] == "CLAUDE"  # icon
+    assert fields[5] == "0"  # LED hint
+    assert fields[6] == "CLAUDE  "  # L1 title, left-anchored
+    assert fields[7] == "5H   76%"  # L2 = rows[0] key metric
+    assert fields[8] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
+    assert fields[9] == "WK   88%"
+    assert fields[10] == "RST  90M"  # countdown computed at render time, not fetch time
+    assert fields[11] == "OP   18%"
+    assert len(frame) <= 75
 
 
 def test_render_frame_carries_idx_total():
-    fields = render_frame(make_card(), now=NOW, index=2, total=5).decode("ascii").split("|")
-    assert (fields[1], fields[2], fields[3], fields[4]) == ("2", "5", "CLAUDE", "0")
-    assert fields[5] == "CLAUDE  "  # LED hint now precedes L1
+    fields = render_frame(make_card(), now=NOW, generation=0xA0, index=2, total=5).decode("ascii").split("|")
+    assert (fields[1], fields[2], fields[3], fields[4], fields[5]) == ("A0", "2", "5", "CLAUDE", "0")
+    assert fields[6] == "CLAUDE  "  # LED hint now precedes L1
 
 
 def test_render_frame_carries_led_hint():
-    fields = render_frame(make_card(led_hint=3), now=NOW, index=0, total=1).decode("ascii").split("|")
-    assert fields[4] == "3"
+    fields = render_frame(make_card(led_hint=3), now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
+    assert fields[5] == "3"
 
 
 def test_render_frame_rejects_bad_led_hint():
     with pytest.raises(ValueError, match="LED hint"):
-        render_frame(make_card(led_hint=5), now=NOW, index=0, total=1)
+        render_frame(make_card(led_hint=5), now=NOW, generation=0xA0, index=0, total=1)
     with pytest.raises(ValueError, match="LED hint"):
-        render_frame(make_card(led_hint=True), now=NOW, index=0, total=1)
+        render_frame(make_card(led_hint=True), now=NOW, generation=0xA0, index=0, total=1)
+
+
+def test_render_frame_rejects_bad_generation():
+    with pytest.raises(ValueError, match="generation"):
+        render_frame(make_card(), now=NOW, generation=-1, index=0, total=1)
+    with pytest.raises(ValueError, match="generation"):
+        render_frame(make_card(), now=NOW, generation=256, index=0, total=1)
+    with pytest.raises(ValueError, match="generation"):
+        render_frame(make_card(), now=NOW, generation=True, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_page_args():
     with pytest.raises(ValueError, match="index"):
-        render_frame(make_card(), now=NOW, index=3, total=3)  # idx must be < total
+        render_frame(make_card(), now=NOW, generation=0xA0, index=3, total=3)  # idx must be < total
     with pytest.raises(ValueError, match="total"):
-        render_frame(make_card(), now=NOW, index=0, total=0)  # total must be >= 1
+        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=0)  # total must be >= 1
     with pytest.raises(ValueError, match="total"):
-        render_frame(make_card(), now=NOW, index=0, total=9)  # total must be <= PAGE_MAX
+        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=9)  # total must be <= PAGE_MAX
 
 
 def test_render_frame_l3_is_data_ts_not_now():
     card = make_card(data_ts=NOW_TS - 3600)
-    frame = render_frame(card, now=NOW, index=0, total=1)
-    l3 = frame.decode("ascii").split("|")[7]
+    frame = render_frame(card, now=NOW, generation=0xA0, index=0, total=1)
+    l3 = frame.decode("ascii").split("|")[8]
     assert l3 == (NOW - dt.timedelta(hours=1)).strftime("%H:%M")
 
 
 def test_render_frame_pads_missing_rows_with_empty_lines():
     card = make_card(rows=[Row("EV", "3")])
-    fields = render_frame(card, now=NOW, index=0, total=1).decode("ascii").split("|")
-    assert len(fields) == 11  # KP2 + IDX + TOTAL + ICON + LED + 6 lines
-    assert fields[8] == fields[9] == fields[10] == ""
+    fields = render_frame(card, now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
+    assert len(fields) == 12  # KP3 + GEN + IDX + TOTAL + ICON + LED + 6 lines
+    assert fields[9] == fields[10] == fields[11] == ""
 
 
 def test_render_frame_rejects_bad_icon():
     with pytest.raises(ValueError, match="icon"):
-        render_frame(make_card(icon="WEATHER"), now=NOW, index=0, total=1)
+        render_frame(make_card(icon="WEATHER"), now=NOW, generation=0xA0, index=0, total=1)
 
 
 def test_render_frame_rejects_unsupported_chars():
     with pytest.raises(ValueError):
-        render_frame(make_card(title="日历"), now=NOW, index=0, total=1)
+        render_frame(make_card(title="日历"), now=NOW, generation=0xA0, index=0, total=1)
     with pytest.raises(ValueError):
-        render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW, index=0, total=1)
+        render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW, generation=0xA0, index=0, total=1)
 
 
 def test_render_frame_rejects_too_many_rows():
     with pytest.raises(ValueError, match="rows"):
-        render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW, index=0, total=1)
+        render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW, generation=0xA0, index=0, total=1)
 
 
 # --- card cache ---
@@ -224,7 +235,7 @@ def test_card_json_is_plain_and_compact(cache):
     assert data["rows"][0] == {"label": "5H", "value": "76%"}
 
 
-def test_line_max_matches_kp2_contract():
+def test_line_max_matches_kp3_contract():
     assert LINE_MAX == 8
 
 
@@ -235,7 +246,7 @@ def test_frames_to_push_renders_fresh_cards_in_order(cache):
     write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "2")]))
     write_card(make_card(id="claude"))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
-    icons = [f.decode("ascii").split("|")[3] for f in frames]  # ICON now after IDX/TOTAL
+    icons = [f.decode("ascii").split("|")[4] for f in frames]  # ICON after GEN/IDX/TOTAL
     assert icons == ["CLAUDE", "NONE"]  # rotation order, not write order
 
 
@@ -244,12 +255,16 @@ def test_frames_to_push_stamps_index_and_total(cache):
     write_card(make_card(id="codex", icon="CODEX", title="CODEX"))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
     parsed = [f.decode("ascii").split("|") for f in frames]
-    # Whole deck pushed: each card stamped with its page index and the deck total.
-    assert [(p[1], p[2], p[3], p[4]) for p in parsed] == [("0", "2", "CLAUDE", "0"), ("1", "2", "CODEX", "0")]
+    generation = f"{NOW_TS & 0xFF:02X}"
+    # Whole deck pushed under one generation: each card stamped with page index and deck total.
+    assert [(p[1], p[2], p[3], p[4], p[5]) for p in parsed] == [
+        (generation, "0", "2", "CLAUDE", "0"),
+        (generation, "1", "2", "CODEX", "0"),
+    ]
 
 
 def test_frames_to_push_drops_stale(cache):
     write_card(make_card(id="claude"))
     write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "1")], data_ts=NOW_TS - 7 * 3600))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
-    assert [f.decode("ascii").split("|")[3] for f in frames] == ["CLAUDE"]
+    assert [f.decode("ascii").split("|")[4] for f in frames] == ["CLAUDE"]

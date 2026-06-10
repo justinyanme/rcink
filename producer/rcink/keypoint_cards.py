@@ -1,4 +1,4 @@
-"""Build compact KP2 cards from the existing source dataclasses.
+"""Build compact KP3 cards from the existing source dataclasses.
 
 Each builder turns one source's rich data into a renderable :class:`Card`:
 icon + 8-char title + up to 4 grid rows + the fetch timestamp. Reset rows use

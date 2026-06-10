@@ -1,12 +1,14 @@
-"""KP2 live-card protocol + local card cache for the KEYPOINT keyboard display.
+"""KP3 live-card protocol + local card cache for the KEYPOINT keyboard display.
 
 Wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py
-(the producer reference): ASCII frame ``KP2|IDX|TOTAL|ICON|LED|L1|..|L6``,
-six 8-char lines (0x20..0x7E, '|' excluded), <=72 bytes, written to a GATT
-characteristic on the left keyboard half. Screen convention: L1 title, L2 key
-metric, L3 data timestamp (doubles as a clock), L4-L6 detail rows. LED is a
-single digit trackpad status hint: 0 normal, 1 active, 2 attention, 3 warning,
-4 error.
+(the producer reference): ASCII frame
+``KP3|GEN|IDX|TOTAL|ICON|LED|L1|..|L6``, six 8-char lines (0x20..0x7E,
+'|' excluded), <=75 bytes, written to a GATT characteristic on the left
+keyboard half. GEN is a two-digit uppercase hex transaction id; the firmware
+commits a deck only after every page for the same GEN arrives. Screen
+convention: L1 title, L2 key metric, L3 data timestamp (doubles as a clock),
+L4-L6 detail rows. LED is a single digit trackpad status hint: 0 normal,
+1 active, 2 attention, 3 warning, 4 error.
 
 Fetchers drop one compact card per source into the cache dir (atomic replace,
 one file per card — no cross-process locking needed); the keypoint-push job
@@ -27,12 +29,13 @@ from pathlib import Path
 SERVICE_UUID = "f5d40000-6d2f-4f4b-9b2a-2f4a8e8c0001"
 CHAR_UUID = "f5d40001-6d2f-4f4b-9b2a-2f4a8e8c0001"
 
-PREFIX = "KP2"
+PREFIX = "KP3"
+GENERATION_FIELD_MAX = 2
 TEXT_LINE_COUNT = 6
 LINE_MAX = 8
 MAX_ROWS = 4  # rows[0] -> L2, rows[1:4] -> L4..L6
 PAGE_MAX = 8  # firmware deck capacity; idx/total are single decimal digits
-FRAME_MAX_BYTES = 72  # KP2|IDX|TOTAL|ICON|LED|L1..L6
+FRAME_MAX_BYTES = 75  # KP3|GEN|IDX|TOTAL|ICON|LED|L1..L6
 ICON_IDS = frozenset({"NONE", "SUN", "CLOUD", "RAIN", "TEMP", "WARN", "CODE", "TIME", "CODEX", "CLAUDE"})
 
 LED_HINT_NONE = 0
@@ -116,14 +119,21 @@ def _validate_led_hint(led_hint: int) -> int:
     return led_hint
 
 
+def _validate_generation(generation: int) -> int:
+    if isinstance(generation, bool) or not 0 <= generation <= 0xFF:
+        raise ValueError(f"generation {generation!r} out of range 0..255")
+    return generation
+
+
 def _render_row(row: Row, *, now_ts: int) -> str:
     value = row.value if row.value is not None else fmt_countdown(row.until - now_ts)
     return kv(row.label, value)
 
 
-def render_frame(card: Card, *, now: dt.datetime, index: int, total: int) -> bytes:
-    """Render a card to one full-screen KP2 frame: KP2|IDX|TOTAL|ICON|LED|L1..L6,
+def render_frame(card: Card, *, now: dt.datetime, generation: int, index: int, total: int) -> bytes:
+    """Render a card to one full-screen KP3 frame: KP3|GEN|IDX|TOTAL|ICON|LED|L1..L6,
     computing countdowns at render time and stamping L3 with the data timestamp."""
+    generation = _validate_generation(generation)
     if not 1 <= total <= PAGE_MAX:
         raise ValueError(f"total {total} out of range 1..{PAGE_MAX}")
     if not 0 <= index < total:
@@ -141,7 +151,15 @@ def render_frame(card: Card, *, now: dt.datetime, index: int, total: int) -> byt
     lines = [title(card.title), rendered[0], data_time, *rendered[1:]]
 
     frame = "|".join(
-        [PREFIX, str(index), str(total), card.icon, str(led_hint), *(_validate_line(line) for line in lines)]
+        [
+            PREFIX,
+            f"{generation:02X}",
+            str(index),
+            str(total),
+            card.icon,
+            str(led_hint),
+            *(_validate_line(line) for line in lines),
+        ]
     ).encode("ascii")
     if len(frame) > FRAME_MAX_BYTES:
         raise ValueError(f"frame is {len(frame)} bytes, max {FRAME_MAX_BYTES}")
@@ -155,7 +173,7 @@ def cache_dir() -> Path:
 def write_card(card: Card) -> Path:
     """Validate + atomically publish one card (render dry-run fails fast at
     fetch time, so the pusher never sees an unrenderable card)."""
-    render_frame(card, now=dt.datetime.now().astimezone(), index=0, total=1)
+    render_frame(card, now=dt.datetime.now().astimezone(), generation=0, index=0, total=1)
 
     payload = {k: v for k, v in asdict(card).items() if v is not None}
     payload["rows"] = [{k: v for k, v in row.items() if v is not None} for row in payload["rows"]]
@@ -203,4 +221,5 @@ def frames_to_push(*, now: dt.datetime, max_age_s: int) -> list[bytes]:
     firmware stores the deck; the keyboard's left keys page through it."""
     cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[:PAGE_MAX]
     total = len(cards)
-    return [render_frame(card, now=now, index=i, total=total) for i, card in enumerate(cards)]
+    generation = int(now.timestamp()) & 0xFF
+    return [render_frame(card, now=now, generation=generation, index=i, total=total) for i, card in enumerate(cards)]

@@ -1,4 +1,4 @@
-"""Push the cached KP2 cards as a deck onto the KEYPOINT keyboard over BLE.
+"""Push the cached KP3 cards as a deck onto the KEYPOINT keyboard over BLE.
 
 One-shot, stateless: load the card cache (written by the page fetchers), drop
 stale cards, then write the whole deck to the keyboard's GATT characteristic
@@ -11,6 +11,7 @@ live between the 15-minute fetches. The deck order is fixed (keypoint.CARD_ORDER
 
 Run manually:
     uv run keypoint-push                   # push the deck once, then exit
+    uv run keypoint-push --response        # diagnostic writes surface firmware rejects
     uv run keypoint-push --pace 0          # no inter-write delay
     uv run keypoint-push --address <UUID>  # skip discovery
 """
@@ -70,7 +71,14 @@ async def _resolve_device(name: str, address: str | None, scan_timeout: float) -
     return device
 
 
-async def _push(name: str, address: str | None, pace: float, max_age_s: int, scan_timeout: float) -> None:
+async def _push(
+    name: str,
+    address: str | None,
+    pace: float,
+    max_age_s: int,
+    scan_timeout: float,
+    response: bool,
+) -> None:
     now = dt.datetime.now().astimezone()
     frames = frames_to_push(now=now, max_age_s=max_age_s)
     if not frames:
@@ -81,11 +89,11 @@ async def _push(name: str, address: str | None, pace: float, max_age_s: int, sca
     async with BleakClient(target, services=[SERVICE_UUID]) as client:
         # Push the whole deck; the firmware stores it and owns page navigation.
         for frame in frames:
-            await client.write_gatt_char(CHAR_UUID, frame, response=False)
+            await client.write_gatt_char(CHAR_UUID, frame, response=response)
             logger.info(f"pushed {frame.decode('ascii')}")
             if pace:
                 await asyncio.sleep(pace)  # brief pacing for write-without-response reliability
-    logger.success(f"pushed deck: {len(frames)} card(s)")
+    logger.success(f"pushed deck: {len(frames)} card(s), response={response}")
 
 
 @app.command()
@@ -95,9 +103,19 @@ def run(
     pace: float = typer.Option(0.1, min=0.0, help="Seconds between back-to-back deck writes."),
     max_age: int = typer.Option(DEFAULT_MAX_AGE_S, min=60, help="Drop cards older than this many seconds."),
     scan_timeout: float = typer.Option(8.0, min=1.0, help="BLE scan timeout when falling back to discovery."),
+    response: bool = typer.Option(False, "--response/--no-response", help="Use response writes for diagnostics."),
 ) -> None:
     try:
-        asyncio.run(_push(name=name, address=address, pace=pace, max_age_s=max_age, scan_timeout=scan_timeout))
+        asyncio.run(
+            _push(
+                name=name,
+                address=address,
+                pace=pace,
+                max_age_s=max_age,
+                scan_timeout=scan_timeout,
+                response=response,
+            )
+        )
     except (BleakError, RuntimeError) as exc:
         logger.error(f"keypoint-push failed: {exc}")
         raise typer.Exit(code=1) from exc
