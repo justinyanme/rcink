@@ -22,8 +22,9 @@ RESET_AT = NOW_TS + 90 * 60
 
 
 def _renders(card) -> list[str]:
-    """Every builder output must pass the wire validator; return the 8 fields."""
-    return render_frame(card, now=NOW).decode("ascii").split("|")
+    """Every builder output must pass the wire validator; return the 10 fields
+    (KP2, IDX, TOTAL, ICON, L1..L6)."""
+    return render_frame(card, now=NOW, index=0, total=1).decode("ascii").split("|")
 
 
 # --- claude ---
@@ -45,11 +46,11 @@ def make_claude() -> ClaudeUsage:
 def test_claude_card_renders():
     card = claude_card(make_claude(), now=NOW)
     fields = _renders(card)
-    assert fields[1] == "CLAUDE"
-    assert fields[2] == "CLAUDE  "
-    assert fields[3] == "5H   76%"
-    assert fields[5] == "7D   88%"
-    assert fields[6] == "RST  90M"  # live countdown from the epoch, not "2h 14m"
+    assert fields[3] == "CLAUDE"
+    assert fields[4] == "CLAUDE  "
+    assert fields[5] == "5H   76%"
+    assert fields[7] == "7D   88%"
+    assert fields[8] == "RST  90M"  # live countdown from the epoch, not "2h 14m"
     assert card.data_ts == NOW_TS
 
 
@@ -57,7 +58,7 @@ def test_claude_card_handles_missing_pct_and_reset():
     usage = ClaudeUsage(None, None, None, None, "", "", five_hour_reset_at=None)
     card = claude_card(usage, now=NOW)
     fields = _renders(card)
-    assert fields[3] == "5H    0%"
+    assert fields[5] == "5H    0%"
     # No epoch -> drop the RST row rather than render a fake countdown.
     assert "RST" not in frame_text(fields)
     assert card.rows  # still renderable
@@ -86,7 +87,7 @@ def make_codex() -> CodexUsage:
 
 def test_codex_card_renders():
     fields = _renders(codex_card(make_codex(), now=NOW))
-    assert fields[1] == "CODEX"
-    assert fields[3] == "5H   42%"
-    assert fields[5] == "7D   68%"
-    assert fields[6] == "RST  90M"
+    assert fields[3] == "CODEX"
+    assert fields[5] == "5H   42%"
+    assert fields[7] == "7D   68%"
+    assert fields[8] == "RST  90M"

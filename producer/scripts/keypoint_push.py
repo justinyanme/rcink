@@ -1,17 +1,18 @@
-"""Rotate the cached KP2 cards onto the KEYPOINT keyboard display over BLE.
+"""Push the cached KP2 cards as a deck onto the KEYPOINT keyboard over BLE.
 
 One-shot, stateless: load the card cache (written by the page fetchers), drop
-stale cards, then write each fresh card to the keyboard's GATT characteristic,
-dwelling a few seconds between cards. The launchd job re-runs this every minute,
-so repeated passes produce a continuous rotation without any persistent index.
+stale cards, then write the whole deck to the keyboard's GATT characteristic
+(each card stamped with its page index and the deck total). The firmware stores
+the deck and the keyboard's left keys page through it; the launchd job re-runs
+this every minute to refresh data and live countdowns.
 
 Countdowns (Claude/Codex reset) are rendered here, at push time, so they stay
-live between the 15-minute fetches. The rotation order is fixed (keypoint.CARD_ORDER).
+live between the 15-minute fetches. The deck order is fixed (keypoint.CARD_ORDER).
 
 Run manually:
-    uv run keypoint-push                 # one rotation, then exit
-    uv run keypoint-push --dwell 6        # faster cycling
-    uv run keypoint-push --address <UUID> # skip discovery
+    uv run keypoint-push                   # push the deck once, then exit
+    uv run keypoint-push --pace 0          # no inter-write delay
+    uv run keypoint-push --address <UUID>  # skip discovery
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ async def _resolve_device(name: str, address: str | None, scan_timeout: float) -
     return device
 
 
-async def _push(name: str, address: str | None, dwell: float, max_age_s: int, scan_timeout: float) -> None:
+async def _push(name: str, address: str | None, pace: float, max_age_s: int, scan_timeout: float) -> None:
     now = dt.datetime.now().astimezone()
     frames = frames_to_push(now=now, max_age_s=max_age_s)
     if not frames:
@@ -78,24 +79,25 @@ async def _push(name: str, address: str | None, dwell: float, max_age_s: int, sc
 
     target = await _resolve_device(name=name, address=address, scan_timeout=scan_timeout)
     async with BleakClient(target, services=[SERVICE_UUID]) as client:
-        for index, frame in enumerate(frames):
+        # Push the whole deck; the firmware stores it and owns page navigation.
+        for frame in frames:
             await client.write_gatt_char(CHAR_UUID, frame, response=False)
             logger.info(f"pushed {frame.decode('ascii')}")
-            if index < len(frames) - 1:
-                await asyncio.sleep(dwell)
-    logger.success(f"rotation complete: {len(frames)} card(s)")
+            if pace:
+                await asyncio.sleep(pace)  # brief pacing for write-without-response reliability
+    logger.success(f"pushed deck: {len(frames)} card(s)")
 
 
 @app.command()
 def run(
     name: str = typer.Option("KEYPOINT", help="BLE device name when --address is unset."),
     address: str | None = typer.Option(None, help="BLE address/UUID to target directly (skips discovery)."),
-    dwell: float = typer.Option(12.0, min=0.5, help="Seconds to show each card before the next."),
+    pace: float = typer.Option(0.1, min=0.0, help="Seconds between back-to-back deck writes."),
     max_age: int = typer.Option(DEFAULT_MAX_AGE_S, min=60, help="Drop cards older than this many seconds."),
     scan_timeout: float = typer.Option(8.0, min=1.0, help="BLE scan timeout when falling back to discovery."),
 ) -> None:
     try:
-        asyncio.run(_push(name=name, address=address, dwell=dwell, max_age_s=max_age, scan_timeout=scan_timeout))
+        asyncio.run(_push(name=name, address=address, pace=pace, max_age_s=max_age, scan_timeout=scan_timeout))
     except (BleakError, RuntimeError) as exc:
         logger.error(f"keypoint-push failed: {exc}")
         raise typer.Exit(code=1) from exc

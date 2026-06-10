@@ -29,7 +29,8 @@ PREFIX = "KP2"
 TEXT_LINE_COUNT = 6
 LINE_MAX = 8
 MAX_ROWS = 4  # rows[0] -> L2, rows[1:4] -> L4..L6
-FRAME_MAX_BYTES = 66
+PAGE_MAX = 8  # firmware deck capacity; idx/total are single decimal digits
+FRAME_MAX_BYTES = 70  # KP2|IDX|TOTAL|ICON|L1..L6 (was 66 before page fields)
 ICON_IDS = frozenset({"NONE", "SUN", "CLOUD", "RAIN", "TEMP", "WARN", "CODE", "TIME", "CODEX", "CLAUDE"})
 
 # Rotation order on the keyboard; unknown card ids sort after these, alphabetically.
@@ -104,9 +105,13 @@ def _render_row(row: Row, *, now_ts: int) -> str:
     return kv(row.label, value)
 
 
-def render_frame(card: Card, *, now: dt.datetime) -> bytes:
-    """Render a card to one full-screen KP2 frame, computing countdowns at
-    render time and stamping L3 with the card's data timestamp."""
+def render_frame(card: Card, *, now: dt.datetime, index: int, total: int) -> bytes:
+    """Render a card to one full-screen KP2 frame: KP2|IDX|TOTAL|ICON|L1..L6,
+    computing countdowns at render time and stamping L3 with the data timestamp."""
+    if not 1 <= total <= PAGE_MAX:
+        raise ValueError(f"total {total} out of range 1..{PAGE_MAX}")
+    if not 0 <= index < total:
+        raise ValueError(f"index {index} out of range for total {total}")
     if card.icon not in ICON_IDS:
         raise ValueError(f"unsupported icon {card.icon!r}; expected one of: {', '.join(sorted(ICON_IDS))}")
     if not 1 <= len(card.rows) <= MAX_ROWS:
@@ -118,7 +123,9 @@ def render_frame(card: Card, *, now: dt.datetime) -> bytes:
     data_time = dt.datetime.fromtimestamp(card.data_ts, tz=now.tzinfo).strftime("%H:%M")
     lines = [title(card.title), rendered[0], data_time, *rendered[1:]]
 
-    frame = "|".join([PREFIX, card.icon, *(_validate_line(line) for line in lines)]).encode("ascii")
+    frame = "|".join([PREFIX, str(index), str(total), card.icon, *(_validate_line(line) for line in lines)]).encode(
+        "ascii"
+    )
     if len(frame) > FRAME_MAX_BYTES:
         raise ValueError(f"frame is {len(frame)} bytes, max {FRAME_MAX_BYTES}")
     return frame
@@ -131,7 +138,7 @@ def cache_dir() -> Path:
 def write_card(card: Card) -> Path:
     """Validate + atomically publish one card (render dry-run fails fast at
     fetch time, so the pusher never sees an unrenderable card)."""
-    render_frame(card, now=dt.datetime.now().astimezone())
+    render_frame(card, now=dt.datetime.now().astimezone(), index=0, total=1)
 
     payload = {k: v for k, v in asdict(card).items() if v is not None}
     payload["rows"] = [{k: v for k, v in row.items() if v is not None} for row in payload["rows"]]
@@ -174,7 +181,9 @@ def fresh_cards(cards: list[Card], *, now: dt.datetime, max_age_s: int) -> list[
 
 
 def frames_to_push(*, now: dt.datetime, max_age_s: int) -> list[bytes]:
-    """Load the cache, drop stale cards, and render each survivor to a KP2
-    frame in rotation order — everything the pusher needs except the BLE write."""
-    cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)
-    return [render_frame(card, now=now) for card in cards]
+    """Load the cache, drop stale cards, and render the whole deck — each card
+    stamped with its page index and the deck total (capped at PAGE_MAX). The
+    firmware stores the deck; the keyboard's left keys page through it."""
+    cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[:PAGE_MAX]
+    total = len(cards)
+    return [render_frame(card, now=now, index=i, total=total) for i, card in enumerate(cards)]

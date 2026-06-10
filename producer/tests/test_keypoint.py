@@ -80,48 +80,65 @@ def test_fmt_countdown(seconds, expected):
 
 
 def test_render_frame_layout():
-    frame = render_frame(make_card(), now=NOW)
+    frame = render_frame(make_card(), now=NOW, index=0, total=1)
     fields = frame.decode("ascii").split("|")
     assert fields[0] == "KP2"
-    assert fields[1] == "CLAUDE"
-    assert fields[2] == "CLAUDE  "  # L1 title, left-anchored
-    assert fields[3] == "5H   76%"  # L2 = rows[0] key metric
-    assert fields[4] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
-    assert fields[5] == "WK   88%"
-    assert fields[6] == "RST  90M"  # countdown computed at render time, not fetch time
-    assert fields[7] == "OP   18%"
-    assert len(frame) <= 66
+    assert fields[1] == "0"  # IDX (0-based page)
+    assert fields[2] == "1"  # TOTAL (deck size)
+    assert fields[3] == "CLAUDE"  # icon
+    assert fields[4] == "CLAUDE  "  # L1 title, left-anchored
+    assert fields[5] == "5H   76%"  # L2 = rows[0] key metric
+    assert fields[6] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
+    assert fields[7] == "WK   88%"
+    assert fields[8] == "RST  90M"  # countdown computed at render time, not fetch time
+    assert fields[9] == "OP   18%"
+    assert len(frame) <= 70
+
+
+def test_render_frame_carries_idx_total():
+    fields = render_frame(make_card(), now=NOW, index=2, total=5).decode("ascii").split("|")
+    assert (fields[1], fields[2], fields[3]) == ("2", "5", "CLAUDE")
+    assert fields[4] == "CLAUDE  "  # icon now precedes L1 by two page fields
+
+
+def test_render_frame_rejects_bad_page_args():
+    with pytest.raises(ValueError, match="index"):
+        render_frame(make_card(), now=NOW, index=3, total=3)  # idx must be < total
+    with pytest.raises(ValueError, match="total"):
+        render_frame(make_card(), now=NOW, index=0, total=0)  # total must be >= 1
+    with pytest.raises(ValueError, match="total"):
+        render_frame(make_card(), now=NOW, index=0, total=9)  # total must be <= PAGE_MAX
 
 
 def test_render_frame_l3_is_data_ts_not_now():
     card = make_card(data_ts=NOW_TS - 3600)
-    frame = render_frame(card, now=NOW)
-    l3 = frame.decode("ascii").split("|")[4]
+    frame = render_frame(card, now=NOW, index=0, total=1)
+    l3 = frame.decode("ascii").split("|")[6]
     assert l3 == (NOW - dt.timedelta(hours=1)).strftime("%H:%M")
 
 
 def test_render_frame_pads_missing_rows_with_empty_lines():
     card = make_card(rows=[Row("EV", "3")])
-    fields = render_frame(card, now=NOW).decode("ascii").split("|")
-    assert len(fields) == 8  # KP2 + ICON + 6 lines
-    assert fields[5] == fields[6] == fields[7] == ""
+    fields = render_frame(card, now=NOW, index=0, total=1).decode("ascii").split("|")
+    assert len(fields) == 10  # KP2 + IDX + TOTAL + ICON + 6 lines
+    assert fields[7] == fields[8] == fields[9] == ""
 
 
 def test_render_frame_rejects_bad_icon():
     with pytest.raises(ValueError, match="icon"):
-        render_frame(make_card(icon="WEATHER"), now=NOW)
+        render_frame(make_card(icon="WEATHER"), now=NOW, index=0, total=1)
 
 
 def test_render_frame_rejects_unsupported_chars():
     with pytest.raises(ValueError):
-        render_frame(make_card(title="日历"), now=NOW)
+        render_frame(make_card(title="日历"), now=NOW, index=0, total=1)
     with pytest.raises(ValueError):
-        render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW)
+        render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW, index=0, total=1)
 
 
 def test_render_frame_rejects_too_many_rows():
     with pytest.raises(ValueError, match="rows"):
-        render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW)
+        render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW, index=0, total=1)
 
 
 # --- card cache ---
@@ -193,12 +210,21 @@ def test_frames_to_push_renders_fresh_cards_in_order(cache):
     write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "2")]))
     write_card(make_card(id="claude"))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
-    icons = [f.decode("ascii").split("|")[1] for f in frames]
+    icons = [f.decode("ascii").split("|")[3] for f in frames]  # ICON now after IDX/TOTAL
     assert icons == ["CLAUDE", "NONE"]  # rotation order, not write order
+
+
+def test_frames_to_push_stamps_index_and_total(cache):
+    write_card(make_card(id="claude"))
+    write_card(make_card(id="codex", icon="CODEX", title="CODEX"))
+    frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
+    parsed = [f.decode("ascii").split("|") for f in frames]
+    # Whole deck pushed: each card stamped with its page index and the deck total.
+    assert [(p[1], p[2], p[3]) for p in parsed] == [("0", "2", "CLAUDE"), ("1", "2", "CODEX")]
 
 
 def test_frames_to_push_drops_stale(cache):
     write_card(make_card(id="claude"))
     write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "1")], data_ts=NOW_TS - 7 * 3600))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
-    assert [f.decode("ascii").split("|")[1] for f in frames] == ["CLAUDE"]
+    assert [f.decode("ascii").split("|")[3] for f in frames] == ["CLAUDE"]
