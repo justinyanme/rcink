@@ -55,7 +55,7 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
 
   out.clear();
   if (!parse_axiom_envelope(doc.as<JsonVariantConst>(), out)) {
-    Serial.println("[axiom] no matches[] in response");
+    Serial.println("[axiom] no usable envelope in response");
     return false;
   }
   // 0 here also covers the empty-window all-null row (see proto/envelope.h);

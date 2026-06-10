@@ -66,6 +66,7 @@ bool refetch_now() {
   const bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (!ok) {
     Serial.println("[main] fetch failed; keeping cache");
+    render_error(g_state.pages.empty() ? "fetch failed - no cache" : "fetch failed - cache kept");
     return false;
   }
 
