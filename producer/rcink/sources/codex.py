@@ -24,6 +24,7 @@ class CodexUsage:
     secondary_reset: str
     secondary_window_min: int | None
     credits_dollars: float | None
+    primary_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
     plan: str = "Plus"
 
 
@@ -107,6 +108,16 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
     def reset(block: dict) -> str:
         return _reset_from_seconds(block.get("reset_after_seconds"))
 
+    def reset_at(block: dict) -> int | None:
+        # Prefer the absolute epoch the API gives; fall back to now + relative.
+        epoch = block.get("reset_at")
+        if isinstance(epoch, (int, float)):
+            return int(epoch)
+        secs = block.get("reset_after_seconds")
+        if isinstance(secs, (int, float)):
+            return int(dt.datetime.now(dt.timezone.utc).timestamp() + secs)
+        return None
+
     def window_min(block: dict) -> int | None:
         secs = block.get("limit_window_seconds")
         return int(secs) // 60 if isinstance(secs, (int, float)) else None
@@ -136,5 +147,6 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
         secondary_reset=reset(secondary),
         secondary_window_min=window_min(secondary),
         credits_dollars=dollars,
+        primary_reset_at=reset_at(primary),
         plan=plan,
     )

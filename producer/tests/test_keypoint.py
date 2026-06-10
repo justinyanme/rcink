@@ -1,0 +1,203 @@
+"""KP2 keypoint live-card protocol: format helpers, card cache, frame render.
+
+The wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py:
+ASCII "KP2|ICON|L1|..|L6", 6 lines x 8 chars (0x20..0x7E, no '|'), <=66 bytes.
+"""
+
+import datetime as dt
+import json
+
+import pytest
+from rcink.keypoint import (
+    CARD_ORDER,
+    LINE_MAX,
+    Card,
+    Row,
+    fmt_countdown,
+    frames_to_push,
+    fresh_cards,
+    kv,
+    load_cards,
+    render_frame,
+    title,
+    write_card,
+)
+
+NOW = dt.datetime(2026, 6, 10, 12, 34, 56).astimezone()
+NOW_TS = int(NOW.timestamp())
+
+
+def make_card(**over) -> Card:
+    base = dict(
+        id="claude",
+        icon="CLAUDE",
+        title="CLAUDE",
+        rows=[Row("5H", "76%"), Row("WK", "88%"), Row("RST", until=NOW_TS + 90 * 60), Row("OP", "18%")],
+        data_ts=NOW_TS - 600,  # fetched 10 min ago
+    )
+    base.update(over)
+    return Card(**base)
+
+
+# --- format helpers ---
+
+
+def test_kv_pads_to_full_grid_line():
+    assert kv("HUM", "40%") == "HUM  40%"
+    assert kv("5H", "100%") == "5H  100%"
+
+
+def test_kv_rejects_overflow():
+    with pytest.raises(ValueError):
+        kv("LABEL", "VALU")  # 9 chars, no gap possible
+
+
+def test_title_left_anchors():
+    assert title("CAL") == "CAL     "
+    with pytest.raises(ValueError):
+        title("TOOLONGTITLE")
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (-5, "NOW"),
+        (0, "NOW"),
+        (59, "0M"),
+        (90 * 60, "90M"),
+        (99 * 60 + 59, "99M"),
+        (100 * 60, "1H"),
+        (47 * 3600, "47H"),
+        (48 * 3600, "2D"),
+        (9 * 86400, "9D"),
+    ],
+)
+def test_fmt_countdown(seconds, expected):
+    assert fmt_countdown(seconds) == expected
+
+
+# --- frame rendering ---
+
+
+def test_render_frame_layout():
+    frame = render_frame(make_card(), now=NOW)
+    fields = frame.decode("ascii").split("|")
+    assert fields[0] == "KP2"
+    assert fields[1] == "CLAUDE"
+    assert fields[2] == "CLAUDE  "  # L1 title, left-anchored
+    assert fields[3] == "5H   76%"  # L2 = rows[0] key metric
+    assert fields[4] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
+    assert fields[5] == "WK   88%"
+    assert fields[6] == "RST  90M"  # countdown computed at render time, not fetch time
+    assert fields[7] == "OP   18%"
+    assert len(frame) <= 66
+
+
+def test_render_frame_l3_is_data_ts_not_now():
+    card = make_card(data_ts=NOW_TS - 3600)
+    frame = render_frame(card, now=NOW)
+    l3 = frame.decode("ascii").split("|")[4]
+    assert l3 == (NOW - dt.timedelta(hours=1)).strftime("%H:%M")
+
+
+def test_render_frame_pads_missing_rows_with_empty_lines():
+    card = make_card(rows=[Row("EV", "3")])
+    fields = render_frame(card, now=NOW).decode("ascii").split("|")
+    assert len(fields) == 8  # KP2 + ICON + 6 lines
+    assert fields[5] == fields[6] == fields[7] == ""
+
+
+def test_render_frame_rejects_bad_icon():
+    with pytest.raises(ValueError, match="icon"):
+        render_frame(make_card(icon="WEATHER"), now=NOW)
+
+
+def test_render_frame_rejects_unsupported_chars():
+    with pytest.raises(ValueError):
+        render_frame(make_card(title="日历"), now=NOW)
+    with pytest.raises(ValueError):
+        render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW)
+
+
+def test_render_frame_rejects_too_many_rows():
+    with pytest.raises(ValueError, match="rows"):
+        render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW)
+
+
+# --- card cache ---
+
+
+@pytest.fixture
+def cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("RCINK_KEYPOINT_CACHE", str(tmp_path))
+    return tmp_path
+
+
+def test_write_card_roundtrip(cache):
+    card = make_card()
+    write_card(card)
+    (loaded,) = load_cards()
+    assert loaded == card
+
+
+def test_write_card_is_one_file_per_card(cache):
+    write_card(make_card())
+    write_card(make_card(id="codex", icon="CODEX", title="CODEX"))
+    assert {p.name for p in cache.iterdir()} == {"claude.json", "codex.json"}
+
+
+def test_write_card_fails_fast_on_invalid_content(cache):
+    with pytest.raises(ValueError):
+        write_card(make_card(title="TOOLONGTITLE"))
+    assert not list(cache.iterdir())
+
+
+def test_load_cards_orders_by_rotation(cache):
+    for id_ in ("todo", "claude", "github"):
+        write_card(make_card(id=id_, icon="NONE"))
+    assert [c.id for c in load_cards()] == ["claude", "github", "todo"]
+    assert CARD_ORDER == ("claude", "codex", "github", "calendar", "todo")
+
+
+def test_load_cards_skips_corrupt_file(cache):
+    write_card(make_card())
+    (cache / "junk.json").write_text("{not json")
+    (loaded,) = load_cards()
+    assert loaded.id == "claude"
+
+
+def test_fresh_cards_drops_stale():
+    fresh = make_card()
+    stale = make_card(id="todo", data_ts=NOW_TS - 7 * 3600)
+    assert fresh_cards([fresh, stale], now=NOW, max_age_s=6 * 3600) == [fresh]
+
+
+def test_card_json_is_plain_and_compact(cache):
+    """On-disk shape stays greppable: top-level scalars + rows list."""
+    write_card(make_card())
+    data = json.loads((cache / "claude.json").read_text())
+    assert data["icon"] == "CLAUDE"
+    assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 90 * 60}
+    assert data["rows"][0] == {"label": "5H", "value": "76%"}
+
+
+def test_line_max_matches_kp2_contract():
+    assert LINE_MAX == 8
+
+
+# --- frames_to_push (load + freshness + render glue the pusher consumes) ---
+
+
+def test_frames_to_push_renders_fresh_cards_in_order(cache):
+    write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "2")]))
+    write_card(make_card(id="claude"))
+    frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
+    icons = [f.decode("ascii").split("|")[1] for f in frames]
+    assert icons == ["CLAUDE", "NONE"]  # rotation order, not write order
+
+
+def test_frames_to_push_drops_stale(cache):
+    write_card(make_card(id="claude"))
+    write_card(make_card(id="todo", icon="NONE", rows=[Row("DUE", "1")], data_ts=NOW_TS - 7 * 3600))
+    frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
+    assert [f.decode("ascii").split("|")[1] for f in frames] == ["CLAUDE"]

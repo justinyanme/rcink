@@ -63,6 +63,9 @@ def test_fresh_auth_skips_refresh(httpx_mock, tmp_path):
     assert usage.credits_dollars == 18.42
     assert usage.primary_window_min == 300
     assert usage.secondary_window_min == 10080
+    # Relative reset_after_seconds (7200) folded into an absolute epoch ~2h out.
+    assert usage.primary_reset_at is not None
+    assert 7100 <= usage.primary_reset_at - int(dt.datetime.now(dt.timezone.utc).timestamp()) <= 7200
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer old-access"
 

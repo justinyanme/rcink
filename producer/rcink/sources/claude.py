@@ -26,6 +26,7 @@ class ClaudeUsage:
     sonnet_pct: float | None
     five_hour_reset: str  # human-formatted countdown e.g. "2h 14m"
     seven_day_reset: str
+    five_hour_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
     plan: str = "Max"
 
 
@@ -151,6 +152,12 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
         v = data.get(key)
         return _reset_text(v.get("resets_at")) if isinstance(v, dict) else ""
 
+    def reset_at(key: str) -> int | None:
+        v = data.get(key)
+        if not isinstance(v, dict) or not v.get("resets_at"):
+            return None
+        return int(dt.datetime.fromisoformat(v["resets_at"].replace("Z", "+00:00")).timestamp())
+
     return ClaudeUsage(
         five_hour_pct=pct("five_hour"),
         seven_day_pct=pct("seven_day"),
@@ -158,4 +165,5 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
         sonnet_pct=pct("seven_day_sonnet"),
         five_hour_reset=reset("five_hour"),
         seven_day_reset=reset("seven_day"),
+        five_hour_reset_at=reset_at("five_hour"),
     )

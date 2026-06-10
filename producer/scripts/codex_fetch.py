@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import typer
 from loguru import logger
 from rcink.axiom import ingest, ingest_metric, sparkline_24h
+from rcink.keypoint import write_card
+from rcink.keypoint_cards import codex_card
 from rcink.pages.codex import build_codex_page
 from rcink.sources.codex import fetch_codex_usage
 
@@ -27,6 +31,8 @@ def run() -> None:
             "secondary_pct": usage.secondary_pct or 0,
         },
     )
+
+    write_card(codex_card(usage, now=dt.datetime.now().astimezone()))
 
 
 if __name__ == "__main__":

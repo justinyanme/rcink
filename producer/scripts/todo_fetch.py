@@ -7,6 +7,8 @@ import datetime as dt
 import typer
 from loguru import logger
 from rcink.axiom import ingest
+from rcink.keypoint import write_card
+from rcink.keypoint_cards import todo_card
 from rcink.pages.todo import build_todo_page
 from rcink.sources.reminders import fetch_todays_reminders
 
@@ -22,6 +24,8 @@ def run() -> None:
     )
     page = build_todo_page(rem, now=now)
     ingest(id="todo", layout=page, order=40)
+
+    write_card(todo_card(rem, now=now))
 
 
 if __name__ == "__main__":

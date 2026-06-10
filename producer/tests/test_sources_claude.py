@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 import time
 
@@ -57,6 +58,8 @@ def test_fresh_token_used_directly(httpx_mock, tmp_path):
     assert usage.seven_day_pct == 68.0
     assert usage.opus_pct == 18.0
     assert usage.sonnet_pct == 24.0
+    # Absolute reset epoch parsed for the keypoint live countdown.
+    assert usage.five_hour_reset_at == int(dt.datetime(2026, 5, 17, 20, 0, tzinfo=dt.timezone.utc).timestamp())
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer sk-ant-oat01-fresh"
     assert req.headers["anthropic-beta"] == "oauth-2025-04-20"

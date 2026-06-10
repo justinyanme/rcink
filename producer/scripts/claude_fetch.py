@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import typer
 from loguru import logger
 from rcink.axiom import ingest, ingest_metric, sparkline_24h
+from rcink.keypoint import write_card
+from rcink.keypoint_cards import claude_card
 from rcink.pages.claude import build_claude_page
 from rcink.sources.claude import fetch_claude_usage
 
@@ -27,6 +31,8 @@ def run() -> None:
             "seven_day_pct": usage.seven_day_pct or 0,
         },
     )
+
+    write_card(claude_card(usage, now=dt.datetime.now().astimezone()))
 
 
 if __name__ == "__main__":
