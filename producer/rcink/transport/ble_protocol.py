@@ -49,9 +49,7 @@ def build_begin(
     if not 0 <= dsl_format <= 0xFF:
         raise ValueError(f"dsl_format out of u8 range: {dsl_format}")
     return (
-        bytes([XFER_BEGIN])
-        + struct.pack("<IHHIB", data_ver, total_len, total_chunks, crc32, dsl_format)
-        + b"\x00" * 6
+        bytes([XFER_BEGIN]) + struct.pack("<IHHIB", data_ver, total_len, total_chunks, crc32, dsl_format) + b"\x00" * 6
     )
 
 

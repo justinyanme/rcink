@@ -55,8 +55,6 @@ def chunk_payload(payload: bytes, *, max_payload: int) -> list[tuple[int, bytes]
     out: list[tuple[int, bytes]] = []
     for seq, off in enumerate(range(0, len(payload), max_payload)):
         if seq >= MAX_CHUNKS:
-            raise ValueError(
-                f"too many chunks: payload {len(payload)} B / {max_payload} B exceeds {MAX_CHUNKS}"
-            )
+            raise ValueError(f"too many chunks: payload {len(payload)} B / {max_payload} B exceeds {MAX_CHUNKS}")
         out.append((seq, payload[off : off + max_payload]))
     return out

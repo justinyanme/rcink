@@ -58,8 +58,8 @@ class Transport:
         raw = bytes(await self._client.read_gatt_char(CHAR_META))
         if len(raw) < 19:
             raise ValueError(f"META must be at least 19 bytes, got {len(raw)}")
-        hw_id, fw_ver, epd_w, epd_h, epd_bpp, palette_mask, flash_capacity_b, mtu_pref = (
-            struct.unpack_from("<HIHHBHIH", raw)
+        hw_id, fw_ver, epd_w, epd_h, epd_bpp, palette_mask, flash_capacity_b, mtu_pref = struct.unpack_from(
+            "<HIHHBHIH", raw
         )
         return Meta(
             hw_id=hw_id,
