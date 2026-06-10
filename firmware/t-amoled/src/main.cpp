@@ -8,6 +8,7 @@
 #include "display/pins_config.h"
 #include "net/axiom.h"
 #include "net/wifi.h"
+#include "power/refresh_schedule.h"
 #include "proto/parser.h"
 #include "render/page.h"
 #include "sense/battery.h"
@@ -17,6 +18,9 @@ namespace rcpaper {
 
 DeviceState g_state;
 BatteryReading g_battery;
+static uint32_t g_next_auto_refresh_ms = 0;
+
+static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
 
 static void apply_local_tz() {
   setenv("TZ", LOCAL_TZ, 1);
@@ -146,9 +150,22 @@ void prev_page() {
   render_current();
 }
 
+void schedule_next_auto_refresh(uint32_t now_ms) {
+  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, FETCH_INTERVAL_SEC);
+  Serial.printf("[auto] next refresh in %u s\n", (unsigned)FETCH_INTERVAL_SEC);
+}
+
 void do_refresh() {
   if (refetch_now()) render_current();
   if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  schedule_next_auto_refresh(millis());
+}
+
+void auto_refresh_poll() {
+  const uint32_t now = millis();
+  if (!refresh_due_ms(now, g_next_auto_refresh_ms)) return;
+  Serial.println("[auto] refresh interval elapsed");
+  do_refresh();
 }
 
 void console_help() {
@@ -296,6 +313,7 @@ void setup() {
     render_current();
   }
   console_help();
+  schedule_next_auto_refresh(millis());
   Serial.println("[console] ready");
 }
 
@@ -306,5 +324,6 @@ void loop() {
     console_dispatch((char)c);
   }
   buttons_poll();
+  auto_refresh_poll();
   delay(20);
 }

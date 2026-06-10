@@ -9,6 +9,9 @@ Firmware target for the LILYGO T-Display-S3 AMOLED 1.91" board:
 
 This target mirrors the PaperColor Axiom flow: Wi-Fi → Axiom latest page query
 → local NVS page cache → button navigation → render current `layout_json`.
+It stays awake for the AMOLED panel and auto-refetches every
+`FETCH_INTERVAL_SEC` seconds (default 1800) instead of deep-sleeping like
+PaperColor.
 
 CJK text renders via U8g2_for_TFT_eSPI + a baked WenQuanYi 16px GB2312 font
 (`src/render/fonts/wqy16_gb2312.h`); Latin text keeps TFT_eSPI's built-in fonts.
@@ -49,8 +52,8 @@ pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
 
 | Gesture | Action |
 |---|---|
-| GPIO0 tap | previous page |
-| GPIO21 tap | next page |
+| GPIO0 tap | next page |
+| GPIO21 tap | previous page |
 | either, hold ≥800 ms | refetch from Axiom + redraw |
 
 GPIO0 doubles as BOOT — safe as a runtime button; it only enters download mode
