@@ -15,9 +15,9 @@ struct PageRecord {
   std::string layout_json;   // raw JSON substring; parsed on-demand by the renderer.
 };
 
-// Parse the legacy `matches[]` envelope into `out` (appended in order).
-// Returns false when the envelope is malformed (no matches[] — e.g. Axiom
-// answered with the buckets/series aggregation shape instead).
+// Parse the legacy Axiom envelope into `out`. Supports both direct `matches[]`
+// rows and `buckets.series[].groups[]` rows from `summarize arg_max(...)`.
+// Returns false when neither envelope shape is present.
 //
 // Rows with an empty/null id or layout_json are skipped: when the query's
 // `ago(1h)` window is empty (producer outage), `summarize arg_max(...)`

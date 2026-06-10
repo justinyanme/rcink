@@ -81,9 +81,37 @@ void test_empty_matches_is_ok_with_zero_pages() {
   TEST_ASSERT_EQUAL(0, out.size());
 }
 
+void test_argmax_bucket_groups_parse_and_sort_by_order() {
+  std::vector<PageRecord> out;
+  bool ok = parse_str(R"({
+    "matches": [],
+    "buckets": {
+      "series": [{
+        "groups": [
+          {"group": {"id": "github"},
+           "aggregations": [{"op": "_tmp4", "value": "2026-06-10T04:41:14Z",
+             "data": {"order": 50, "data_ts": 1781066474,
+                      "layout_json": "{\"type\":\"text\",\"value\":\"G\"}"}}]},
+          {"group": {"id": "claude"},
+           "aggregations": [{"op": "_tmp4", "value": "2026-06-10T04:41:05Z",
+             "data": {"order": 10, "data_ts": 1781066465,
+                      "layout_json": "{\"type\":\"text\",\"value\":\"C\"}"}}]}
+        ]
+      }]
+    }
+  })", out);
+  TEST_ASSERT_TRUE(ok);
+  TEST_ASSERT_EQUAL(2, out.size());
+  TEST_ASSERT_EQUAL_STRING("claude", out[0].id.c_str());
+  TEST_ASSERT_EQUAL(10, out[0].order);
+  TEST_ASSERT_EQUAL_UINT64(1781066465ULL, out[0].data_ts);
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"text\",\"value\":\"C\"}", out[0].layout_json.c_str());
+  TEST_ASSERT_EQUAL_STRING("github", out[1].id.c_str());
+}
+
 void test_missing_matches_fails() {
   std::vector<PageRecord> out;
-  bool ok = parse_str(R"({"buckets": {"series": []}})", out);
+  bool ok = parse_str(R"({"format": "legacy"})", out);
   TEST_ASSERT_FALSE(ok);
   TEST_ASSERT_EQUAL(0, out.size());
 }
@@ -95,6 +123,7 @@ int main() {
   RUN_TEST(test_partial_null_row_skipped);
   RUN_TEST(test_null_data_row_skipped);
   RUN_TEST(test_empty_matches_is_ok_with_zero_pages);
+  RUN_TEST(test_argmax_bucket_groups_parse_and_sort_by_order);
   RUN_TEST(test_missing_matches_fails);
   return UNITY_END();
 }
