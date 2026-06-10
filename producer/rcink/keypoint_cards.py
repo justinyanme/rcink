@@ -4,9 +4,6 @@ Each builder turns one source's rich data into a renderable :class:`Card`:
 icon + 8-char title + up to 4 grid rows + the fetch timestamp. Reset rows use
 ``Row(until=epoch)`` so the keypoint-push job renders a live countdown instead
 of the frozen "2h 14m" string the e-ink page builders show.
-
-Calendar and reminder titles are Chinese and the KP2 font is ASCII-only, so
-those cards surface counts and the next event time, never the item text.
 """
 
 from __future__ import annotations
@@ -14,11 +11,9 @@ from __future__ import annotations
 import datetime as dt
 
 from rcink.keypoint import LINE_MAX, Card, Row
-from rcink.sources.calendar import TodaysCalendar
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
 from rcink.sources.github import GitHubActivity
-from rcink.sources.reminders import TodaysReminders
 
 
 def _pct(value: float | None) -> str:
@@ -63,26 +58,3 @@ def github_card(activity: GitHubActivity, *, now: dt.datetime) -> Card:
         Row("STK", f"{_count(activity.streak, _value_budget('STK', suffix='D'))}D"),
     ]
     return Card(id="github", icon="CODE", title="GITHUB", rows=rows, data_ts=int(now.timestamp()))
-
-
-def calendar_card(cal: TodaysCalendar, *, now: dt.datetime) -> Card:
-    rows = [Row("EV", _count(len(cal.events), _value_budget("EV")))]
-    upcoming = [e for e in cal.events if e.start > now]
-    if upcoming:
-        rows.append(Row("NXT", min(upcoming, key=lambda e: e.start).start.strftime("%H%M")))
-    return Card(id="calendar", icon="TIME", title="CAL", rows=rows, data_ts=int(now.timestamp()))
-
-
-def todo_card(rem: TodaysReminders, *, now: dt.datetime) -> Card:
-    overdue = any(item.due is not None and item.due < now for item in rem.items)
-    rows = [
-        Row("DUE", _count(len(rem.items), _value_budget("DUE"))),
-        Row("OPEN", _count(rem.incomplete_total, _value_budget("OPEN"))),
-    ]
-    return Card(
-        id="todo",
-        icon="WARN" if overdue else "NONE",
-        title="TODO",
-        rows=rows,
-        data_ts=int(now.timestamp()),
-    )

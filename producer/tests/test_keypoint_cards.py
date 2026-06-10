@@ -10,17 +10,13 @@ import datetime as dt
 
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
-    calendar_card,
     claude_card,
     codex_card,
     github_card,
-    todo_card,
 )
-from rcink.sources.calendar import CalEvent, TodaysCalendar
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
 from rcink.sources.github import GitHubActivity
-from rcink.sources.reminders import Reminder, TodaysReminders
 
 NOW = dt.datetime(2026, 6, 10, 12, 34, 0).astimezone()
 NOW_TS = int(NOW.timestamp())
@@ -139,67 +135,3 @@ def test_github_card_survives_multi_year_streak():
     card = github_card(GitHubActivity("rocry", 0, 0, 1500, 0, 0, []), now=NOW)
     fields = _renders(card)  # must not raise
     assert fields[6] == "STK  1KD"
-
-
-def test_todo_card_survives_huge_open_count():
-    """OPEN is a 4-char label -> 3-char value budget; 1000+ must compress."""
-    fields = _renders(todo_card(make_todo([], incomplete_total=1500), now=NOW))
-    assert fields[5] == "OPEN  1K"
-
-
-# --- calendar ---
-
-
-def _event(hour: int, title: str = "Meeting") -> CalEvent:
-    start = NOW.replace(hour=hour, minute=0, second=0, microsecond=0)
-    return CalEvent(start=start, end=start + dt.timedelta(hours=1), title=title, calendar="Work", is_all_day=False)
-
-
-def make_calendar(events: list[CalEvent]) -> TodaysCalendar:
-    return TodaysCalendar(today=NOW.date(), events=events, upcoming=[])
-
-
-def test_calendar_card_shows_count_and_next_time():
-    cal = make_calendar([_event(9), _event(15), _event(18)])
-    fields = _renders(calendar_card(cal, now=NOW))
-    assert fields[1] == "TIME"
-    assert fields[2] == "CAL     "
-    assert fields[3] == "EV     3"
-    assert fields[5] == "NXT 1500"  # first event starting after 12:34
-
-
-def test_calendar_card_no_events():
-    fields = _renders(calendar_card(make_calendar([]), now=NOW))
-    assert fields[3] == "EV     0"
-    # no NXT row when nothing is upcoming today
-    assert fields[5] == ""
-
-
-# --- todo ---
-
-
-def make_todo(items: list[Reminder], incomplete_total: int) -> TodaysReminders:
-    return TodaysReminders(list_name="Inbox", items=items, incomplete_total=incomplete_total)
-
-
-def _reminder(overdue: bool) -> Reminder:
-    due = NOW - dt.timedelta(hours=2) if overdue else NOW + dt.timedelta(hours=2)
-    return Reminder(title="买菜", due=due, updated=NOW, priority=0)
-
-
-def test_todo_card_due_and_open_counts():
-    rem = make_todo([_reminder(False), _reminder(False)], incomplete_total=12)
-    fields = _renders(todo_card(rem, now=NOW))
-    assert fields[2] == "TODO    "
-    assert fields[3] == "DUE    2"
-    assert fields[5] == "OPEN  12"
-
-
-def test_todo_card_warns_on_overdue():
-    rem = make_todo([_reminder(overdue=True)], incomplete_total=3)
-    assert todo_card(rem, now=NOW).icon == "WARN"
-
-
-def test_todo_card_no_warn_when_nothing_overdue():
-    rem = make_todo([_reminder(overdue=False)], incomplete_total=3)
-    assert todo_card(rem, now=NOW).icon == "NONE"

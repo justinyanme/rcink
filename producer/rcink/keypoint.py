@@ -33,7 +33,7 @@ FRAME_MAX_BYTES = 66
 ICON_IDS = frozenset({"NONE", "SUN", "CLOUD", "RAIN", "TEMP", "WARN", "CODE", "TIME", "CODEX", "CLAUDE"})
 
 # Rotation order on the keyboard; unknown card ids sort after these, alphabetically.
-CARD_ORDER = ("claude", "codex", "github", "calendar", "todo")
+CARD_ORDER = ("claude", "codex", "github")
 
 CACHE_ENV = "RCINK_KEYPOINT_CACHE"
 CACHE_DEFAULT = "~/.cache/rcink/keypoint"
