@@ -10,30 +10,13 @@ from __future__ import annotations
 
 import datetime as dt
 
-from rcink.keypoint import LINE_MAX, Card, Row
+from rcink.keypoint import Card, Row
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
-from rcink.sources.github import GitHubActivity
 
 
 def _pct(value: float | None) -> str:
     return f"{int(value or 0)}%"
-
-
-def _count(n: int, budget: int) -> str:
-    """Format a count into at most ``budget`` chars, compressing with a K/M
-    suffix as needed (a multi-year streak or a 1000+ todo backlog must not
-    overflow the grid and crash the unattended fetcher via kv())."""
-    for value in (str(n), f"{n // 1000}K", f"{n // 1_000_000}M"):
-        if len(value) <= budget:
-            return value
-    return "9" * budget  # absurd magnitude: clamp rather than overflow
-
-
-def _value_budget(label: str, *, suffix: str = "") -> int:
-    """Chars left for a value beside ``label`` on one 8-char line (kv needs a
-    1-space gap), minus any fixed suffix the value carries."""
-    return LINE_MAX - 1 - len(label) - len(suffix)
 
 
 def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
@@ -49,12 +32,3 @@ def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
     if usage.primary_reset_at is not None:
         rows.append(Row("RST", until=usage.primary_reset_at))
     return Card(id="codex", icon="CODEX", title="CODEX", rows=rows, data_ts=int(now.timestamp()))
-
-
-def github_card(activity: GitHubActivity, *, now: dt.datetime) -> Card:
-    rows = [
-        Row("TDY", _count(activity.today_commits, _value_budget("TDY"))),
-        Row("WK", _count(activity.week_commits, _value_budget("WK"))),
-        Row("STK", f"{_count(activity.streak, _value_budget('STK', suffix='D'))}D"),
-    ]
-    return Card(id="github", icon="CODE", title="GITHUB", rows=rows, data_ts=int(now.timestamp()))

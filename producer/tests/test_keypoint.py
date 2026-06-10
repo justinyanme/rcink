@@ -157,7 +157,7 @@ def test_load_cards_orders_by_rotation(cache):
     for id_ in ("todo", "claude", "github"):
         write_card(make_card(id=id_, icon="NONE"))
     assert [c.id for c in load_cards()] == ["claude", "github", "todo"]
-    assert CARD_ORDER == ("claude", "codex", "github")
+    assert CARD_ORDER == ("claude", "codex")
 
 
 def test_load_cards_skips_corrupt_file(cache):

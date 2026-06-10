@@ -12,11 +12,9 @@ from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
     claude_card,
     codex_card,
-    github_card,
 )
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
-from rcink.sources.github import GitHubActivity
 
 NOW = dt.datetime(2026, 6, 10, 12, 34, 0).astimezone()
 NOW_TS = int(NOW.timestamp())
@@ -92,46 +90,3 @@ def test_codex_card_renders():
     assert fields[3] == "5H   42%"
     assert fields[5] == "7D   68%"
     assert fields[6] == "RST  90M"
-
-
-# --- github ---
-
-
-def make_github() -> GitHubActivity:
-    return GitHubActivity(
-        user="rocry",
-        today_commits=3,
-        week_commits=27,
-        streak=5,
-        total_14w=400,
-        total_year=1200,
-        contrib=[1, 2, 3],
-    )
-
-
-def test_github_card_renders():
-    fields = _renders(github_card(make_github(), now=NOW))
-    assert fields[1] == "CODE"
-    assert fields[2] == "GITHUB  "
-    assert fields[3] == "TDY    3"
-    assert fields[5] == "WK    27"
-    assert fields[6] == "STK   5D"
-
-
-def test_github_card_clamps_huge_counts_to_fit():
-    fields = _renders(github_card(make_github_big(), now=NOW))
-    # value column never overflows the 8-char line even at 4-5 digit counts
-    for line in fields[2:]:
-        assert len(line) <= 8
-
-
-def make_github_big() -> GitHubActivity:
-    return GitHubActivity("rocry", 1234, 56789, 365, 9999, 99999, [])
-
-
-def test_github_card_survives_multi_year_streak():
-    """STK label leaves a 4-char value budget; a 1000+ day streak must compress
-    (K-suffix) instead of crashing the unattended fetcher via kv()."""
-    card = github_card(GitHubActivity("rocry", 0, 0, 1500, 0, 0, []), now=NOW)
-    fields = _renders(card)  # must not raise
-    assert fields[6] == "STK  1KD"
