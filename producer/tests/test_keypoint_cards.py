@@ -51,7 +51,7 @@ def test_claude_card_renders():
     assert fields[4] == "CLAUDE"
     assert fields[5] == "2"  # ATTENTION: peak >= 75%
     assert fields[6] == "CLAUDE  "
-    assert fields[7] == "5H   90m"  # L2: 5H countdown to reset
+    assert fields[7] == "5H 1h30m"  # L2: 5H countdown to reset
     assert fields[8] == "[076]"  # L3: 5H bar at 76%
     assert fields[9] == "7D    4d"  # L4: 7D countdown to reset
     assert fields[10] == "[088]"  # L5: 7D bar at 88%
@@ -98,7 +98,7 @@ def test_codex_card_renders():
     fields = _renders(codex_card(make_codex(), now=NOW))
     assert fields[4] == "CODEX"
     assert fields[5] == "0"
-    assert fields[7] == "5H   90m"  # L2: primary countdown to reset
+    assert fields[7] == "5H 1h30m"  # L2: primary countdown to reset
     assert fields[8] == "[042]"  # L3: primary bar at 42%
     assert fields[9] == "7D    6d"  # L4: secondary countdown to reset
     assert fields[10] == "[068]"  # L5: secondary bar at 68%

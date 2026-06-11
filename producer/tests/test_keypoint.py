@@ -35,7 +35,7 @@ def make_card(**over) -> Card:
         icon="CLAUDE",
         title="CLAUDE",
         led_hint=0,
-        rows=[Row("5H", "76%"), Row("WK", "88%"), Row("RST", until=NOW_TS + 90 * 60), Row("OP", "18%")],
+        rows=[Row("5H", "76%"), Row("WK", "88%"), Row("RST", until=NOW_TS + 65 * 60), Row("OP", "18%")],
         data_ts=NOW_TS - 600,  # fetched 10 min ago
     )
     base.update(over)
@@ -67,9 +67,11 @@ def test_title_left_anchors():
         (-5, "NOW"),
         (0, "NOW"),
         (59, "0m"),
-        (90 * 60, "90m"),
-        (99 * 60 + 59, "99m"),
-        (100 * 60, "1h"),
+        (59 * 60, "59m"),
+        (60 * 60, "1h"),
+        (83 * 60, "1h23m"),
+        (9 * 3600 + 59 * 60, "9h59m"),
+        (10 * 3600, "10h"),
         (47 * 3600, "47h"),
         (48 * 3600, "2d"),
         (9 * 86400, "9d"),
@@ -95,7 +97,7 @@ def test_render_frame_layout():
     assert fields[7] == "5H   76%"  # L2 = rows[0] key metric
     assert fields[8] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
     assert fields[9] == "WK   88%"
-    assert fields[10] == "RST  90m"  # countdown computed at render time, not fetch time
+    assert fields[10] == "RST 1h5m"  # countdown computed at render time, not fetch time
     assert fields[11] == "OP   18%"
     assert len(frame) <= 75
 
@@ -240,7 +242,7 @@ def test_card_json_is_plain_and_compact(cache):
     data = json.loads((cache / "claude.json").read_text())
     assert data["icon"] == "CLAUDE"
     assert data["led_hint"] == 0
-    assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 90 * 60}
+    assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 65 * 60}
     assert data["rows"][0] == {"label": "5H", "value": "76%"}
 
 

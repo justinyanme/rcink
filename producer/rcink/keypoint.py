@@ -102,13 +102,16 @@ def title(text: str) -> str:
 
 
 def fmt_countdown(seconds: int) -> str:
-    """<=4-char countdown: NOW / 99m / 47h / 9d."""
+    """<=5-char countdown: NOW / 59m / 1h23m / 10h / 9d."""
     if seconds <= 0:
         return "NOW"
     minutes = seconds // 60
-    if minutes < 100:
+    if minutes < 60:
         return f"{minutes}m"
     hours = seconds // 3600
+    rem_min = (seconds % 3600) // 60
+    if hours < 10:
+        return f"{hours}h{rem_min}m" if rem_min else f"{hours}h"
     if hours < 48:
         return f"{hours}h"
     return f"{seconds // 86400}d"
