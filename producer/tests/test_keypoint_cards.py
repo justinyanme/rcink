@@ -18,7 +18,8 @@ from rcink.sources.codex import CodexUsage
 
 NOW = dt.datetime(2026, 6, 10, 12, 34, 0).astimezone()
 NOW_TS = int(NOW.timestamp())
-RESET_AT = NOW_TS + 90 * 60
+RESET_AT = NOW_TS + 90 * 60  # 5h window: 90 min remaining
+RESET_AT_7D = NOW_TS + 4 * 86400  # 7d window: 4 days remaining
 
 
 def _renders(card) -> list[str]:
@@ -39,6 +40,7 @@ def make_claude() -> ClaudeUsage:
         five_hour_reset="2h 14m",
         seven_day_reset="3d 5h",
         five_hour_reset_at=RESET_AT,
+        seven_day_reset_at=RESET_AT_7D,
         plan="Max",
     )
 
@@ -47,11 +49,13 @@ def test_claude_card_renders():
     card = claude_card(make_claude(), now=NOW)
     fields = _renders(card)
     assert fields[4] == "CLAUDE"
-    assert fields[5] == "2"
+    assert fields[5] == "2"  # ATTENTION: peak >= 75%
     assert fields[6] == "CLAUDE  "
-    assert fields[7] == "5H   76%"
-    assert fields[9] == "7D   88%"
-    assert fields[10] == "RST  90M"  # live countdown from the epoch, not "2h 14m"
+    assert fields[7] == "5H   90M"  # L2: 5H countdown to reset
+    assert fields[8] == "[076]"  # L3: 5H bar at 76%
+    assert fields[9] == "7D    4D"  # L4: 7D countdown to reset
+    assert fields[10] == "[088]"  # L5: 7D bar at 88%
+    assert fields[11] == ""  # L6: empty
     assert card.data_ts == NOW_TS
 
 
@@ -60,9 +64,8 @@ def test_claude_card_handles_missing_pct_and_reset():
     card = claude_card(usage, now=NOW)
     fields = _renders(card)
     assert fields[5] == "0"
-    assert fields[7] == "5H    0%"
-    # No epoch -> drop the RST row rather than render a fake countdown.
-    assert "RST" not in frame_text(fields)
+    assert fields[7] == "5H    0%"  # fallback: pct text when no reset_at
+    assert fields[8] == "[000]"  # bar at 0%
     assert card.rows  # still renderable
 
 
@@ -71,6 +74,9 @@ def frame_text(fields: list[str]) -> str:
 
 
 # --- codex ---
+
+
+RESET_AT_SECONDARY = NOW_TS + 6 * 86400  # secondary window: 6 days remaining
 
 
 def make_codex() -> CodexUsage:
@@ -83,6 +89,7 @@ def make_codex() -> CodexUsage:
         secondary_window_min=10080,
         credits_dollars=18.42,
         primary_reset_at=RESET_AT,
+        secondary_reset_at=RESET_AT_SECONDARY,
         plan="Plus",
     )
 
@@ -91,9 +98,10 @@ def test_codex_card_renders():
     fields = _renders(codex_card(make_codex(), now=NOW))
     assert fields[4] == "CODEX"
     assert fields[5] == "0"
-    assert fields[7] == "5H   42%"
-    assert fields[9] == "7D   68%"
-    assert fields[10] == "RST  90M"
+    assert fields[7] == "5H   90M"  # L2: primary countdown to reset
+    assert fields[8] == "[042]"  # L3: primary bar at 42%
+    assert fields[9] == "7D    6D"  # L4: secondary countdown to reset
+    assert fields[10] == "[068]"  # L5: secondary bar at 68%
 
 
 def test_codex_card_warns_on_high_usage():

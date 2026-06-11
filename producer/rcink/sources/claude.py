@@ -27,6 +27,7 @@ class ClaudeUsage:
     five_hour_reset: str  # human-formatted countdown e.g. "2h 14m"
     seven_day_reset: str
     five_hour_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
+    seven_day_reset_at: int | None = None
     plan: str = "Max"
 
 
@@ -166,4 +167,5 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
         five_hour_reset=reset("five_hour"),
         seven_day_reset=reset("seven_day"),
         five_hour_reset_at=reset_at("five_hour"),
+        seven_day_reset_at=reset_at("seven_day"),
     )

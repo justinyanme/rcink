@@ -2,13 +2,16 @@
 
 Wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py
 (the producer reference): ASCII frame
-``KP3|GEN|IDX|TOTAL|ICON|LED|L1|..|L6``, six 8-char lines (0x20..0x7E,
-'|' excluded), <=75 bytes, written to a GATT characteristic on the left
-keyboard half. GEN is a two-digit uppercase hex transaction id; the firmware
-commits a deck only after every page for the same GEN arrives. Screen
-convention: L1 title, L2 key metric, L3 data timestamp (doubles as a clock),
-L4-L6 detail rows. LED is a single digit trackpad status hint: 0 normal,
-1 active, 2 attention, 3 warning, 4 error.
+``KP3|GEN|IDX|TOTAL|ICON|LED|L1|..|L6``, six lines (0x20..0x7E, '|'
+excluded, <=8 chars each), <=75 bytes total, written to a GATT characteristic
+on the left keyboard half. GEN is a two-digit uppercase hex transaction id;
+the firmware commits a deck only after every page for the same GEN arrives.
+Screen convention: L1 title, L2-L5 content rows, L6 empty. LED is a single
+digit trackpad status hint: 0 normal, 1 active, 2 attention, 3 warning, 4 error.
+
+Bar row encoding: a line matching ``[NNN]`` (exactly 5 chars, N=decimal digit,
+0-100) is rendered by the firmware as a filled progress rectangle rather than
+text. Producers emit this via ``Row(bar=N)``; ``_render_row`` produces the token.
 
 Fetchers drop one compact card per source into the cache dir (atomic replace,
 one file per card — no cross-process locking needed); the keypoint-push job
@@ -54,16 +57,22 @@ CACHE_DEFAULT = "~/.cache/rcink/keypoint"
 
 @dataclass(slots=True, frozen=True)
 class Row:
-    """One kv line. Either a literal ``value`` or an ``until`` epoch rendered
-    as a live countdown at push time (so it does not freeze at fetch time)."""
+    """One display line: a kv text row (value or until countdown) or a progress
+    bar row (bar). Exactly one of value/until/bar must be set.
 
-    label: str
+    Bar rows encode a 0-100 utilization percentage as ``[NNN]``; the firmware
+    detects this pattern and renders a filled rectangle instead of text."""
+
+    label: str = ""
     value: str | None = None
     until: int | None = None
+    bar: int | None = None
 
     def __post_init__(self) -> None:
-        if (self.value is None) == (self.until is None):
-            raise ValueError(f"row {self.label!r}: exactly one of value/until required")
+        if sum(x is not None for x in (self.value, self.until, self.bar)) != 1:
+            raise ValueError(f"row {self.label!r}: exactly one of value/until/bar required")
+        if self.bar is not None and not 0 <= self.bar <= 100:
+            raise ValueError(f"row {self.label!r}: bar {self.bar} out of range 0..100")
 
 
 @dataclass(slots=True, frozen=True)
@@ -73,7 +82,8 @@ class Card:
     title: str
     led_hint: int
     rows: list[Row] = field(default_factory=list)
-    data_ts: int = 0  # epoch seconds of the source data, shown on L3
+    data_ts: int = 0  # epoch seconds of the source data, shown on L3 when show_timestamp=True
+    show_timestamp: bool = True  # set False to reclaim L3 as a fourth content row
 
 
 def kv(label: str, value: str) -> str:
@@ -126,6 +136,8 @@ def _validate_generation(generation: int) -> int:
 
 
 def _render_row(row: Row, *, now_ts: int) -> str:
+    if row.bar is not None:
+        return f"[{row.bar:03d}]"
     value = row.value if row.value is not None else fmt_countdown(row.until - now_ts)
     return kv(row.label, value)
 
@@ -147,8 +159,11 @@ def render_frame(card: Card, *, now: dt.datetime, generation: int, index: int, t
     now_ts = int(now.timestamp())
     rendered = [_render_row(r, now_ts=now_ts) for r in card.rows]
     rendered += [""] * (MAX_ROWS - len(rendered))
-    data_time = dt.datetime.fromtimestamp(card.data_ts, tz=now.tzinfo).strftime("%H:%M")
-    lines = [title(card.title), rendered[0], data_time, *rendered[1:]]
+    if card.show_timestamp:
+        data_time = dt.datetime.fromtimestamp(card.data_ts, tz=now.tzinfo).strftime("%H:%M")
+        lines = [title(card.title), rendered[0], data_time, *rendered[1:]]
+    else:
+        lines = [title(card.title), *rendered, ""]
 
     frame = "|".join(
         [

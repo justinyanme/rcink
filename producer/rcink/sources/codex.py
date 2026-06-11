@@ -25,6 +25,7 @@ class CodexUsage:
     secondary_window_min: int | None
     credits_dollars: float | None
     primary_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
+    secondary_reset_at: int | None = None
     plan: str = "Plus"
 
 
@@ -148,5 +149,6 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
         secondary_window_min=window_min(secondary),
         credits_dollars=dollars,
         primary_reset_at=reset_at(primary),
+        secondary_reset_at=reset_at(secondary),
         plan=plan,
     )

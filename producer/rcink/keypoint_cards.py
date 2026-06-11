@@ -28,11 +28,28 @@ def _usage_led_hint(*values: float | None) -> int:
     return LED_HINT_NONE
 
 
+def _window_label(minutes: int | None) -> str:
+    if minutes is None:
+        return "?"
+    if minutes % (24 * 60) == 0:
+        return f"{minutes // (24 * 60)}D"
+    if minutes % 60 == 0:
+        return f"{minutes // 60}H"
+    return "?"
+
+
 def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
-    rows = [Row("5H", _pct(usage.five_hour_pct)), Row("7D", _pct(usage.seven_day_pct))]
+    rows: list[Row] = []
     if usage.five_hour_reset_at is not None:
-        rows.append(Row("RST", until=usage.five_hour_reset_at))
-    rows.append(Row("OP", _pct(usage.opus_pct)))
+        rows.append(Row("5H", until=usage.five_hour_reset_at))
+    else:
+        rows.append(Row("5H", _pct(usage.five_hour_pct)))
+    rows.append(Row(bar=int(usage.five_hour_pct or 0)))
+    if usage.seven_day_reset_at is not None:
+        rows.append(Row("7D", until=usage.seven_day_reset_at))
+    else:
+        rows.append(Row("7D", _pct(usage.seven_day_pct)))
+    rows.append(Row(bar=int(usage.seven_day_pct or 0)))
     return Card(
         id="claude",
         icon="CLAUDE",
@@ -40,13 +57,24 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
         led_hint=_usage_led_hint(usage.five_hour_pct, usage.seven_day_pct, usage.opus_pct),
         rows=rows,
         data_ts=int(now.timestamp()),
+        show_timestamp=False,
     )
 
 
 def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
-    rows = [Row("5H", _pct(usage.primary_pct)), Row("7D", _pct(usage.secondary_pct))]
+    primary_win = _window_label(usage.primary_window_min)
+    secondary_win = _window_label(usage.secondary_window_min)
+    rows: list[Row] = []
     if usage.primary_reset_at is not None:
-        rows.append(Row("RST", until=usage.primary_reset_at))
+        rows.append(Row(primary_win, until=usage.primary_reset_at))
+    else:
+        rows.append(Row(primary_win, _pct(usage.primary_pct)))
+    rows.append(Row(bar=int(usage.primary_pct or 0)))
+    if usage.secondary_reset_at is not None:
+        rows.append(Row(secondary_win, until=usage.secondary_reset_at))
+    else:
+        rows.append(Row(secondary_win, _pct(usage.secondary_pct)))
+    rows.append(Row(bar=int(usage.secondary_pct or 0)))
     return Card(
         id="codex",
         icon="CODEX",
@@ -54,4 +82,5 @@ def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
         led_hint=_usage_led_hint(usage.primary_pct, usage.secondary_pct),
         rows=rows,
         data_ts=int(now.timestamp()),
+        show_timestamp=False,
     )
