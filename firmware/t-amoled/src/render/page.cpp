@@ -129,9 +129,28 @@ void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
   if (fill_w > 0) g_canvas.fillRect(x + 2, y + 2, fill_w, h - 4, c565(fill));
 }
 
+// Page-position rail: a scrollbar "thumb" folded onto the content/sidebar
+// divider. The thumb is 1/N of the track tall and slides top->bottom as the
+// deck advances, so position-in-deck reads at a glance without spending a
+// status-block row on "N/M" text. Drawn in Black so the dark-swap lights it
+// white against the thin divider line. Skipped for single-page decks (nothing
+// to page through). Geometry mirrors tools/preview_sidebar.py (the oracle).
+void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
+  if (count <= 1) return;
+  constexpr int16_t kTop = 8;
+  constexpr int16_t kBot = SCREEN_H - 64;  // stay clear of the PREV/NEXT block
+  const int16_t track = kBot - kTop;
+  int16_t th = (int16_t)(track / (int16_t)count);
+  if (th < 6) th = 6;
+  int16_t ty = (int16_t)(kTop + (int32_t)track * (int32_t)index / (int32_t)count);
+  if (ty + th > kBot) ty = (int16_t)(kBot - th);
+  g_canvas.fillRect((int16_t)(divider_x - 2), ty, 5, th, c565(Color::Black));
+}
+
 // Right-edge chrome strip, next to the two physical buttons. Top block =
-// status (battery, clock, page index); bottom block = prev/next hints aligned
-// to the buttons. STALE shows as a red chip when the cache is past its window.
+// status (battery, clock) with a page-position rail on the divider; bottom
+// block = prev/next hints aligned to the buttons. STALE shows as a red chip
+// when the cache is past its window.
 void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
                    uint64_t last_fetch_s, bool stale) {
   const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 480
@@ -143,7 +162,8 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.setTextSize(1);
   g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
 
-  // --- status block (top): battery, weekday + date, clock, page index ---
+  // --- status block (top): battery, weekday + date, clock; page-position
+  //     rail rides the divider (drawn below) instead of a "N/M" text row ---
   draw_battery(cx, 8, batt);
   char pct[8];
   if (batt.ok) snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
@@ -158,14 +178,7 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.setCursor(cx, 62);
   g_canvas.print(format_local_hhmm(last_fetch_s));
 
-  char idx[16];
-  snprintf(idx, sizeof(idx), "%u/%u",
-           (unsigned)(state.pages.empty() ? 0 : state.page_index + 1),
-           (unsigned)state.pages.size());
-  g_canvas.setTextSize(2);
-  g_canvas.setCursor(cx, 78);
-  g_canvas.print(idx);
-  g_canvas.setTextSize(1);
+  draw_page_rail(x0, state.pages.size(), state.page_index);
 
   if (stale) {
     g_canvas.fillRect(cx, 102, 42, 11, c565(Color::Red));
