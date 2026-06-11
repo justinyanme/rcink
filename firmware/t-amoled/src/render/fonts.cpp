@@ -2,10 +2,12 @@
 
 namespace rcpaper {
 
+static constexpr int16_t kMinLatinFontH = 16;
+
 // Nominal line heights (px) at scale 1.0, matching the FreeSans GFX ladder
 // rungs (see kLadder). The fit-to-height pass scales these down; the ladder
-// then picks the tallest crisp font that fits. CJK renders at 16px regardless
-// (see kCjkLineH). Mirror in producer devices_profile._T_AMOLED_SIZES.
+// then picks the tallest crisp font that fits. Latin and CJK both floor at 16px
+// for page content. Mirror in producer devices_profile._T_AMOLED_SIZES.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
     case TextSize::H1:   return 40;
@@ -15,6 +17,8 @@ int16_t font_height(TextSize size, Weight /*weight*/) {
     default:             return 16;
   }
 }
+
+int16_t min_latin_font_height() { return kMinLatinFontH; }
 
 #ifdef ARDUINO
 
@@ -33,20 +37,19 @@ const uint8_t* cjk_font_for(TextSize /*size*/, Weight /*weight*/) {
   return u8g2_font_wqy16_t_gb2312;
 }
 
-// Crisp Latin font ladder: FreeSans/FreeSansBold GFX fonts (honouring weight)
-// above a GLCD floor for the smallest scales. The fit-to-height pass picks the
-// tallest rung whose line height fits the scaled target px. Heights are the
-// visual line height (cap + descender), tighter than the fonts' generous
-// yAdvance leading so dashboard rows pack reasonably.
+// Crisp Latin font ladder: FreeSans/FreeSansBold GFX fonts (honouring weight).
+// The fit-to-height pass picks the tallest rung whose line height fits the
+// scaled target px. Heights are the visual line height (cap + descender),
+// tighter than the fonts' generous yAdvance leading so dashboard rows pack
+// reasonably.
 struct FontPick {
-  bool gfx;               // false = GLCD built-in floor
+  bool gfx;
   const GFXfont* reg;
   const GFXfont* bold;
   int16_t height;
 };
 const FontPick kLadder[] = {
-  {false, nullptr,         nullptr,             10},
-  {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  16},
+  {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  min_latin_font_height()},
   {true,  &FreeSans12pt7b, &FreeSansBold12pt7b, 21},
   {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 30},
   {true,  &FreeSans24pt7b, &FreeSansBold24pt7b, 40},

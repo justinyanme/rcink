@@ -12,6 +12,10 @@ namespace rcpaper {
 
 int16_t font_height(TextSize size, Weight weight);
 
+// Smallest Latin font rung allowed for page content. Kept visible to native
+// tests because the Arduino renderer's actual ladder is hardware-only.
+int16_t min_latin_font_height();
+
 #ifdef ARDUINO
 
 // Latin text uses TFT_eSPI's built-in vector fonts (crisp, scalable). Any
@@ -25,8 +29,8 @@ static constexpr int16_t kCjkLineH = 16;
 // --- fit-to-height scaling ---------------------------------------------------
 // render_page measures a page's natural height and, if it overflows the
 // viewport, re-lays-out at a reduced scale so everything fits on one screen.
-// The scale shrinks Latin text down the discrete TFT font ladder, CJK to its
-// 16px floor, and (via the engine) all pads/gaps/spacers/element heights.
+// The scale shrinks Latin text down the discrete TFT font ladder, Latin/CJK to
+// their 16px floors, and (via the engine) all pads/gaps/spacers/element heights.
 
 // Set the active text scale (1.0 = nominal). Affects select_font, measured_width
 // and scale_px until changed. Reset to 1.0 after each page.
