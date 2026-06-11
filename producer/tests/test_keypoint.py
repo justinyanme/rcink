@@ -183,6 +183,15 @@ def test_write_card_roundtrip(cache):
     assert loaded == card
 
 
+def test_write_card_roundtrip_bar_rows(cache):
+    card = make_card(rows=[Row("5H", until=NOW_TS + 90 * 60), Row(bar=76), Row("7D", "88%"), Row(bar=88)])
+    write_card(card)
+    (loaded,) = load_cards()
+    assert loaded == card
+    assert loaded.rows[1].bar == 76
+    assert loaded.rows[3].bar == 88
+
+
 def test_write_card_is_one_file_per_card(cache):
     write_card(make_card())
     write_card(make_card(id="codex", icon="CODEX", title="CODEX"))
