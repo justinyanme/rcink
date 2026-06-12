@@ -418,12 +418,14 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   dd += format_local_md(epoch);
   const int16_t dw = gfx_w(dd.c_str(), &FreeSans9pt7b, 1);
   gfx_text((int16_t)(SCREEN_W - PAD - dw), 40, dd.c_str(), &FreeSans9pt7b, 1, ink);
-  g_canvas.drawFastHLine(PAD, 52, (int16_t)(SCREEN_W - 2 * PAD), ink);
+  // Divider sits clear of the second row: FreeSans glyphs run ~16 px tall from
+  // their top, so the date bottom is ~56 — keep the rule below that.
+  g_canvas.drawFastHLine(PAD, 62, (int16_t)(SCREEN_W - 2 * PAD), ink);
 
   // --- temperature hero (centered) ---
   const char* tlabel = "TEMPERATURE";
   const int16_t tlw = gfx_w(tlabel, &FreeSans9pt7b, 1);
-  gfx_text((int16_t)((SCREEN_W - tlw) / 2), 58, tlabel, &FreeSans9pt7b, 1, ink);
+  gfx_text((int16_t)((SCREEN_W - tlw) / 2), 66, tlabel, &FreeSans9pt7b, 1, ink);
   char num[16];
   if (env.ok) snprintf(num, sizeof(num), "%.1f", env.temp_c);
   else snprintf(num, sizeof(num), "--.-");
@@ -431,7 +433,7 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   constexpr int16_t kDegR = 7;  // degree-ring radius
   const int16_t deg_block = (int16_t)(2 * kDegR + 4 + gfx_w("C", &FreeSansBold18pt7b, 1));
   const int16_t nx = (int16_t)((SCREEN_W - (nw + 6 + deg_block)) / 2);
-  const int16_t ny = 76;
+  const int16_t ny = 86;
   gfx_text(nx, ny, num, &FreeSansBold24pt7b, 2, ink);
   // degree ring + C, top-aligned to the number
   const int16_t dcx = (int16_t)(nx + nw + 6 + kDegR);
@@ -464,7 +466,9 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   gfx_text((int16_t)(SCREEN_W - PAD - pw), (int16_t)(sy + 2), pct, &FreeSansBold12pt7b, 1, ink);
   const int16_t vx = (int16_t)(SCREEN_W - PAD - pw - 12 - vw);
   gfx_text(vx, (int16_t)(sy + 4), volt, &FreeSans12pt7b, 1, ink);
-  const int16_t blx = (int16_t)(PAD + 78);
+  // Start the bar after the actual "BATTERY" label width (measured, not a magic
+  // number) so it never overlaps the label, then run it up to the V/% readout.
+  const int16_t blx = (int16_t)(PAD + gfx_w("BATTERY", &FreeSans12pt7b, 1) + 12);
   const int16_t brx = (int16_t)(vx - 12);
   if (brx - blx > 30) {
     dash_bar(blx, (int16_t)(sy + 2), (int16_t)(brx - blx), 16, batt.ok ? (float)batt.pct : 0.0f);

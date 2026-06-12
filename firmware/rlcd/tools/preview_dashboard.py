@@ -129,10 +129,10 @@ def render_dashboard(
     dd = reg(11)
     ddtxt = f"{weekday}  {date}"
     c.text(W - PAD - c.text_w(ddtxt, dd), 36, ddtxt, dd)
-    c.line(PAD, 52, W - PAD, 52, t=1)
+    c.line(PAD, 62, W - PAD, 62, t=1)
 
     # ---- hero: temperature (centered) ----
-    c.text(W // 2, 60, "TEMPERATURE", reg(11), anchor="ma")
+    c.text(W // 2, 66, "TEMPERATURE", reg(11), anchor="ma")
     num = f"{temp_c:.1f}"
     num_h = 64
     nf = bold(num_h)
@@ -141,7 +141,7 @@ def render_dashboard(
     deg_w = num_h // 2
     block_w = nw + deg_w + 8
     nx = (W - block_w) // 2
-    ny = 78
+    ny = 86
     c.text(nx, ny, num, nf)
     draw_degree_c(c, nx + nw + 4, ny, num_h)
 
@@ -168,8 +168,8 @@ def render_dashboard(
     pct = f"{batt_pct}%"
     c.text(W - PAD - c.text_w(pct, bf), sy, pct, bf)
     c.text(W - PAD - c.text_w(pct, bf) - 12 - c.text_w(vtxt, reg(12)), sy + 1, vtxt, reg(12))
-    # battery bar between label and the V/% readout
-    blx = PAD + 70
+    # battery bar starts after the measured label (mirrors render_dashboard)
+    blx = PAD + c.text_w("BATTERY", reg(12)) + 12
     brx = W - PAD - c.text_w(pct, bf) - 12 - c.text_w(vtxt, reg(12)) - 12
     bby, bbh = sy + 1, 14
     if brx - blx > 30:
