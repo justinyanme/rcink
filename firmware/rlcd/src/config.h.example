@@ -1,0 +1,27 @@
+// Copy to src/config.h and fill in your values. config.h is gitignored.
+//
+// The dashboard (clock + onboard SHTC3 climate + battery) runs fully offline:
+// the clock comes from the PCF85063 RTC. Wi-Fi/NTP/Axiom below are only used to
+// (1) keep the RTC accurate and (2) feed the secondary Axiom page-deck. A unit
+// with no network still shows the dashboard; the clock just needs one NTP sync
+// (or a manual rtc_set) to start, then the RTC carries it.
+#pragma once
+
+// Wi-Fi
+#define WIFI_SSID            "your-ssid"
+#define WIFI_PASS            "your-pass"
+
+// Axiom (page-deck source; harmless if unused)
+#define AXIOM_QUERY_URL      "https://api.axiom.co/v1/datasets/_apl?format=legacy"
+#define AXIOM_TOKEN          "xaat-your-token"
+#define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json'], ['data_ts']) by ['id'] | project ['id'], ['order'], ['layout_json'], ['data_ts']"
+
+// Behavior
+#define FETCH_INTERVAL_SEC   1800  // network refresh cadence (NTP + deck)
+#define LOCAL_TZ             "UTC0"  // POSIX TZ, e.g. "CST-8" for China
+
+// TLS root CA for api.axiom.co.
+static const char AXIOM_ROOT_CA[] = R"(-----BEGIN CERTIFICATE-----
+...paste the PEM here...
+-----END CERTIFICATE-----
+)";
