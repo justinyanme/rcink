@@ -1,19 +1,15 @@
-"""Build the GitHub activity page — velocity edition.
+"""Build the GitHub activity page — compact velocity edition.
 
-KPI strip (TODAY / WEEK / 14W commits), top repos this week with bar widths,
-weighted-language legend, 14-week contribution heatmap.
+KPI strip (TODAY / WEEK / 14W commits), streak, and 14-week daily line chart.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 
-from rcink.layout import divider, grid, hbar, hstack, icon, spacer, text, vstack
+from rcink.layout import divider, hstack, icon, spacer, sparkline, text, vstack
 from rcink.palette import ColorToken
-from rcink.sources.github import GRID_WEEKS, GitHubActivity, LangWeek, RepoWeek
-
-# Cycle for language legend colors (kept in sync with the rest of the producer).
-_LANG_COLORS: tuple[ColorToken, ...] = ("success", "info", "accent", "warning", "black")
+from rcink.sources.github import GRID_WEEKS, GitHubActivity
 
 
 def _kpi_cell(label: str, value: str, color: ColorToken, sub: str) -> dict:
@@ -27,47 +23,11 @@ def _kpi_cell(label: str, value: str, color: ColorToken, sub: str) -> dict:
     )
 
 
-def _repos_section(repos: list[RepoWeek]) -> list[dict]:
-    if not repos:
-        return []
-    top = repos[0].commits or 1
-    rows: list[dict] = [
-        text("REPOS · 7D", size="sm", weight="bold"),
-        spacer(size=2),
-    ]
-    for r in repos:
-        pct = max(2.0, min(100.0, (r.commits / top) * 100.0))
-        rows.append(
-            hstack(
-                gap=8,
-                align="center",
-                children=[
-                    text(r.name, size="body", weight="bold"),
-                    hbar(pct=pct, color="success", height=10),
-                    text(str(r.commits), size="sm", weight="bold"),
-                ],
-            )
-        )
-    return rows
-
-
-def _langs_section(langs: list[LangWeek]) -> list[dict]:
-    if not langs:
-        return []
-    total_pct = sum(lang.pct for lang in langs) or 1
-    legend_children: list[dict] = []
-    for i, lang in enumerate(langs):
-        color = _LANG_COLORS[i % len(_LANG_COLORS)]
-        if i > 0:
-            legend_children.append(text("·", size="sm"))
-        legend_children.append(text(f"{lang.name} {lang.pct}", size="sm", weight="bold", color=color))
-    return [
-        text("LANGUAGES · 7D", size="sm", weight="bold"),
-        spacer(size=2),
-        hbar(pct=min(100.0, total_pct), color="success", height=10),
-        spacer(size=2),
-        hstack(gap=6, align="center", children=legend_children),
-    ]
+def _avg(values: list[int]) -> str:
+    if not values:
+        return "0"
+    avg = sum(values) / len(values)
+    return str(int(avg)) if avg.is_integer() else f"{avg:.1f}"
 
 
 def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
@@ -107,35 +67,20 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
         spacer(size=6),
         divider(color="black", thickness=1),
         spacer(size=4),
-    ]
-
-    children += _repos_section(activity.repos_week)
-    if activity.repos_week:
-        children.append(spacer(size=6))
-    children += _langs_section(activity.langs_week)
-    if activity.langs_week:
-        children.append(spacer(size=6))
-
-    children += [
-        divider(color="black", thickness=1),
-        spacer(size=4),
         hstack(
             align="center",
             children=[
-                text(f"CONTRIBUTIONS · {GRID_WEEKS}W", size="sm", weight="bold"),
+                text(f"COMMITS / DAY · {GRID_WEEKS}W", size="sm", weight="bold"),
                 spacer(),
-                text(f"{activity.total_14w} TOTAL", size="sm", weight="bold", color="success"),
+                text(f"MAX {max(activity.daily_counts or [0])}", size="sm", weight="bold"),
+                text(f"AVG {_avg(activity.daily_counts)}", size="sm"),
             ],
         ),
         spacer(size=4),
-        grid(
-            cols=GRID_WEEKS,
-            rows=7,
-            gap=3,
+        sparkline(
+            activity.daily_counts,
             color="success",
-            values=activity.contrib,
-            width=360,
-            height=168,
+            height=96,
         ),
     ]
 

@@ -1,3 +1,5 @@
+import datetime as dt
+
 from rcink.sources.github import (
     GRID_CELLS,
     LangWeek,
@@ -94,3 +96,65 @@ def test_aggregate_languages_caps_to_top_five():
 def test_lang_week_and_repo_week_exported():
     assert RepoWeek(name="x", commits=1).commits == 1
     assert LangWeek(name="Go", pct=10).pct == 10
+
+
+def test_fetch_uses_local_day_totals_for_private_contributions(httpx_mock):
+    from rcink.sources.github import DAY_QUERY_BATCH, GRAPHQL_URL, fetch_github_activity
+
+    daily = [0] * (GRID_CELLS - 7) + [1, 2, 0, 4, 5, 6, 7]
+    httpx_mock.add_response(
+        url=GRAPHQL_URL,
+        method="POST",
+        json={
+            "data": {
+                "user": {
+                    "year": {
+                        "contributionCalendar": {
+                            "totalContributions": 999,
+                            "weeks": [
+                                {
+                                    "contributionDays": [
+                                        {"date": "2026-06-12", "contributionCount": 0},
+                                        {"date": "2026-06-13", "contributionCount": 4},
+                                        {"date": "2026-06-14", "contributionCount": 5},
+                                        {"date": "2026-06-15", "contributionCount": 6},
+                                        {"date": "2026-06-16", "contributionCount": 3},
+                                    ]
+                                }
+                            ],
+                        }
+                    },
+                    "week": {"commitContributionsByRepository": []},
+                }
+            }
+        },
+    )
+    for offset in range(0, GRID_CELLS, DAY_QUERY_BATCH):
+        httpx_mock.add_response(
+            url=GRAPHQL_URL,
+            method="POST",
+            json={
+                "data": {
+                    "user": {
+                        f"d{i:03d}": {
+                            "totalCommitContributions": 0,
+                            "restrictedContributionsCount": daily[i],
+                        }
+                        for i in range(offset, min(offset + DAY_QUERY_BATCH, GRID_CELLS))
+                    }
+                }
+            },
+        )
+
+    activity = fetch_github_activity(
+        user="rocry",
+        token="token",
+        now=dt.datetime(2026, 6, 16, 16, 0, tzinfo=dt.timezone(dt.timedelta(hours=8))),
+    )
+
+    assert activity.daily_counts == daily
+    assert activity.today_commits == 7
+    assert activity.week_commits == 25
+    assert activity.total_14w == sum(daily)
+    assert activity.streak == 4
+    assert len(httpx_mock.get_requests()) == 1 + ((GRID_CELLS + DAY_QUERY_BATCH - 1) // DAY_QUERY_BATCH)

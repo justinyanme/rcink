@@ -48,7 +48,7 @@ def _empty_gh() -> GitHubActivity:
         streak=0,
         total_14w=0,
         total_year=0,
-        contrib=[0] * GRID_CELLS,
+        daily_counts=[0] * GRID_CELLS,
     )
 
 
@@ -159,7 +159,7 @@ def test_overview_github_row_shows_week_and_top_repo():
         streak=5,
         total_14w=142,
         total_year=420,
-        contrib=[0] * GRID_CELLS,
+        daily_counts=[0] * GRID_CELLS,
         repos_week=[RepoWeek(name="rcpapercolor", commits=12)],
         langs_week=[],
     )
@@ -189,7 +189,7 @@ def test_overview_github_row_no_top_repo_when_quiet_week():
         streak=0,
         total_14w=0,
         total_year=0,
-        contrib=[0] * GRID_CELLS,
+        daily_counts=[0] * GRID_CELLS,
         repos_week=[],
         langs_week=[],
     )
