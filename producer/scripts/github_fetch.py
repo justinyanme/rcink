@@ -17,8 +17,8 @@ app = typer.Typer(add_completion=False, help=__doc__)
 def run() -> None:
     activity = fetch_github_activity()
     logger.info(
-        f"github @{activity.user}: today={activity.today_commits} "
-        f"week={activity.week_commits} streak={activity.streak}d "
+        f"github @{activity.user}: today={activity.today_contributions} "
+        f"week={activity.week_contributions} streak={activity.streak}d "
         f"repos={len(activity.repos_week)} 14w={activity.total_14w}"
     )
     page = build_github_page(activity, now=dt.datetime.now())

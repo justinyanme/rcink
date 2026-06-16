@@ -1,6 +1,6 @@
-"""Build the GitHub activity page — compact velocity edition.
+"""Build the GitHub activity page — compact contribution edition.
 
-KPI strip (TODAY / WEEK / 14W commits), streak, and 14-week daily line chart.
+KPI strip (TODAY / WEEK / 14W contributions), streak, and 14-week daily line chart.
 """
 
 from __future__ import annotations
@@ -59,8 +59,8 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
         hstack(
             gap=12,
             children=[
-                _kpi_cell("TODAY", str(activity.today_commits), "success", "COMMITS"),
-                _kpi_cell("WEEK", str(activity.week_commits), "info", "COMMITS"),
+                _kpi_cell("TODAY", str(activity.today_contributions), "success", "CONTRIBS"),
+                _kpi_cell("WEEK", str(activity.week_contributions), "info", "CONTRIBS"),
                 _kpi_cell("14W", str(activity.total_14w), "accent", "TOTAL"),
             ],
         ),
@@ -70,7 +70,7 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
         hstack(
             align="center",
             children=[
-                text(f"COMMITS / DAY · {GRID_WEEKS}W", size="sm", weight="bold"),
+                text(f"CONTRIBS / DAY · {GRID_WEEKS}W", size="sm", weight="bold"),
                 spacer(),
                 text(f"MAX {max(activity.daily_counts or [0])}", size="sm", weight="bold"),
                 text(f"AVG {_avg(activity.daily_counts)}", size="sm"),

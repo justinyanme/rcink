@@ -1,8 +1,7 @@
-"""Fetch GitHub activity (commits today, week breakdown, streak, daily chart).
+"""Fetch GitHub activity (daily contribution chart, streak, visible repo detail).
 
 Multiple small GraphQL queries:
-  - local-day commit aggregates (drives today/week/14w/sparkline)
-  - the rolling contributionCalendar (drives existing streak behavior)
+  - the rolling contributionCalendar (drives today/week/14w/sparkline/streak)
   - the rolling 7-day commitContributionsByRepository (visible repo detail only)
 
 GITHUB_TOKEN needs `read:user`; GITHUB_USERNAME is the login to report on.
@@ -44,18 +43,9 @@ query($user: String!, $weekFrom: DateTime!, $weekTo: DateTime!) {
 }
 """
 
-_DAY_QUERY_TEMPLATE = """
-query($user: String!, __DAY_VARS__) {
-  user(login: $user) {
-    __DAY_FIELDS__
-  }
-}
-"""
-
 # 14 cols × 7 rows = 98 cells — matches the device-side grid primitive footprint.
 GRID_WEEKS = 14
 GRID_CELLS = GRID_WEEKS * 7
-DAY_QUERY_BATCH = 28
 
 # How many top repos / languages we surface on the page.
 TOP_REPOS = 5
@@ -77,8 +67,8 @@ class LangWeek:
 @dataclass(slots=True)
 class GitHubActivity:
     user: str
-    today_commits: int
-    week_commits: int
+    today_contributions: int
+    week_contributions: int
     streak: int
     total_14w: int
     total_year: int
@@ -123,11 +113,7 @@ def _iso_utc(value: dt.datetime) -> str:
     return value.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _local_day_windows(
-    now: dt.datetime,
-    *,
-    days: int = GRID_CELLS,
-) -> list[tuple[dt.datetime, dt.datetime]]:
+def _local_day_windows(now: dt.datetime, *, days: int) -> list[tuple[dt.datetime, dt.datetime]]:
     local_now = now.astimezone()
     today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     first_start = today_start - dt.timedelta(days=days - 1)
@@ -141,34 +127,6 @@ def _local_day_windows(
             end = start + dt.timedelta(seconds=1)
         windows.append((start, end))
     return windows
-
-
-def _query_for_day_windows(
-    windows: list[tuple[dt.datetime, dt.datetime]],
-    *,
-    offset: int = 0,
-) -> tuple[str, dict[str, str]]:
-    var_defs: list[str] = []
-    fields: list[str] = []
-    variables: dict[str, str] = {}
-    for local_i, (start, end) in enumerate(windows):
-        i = offset + local_i
-        alias = f"d{i:03d}"
-        from_var = f"{alias}From"
-        to_var = f"{alias}To"
-        var_defs.append(f"${from_var}: DateTime!")
-        var_defs.append(f"${to_var}: DateTime!")
-        fields.append(
-            f"{alias}: contributionsCollection(from: ${from_var}, to: ${to_var}) "
-            "{ totalCommitContributions restrictedContributionsCount }"
-        )
-        variables[from_var] = _iso_utc(start)
-        variables[to_var] = _iso_utc(end)
-    query = _DAY_QUERY_TEMPLATE.replace("__DAY_VARS__", ", ".join(var_defs)).replace(
-        "__DAY_FIELDS__",
-        "\n    ".join(fields),
-    )
-    return query, variables
 
 
 def _post_graphql(*, query: str, variables: dict[str, str], token: str) -> dict:
@@ -187,33 +145,6 @@ def _post_graphql(*, query: str, variables: dict[str, str], token: str) -> dict:
     if "errors" in payload:
         raise RuntimeError(f"GitHub GraphQL errors: {payload['errors']}")
     return payload
-
-
-def _commit_count(collection: dict) -> int:
-    return int(collection["totalCommitContributions"]) + int(collection["restrictedContributionsCount"])
-
-
-def _fetch_daily_counts(
-    *,
-    user: str,
-    token: str,
-    windows: list[tuple[dt.datetime, dt.datetime]],
-) -> list[int]:
-    counts = [0] * len(windows)
-    for offset in range(0, len(windows), DAY_QUERY_BATCH):
-        batch = windows[offset : offset + DAY_QUERY_BATCH]
-        query, day_variables = _query_for_day_windows(batch, offset=offset)
-        payload = _post_graphql(
-            query=query,
-            variables={"user": user, **day_variables},
-            token=token,
-        )
-        u = payload["data"]["user"]
-        if u is None:
-            raise RuntimeError(f"GitHub user not found: {user}")
-        for i in range(offset, min(offset + DAY_QUERY_BATCH, len(windows))):
-            counts[i] = _commit_count(u[f"d{i:03d}"])
-    return counts
 
 
 def _short_repo_name(name_with_owner: str, *, user: str) -> str:
@@ -247,6 +178,18 @@ def _aggregate_languages(
     return [LangWeek(name=name, pct=int(round(size * 100 / total))) for name, size in top]
 
 
+def _calendar_daily_counts(
+    days: list[tuple[str, int]],
+    *,
+    now: dt.datetime,
+    count: int = GRID_CELLS,
+) -> list[int]:
+    by_date = {dt.date.fromisoformat(date): value for date, value in days}
+    today = now.astimezone().date()
+    first = today - dt.timedelta(days=count - 1)
+    return [by_date.get(first + dt.timedelta(days=i), 0) for i in range(count)]
+
+
 def fetch_github_activity(
     *,
     user: str | None = None,
@@ -256,7 +199,7 @@ def fetch_github_activity(
     user = user or _env("GITHUB_USERNAME")
     token = token or _env("GITHUB_TOKEN")
     now = now or dt.datetime.now(tz=dt.timezone.utc)
-    windows = _local_day_windows(now)
+    windows = _local_day_windows(now, days=7)
     week_from = _iso_utc(windows[-7][0])
     week_to = _iso_utc(now)
 
@@ -271,13 +214,13 @@ def fetch_github_activity(
         raise RuntimeError(f"GitHub user not found: {user}")
 
     cal = u["year"]["contributionCalendar"]
-    daily_counts = _fetch_daily_counts(user=user, token=token, windows=windows)
     year_days: list[tuple[str, int]] = []
     for week in cal["weeks"]:
         for day in week["contributionDays"]:
             year_days.append((day["date"], int(day["contributionCount"])))
-    today_commits = daily_counts[-1] if daily_counts else 0
-    week_commits = sum(daily_counts[-7:])
+    daily_counts = _calendar_daily_counts(year_days, now=now)
+    today_contributions = daily_counts[-1] if daily_counts else 0
+    week_contributions = sum(daily_counts[-7:])
     streak = _compute_streak(year_days)
     total_14w = sum(daily_counts)
 
@@ -298,8 +241,8 @@ def fetch_github_activity(
 
     return GitHubActivity(
         user=user,
-        today_commits=today_commits,
-        week_commits=week_commits,
+        today_contributions=today_contributions,
+        week_contributions=week_contributions,
         streak=streak,
         total_14w=total_14w,
         total_year=int(cal["totalContributions"]),

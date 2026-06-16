@@ -43,8 +43,8 @@ def _empty_reminders() -> TodaysReminders:
 def _empty_gh() -> GitHubActivity:
     return GitHubActivity(
         user="rocry",
-        today_commits=0,
-        week_commits=0,
+        today_contributions=0,
+        week_contributions=0,
         streak=0,
         total_14w=0,
         total_year=0,
@@ -154,8 +154,8 @@ def test_overview_todos_row_all_clear_when_empty():
 def test_overview_github_row_shows_week_and_top_repo():
     gh = GitHubActivity(
         user="rocry",
-        today_commits=3,
-        week_commits=18,
+        today_contributions=3,
+        week_contributions=18,
         streak=5,
         total_14w=142,
         total_year=420,
@@ -184,8 +184,8 @@ def test_overview_github_row_shows_week_and_top_repo():
 def test_overview_github_row_no_top_repo_when_quiet_week():
     gh = GitHubActivity(
         user="rocry",
-        today_commits=0,
-        week_commits=0,
+        today_contributions=0,
+        week_contributions=0,
         streak=0,
         total_14w=0,
         total_year=0,

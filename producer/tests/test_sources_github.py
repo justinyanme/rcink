@@ -98,10 +98,60 @@ def test_lang_week_and_repo_week_exported():
     assert LangWeek(name="Go", pct=10).pct == 10
 
 
-def test_fetch_uses_local_day_totals_for_private_contributions(httpx_mock):
-    from rcink.sources.github import DAY_QUERY_BATCH, GRAPHQL_URL, fetch_github_activity
+def test_fetch_uses_calendar_dates_without_overlapping_timezone_buckets(httpx_mock):
+    from rcink.sources.github import GRAPHQL_URL, fetch_github_activity
+
+    tz = dt.timezone(dt.timedelta(hours=8))
+    now = dt.datetime(2026, 6, 16, 17, 45, tzinfo=tz)
+    first = now.date() - dt.timedelta(days=GRID_CELLS - 1)
+    counts_by_date = {first + dt.timedelta(days=i): 0 for i in range(GRID_CELLS)}
+    counts_by_date.update(
+        {
+            dt.date(2026, 6, 9): 1,
+            dt.date(2026, 6, 10): 5,
+            dt.date(2026, 6, 11): 6,
+            dt.date(2026, 6, 12): 3,
+            dt.date(2026, 6, 13): 11,
+            dt.date(2026, 6, 14): 4,
+            dt.date(2026, 6, 15): 4,
+            dt.date(2026, 6, 16): 3,
+        }
+    )
+    contribution_days = [
+        {"date": day.isoformat(), "contributionCount": count} for day, count in sorted(counts_by_date.items())
+    ]
+    httpx_mock.add_response(
+        url=GRAPHQL_URL,
+        method="POST",
+        json={
+            "data": {
+                "user": {
+                    "year": {
+                        "contributionCalendar": {
+                            "totalContributions": sum(counts_by_date.values()),
+                            "weeks": [{"contributionDays": contribution_days}],
+                        }
+                    },
+                    "week": {"commitContributionsByRepository": []},
+                }
+            }
+        },
+    )
+
+    activity = fetch_github_activity(user="rocry", token="token", now=now)
+
+    assert activity.daily_counts[-8:] == [1, 5, 6, 3, 11, 4, 4, 3]
+    assert activity.today_contributions == 3
+    assert activity.week_contributions == 36
+    assert activity.total_14w == sum(counts_by_date.values())
+    assert len(httpx_mock.get_requests()) == 1
+
+
+def test_fetch_uses_calendar_counts_for_private_contributions(httpx_mock):
+    from rcink.sources.github import GRAPHQL_URL, fetch_github_activity
 
     daily = [0] * (GRID_CELLS - 7) + [1, 2, 0, 4, 5, 6, 7]
+    first = dt.date(2026, 6, 16) - dt.timedelta(days=GRID_CELLS - 1)
     httpx_mock.add_response(
         url=GRAPHQL_URL,
         method="POST",
@@ -114,11 +164,11 @@ def test_fetch_uses_local_day_totals_for_private_contributions(httpx_mock):
                             "weeks": [
                                 {
                                     "contributionDays": [
-                                        {"date": "2026-06-12", "contributionCount": 0},
-                                        {"date": "2026-06-13", "contributionCount": 4},
-                                        {"date": "2026-06-14", "contributionCount": 5},
-                                        {"date": "2026-06-15", "contributionCount": 6},
-                                        {"date": "2026-06-16", "contributionCount": 3},
+                                        {
+                                            "date": (first + dt.timedelta(days=i)).isoformat(),
+                                            "contributionCount": count,
+                                        }
+                                        for i, count in enumerate(daily)
                                     ]
                                 }
                             ],
@@ -129,22 +179,6 @@ def test_fetch_uses_local_day_totals_for_private_contributions(httpx_mock):
             }
         },
     )
-    for offset in range(0, GRID_CELLS, DAY_QUERY_BATCH):
-        httpx_mock.add_response(
-            url=GRAPHQL_URL,
-            method="POST",
-            json={
-                "data": {
-                    "user": {
-                        f"d{i:03d}": {
-                            "totalCommitContributions": 0,
-                            "restrictedContributionsCount": daily[i],
-                        }
-                        for i in range(offset, min(offset + DAY_QUERY_BATCH, GRID_CELLS))
-                    }
-                }
-            },
-        )
 
     activity = fetch_github_activity(
         user="rocry",
@@ -153,8 +187,8 @@ def test_fetch_uses_local_day_totals_for_private_contributions(httpx_mock):
     )
 
     assert activity.daily_counts == daily
-    assert activity.today_commits == 7
-    assert activity.week_commits == 25
+    assert activity.today_contributions == 7
+    assert activity.week_contributions == 25
     assert activity.total_14w == sum(daily)
     assert activity.streak == 4
-    assert len(httpx_mock.get_requests()) == 1 + ((GRID_CELLS + DAY_QUERY_BATCH - 1) // DAY_QUERY_BATCH)
+    assert len(httpx_mock.get_requests()) == 1

@@ -9,8 +9,8 @@ Sources:
 - **Calendar** — today's events from all macOS Calendars (EventKit).
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
-- **GitHub** — today's commits, current streak, visible repo detail,
-  and a 14-week daily commit line chart via the GitHub GraphQL API. Needs
+- **GitHub** — today's contribution count, current streak, visible repo detail,
+  and a 14-week daily contribution line chart via the GitHub GraphQL API. Needs
   `GITHUB_TOKEN` + `GITHUB_USERNAME` — see [docs/setup/github.md](docs/setup/github.md).
 - **Quote** — one of a curated set, rotated by date ordinal; inlined in the
   overview header, no standalone page.

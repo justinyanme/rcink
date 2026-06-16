@@ -57,15 +57,15 @@ def _github_row(gh: GitHubActivity | None) -> dict:
                 spacer(),
             ],
         )
-    today_color: ColorToken = "success" if gh.today_commits > 0 else "black"
-    week_color: ColorToken = "success" if gh.week_commits > 0 else "black"
+    today_color: ColorToken = "success" if gh.today_contributions > 0 else "black"
+    week_color: ColorToken = "success" if gh.week_contributions > 0 else "black"
     streak_color: ColorToken = "accent" if gh.streak >= 7 else "warning" if gh.streak >= 3 else "success"
     children: list[dict] = [
         icon("github", size=16, color="black"),
         text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
-        text(str(gh.today_commits), size="h2", color=today_color, weight="bold"),
+        text(str(gh.today_contributions), size="h2", color=today_color, weight="bold"),
         text("today", size="sm", weight="bold"),
-        text(str(gh.week_commits), size="h2", color=week_color, weight="bold"),
+        text(str(gh.week_contributions), size="h2", color=week_color, weight="bold"),
         text("week", size="sm", weight="bold"),
     ]
     if gh.repos_week:

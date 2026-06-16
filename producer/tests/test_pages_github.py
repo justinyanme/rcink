@@ -35,8 +35,8 @@ def _make(
 ) -> GitHubActivity:
     return GitHubActivity(
         user="rocry",
-        today_commits=today,
-        week_commits=week,
+        today_contributions=today,
+        week_contributions=week,
         streak=streak,
         total_14w=total_14w,
         total_year=420,
@@ -63,7 +63,7 @@ def test_github_page_uses_daily_sparkline_instead_of_heatmap_grid():
     texts = _all_text(page)
     sparklines = _find_nodes(page, "sparkline")
 
-    assert any("COMMITS / DAY" in t for t in texts)
+    assert any("CONTRIBS / DAY" in t for t in texts)
     assert len(sparklines) == 1
     assert sparklines[0]["values"] == [0] * (GRID_CELLS - 4) + [1, 5, 2, 8]
     assert _find_nodes(page, "grid") == []
