@@ -188,6 +188,32 @@ void dump_state() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv);
 }
 
+void dump_frame() {
+  size_t len = 0;
+  const uint8_t* frame = st7305_last_frame(&len);
+  const char* mode = g_mode == Mode::Dashboard ? "dashboard" : "deck";
+  const char* id = "dashboard";
+  if (g_mode == Mode::Deck && !g_state.pages.empty() && g_state.page_index < g_state.pages.size()) {
+    id = g_state.pages[g_state.page_index].id.c_str();
+  }
+  Serial.printf("[frame] begin w=%d h=%d bytes=%u mode=%s idx=%u count=%u id=%s polarity=%s\n",
+                SCREEN_W, SCREEN_H, (unsigned)len, mode,
+                (unsigned)g_state.page_index, (unsigned)g_state.pages.size(), id,
+                st7305_dark_mode() ? "dark" : "light");
+  constexpr size_t kBytesPerLine = 32;
+  for (size_t i = 0; i < len; i += kBytesPerLine) {
+    const size_t end = (i + kBytesPerLine < len) ? i + kBytesPerLine : len;
+    for (size_t j = i; j < end; ++j) {
+      if (frame[j] < 0x10) Serial.print('0');
+      Serial.print(frame[j], HEX);
+    }
+    Serial.println();
+    delay(1);
+  }
+  Serial.println("[frame] end");
+  Serial.flush();
+}
+
 void next_page() {
   if (g_state.pages.empty()) {
     Serial.println("[nav] no pages");
@@ -226,7 +252,7 @@ void dash_tick_poll() {
 
 void console_help() {
   Serial.println("[console] f fetch, r render, m toggle-mode, n next(deck), "
-                 "t read-sensors, i invert, s state, q layout, c clear, R reboot, h help");
+                 "t read-sensors, i invert, s state, q layout, p frame, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -269,6 +295,9 @@ void console_dispatch(char c) {
                       rec.id.c_str(), (unsigned)rec.layout_json.length(),
                       rec.layout_json.c_str());
       }
+      break;
+    case 'p':
+      dump_frame();
       break;
     case 'c':
       Serial.println("[console] clear");

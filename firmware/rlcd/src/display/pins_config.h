@@ -3,7 +3,7 @@
 // Waveshare ESP32-S3-RLCD-4.2 pin map.
 // Sources: the vendor Arduino demo (08_LVGL_V8_Test/user_config.h for the
 // ST7305 + I2C pins, 03_ADC_Test for battery, button_bsp.c for the buttons).
-// Board: ESP32-S3-WROOM-1-N16R8 (16 MB flash / 8 MB PSRAM).
+// Board in hand: ESP32-S3-PICO-1 (8 MB flash / 8 MB PSRAM).
 
 // --- ST7305 4.2" mono reflective LCD, SPI (landscape 400x300, 1bpp) ---------
 #define ST7305_SCK   11

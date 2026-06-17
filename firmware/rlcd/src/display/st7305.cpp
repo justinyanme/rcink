@@ -130,6 +130,11 @@ void st7305_push_mono(const uint16_t* px, int w, int h) {
   g_spi.endTransaction();
 }
 
+const uint8_t* st7305_last_frame(size_t* len) {
+  if (len) *len = kBufBytes;
+  return g_buf;
+}
+
 void st7305_sleep() {
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
   cmd(0x28);  // display off

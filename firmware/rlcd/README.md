@@ -3,7 +3,7 @@
 Firmware target for the **Waveshare ESP32-S3-RLCD-4.2** board — a desk-climate
 dashboard.
 
-- ESP32-S3-WROOM-1-N16R8, 16 MB flash, 8 MB PSRAM
+- ESP32-S3-PICO-1 on the board in hand, 8 MB flash, 8 MB PSRAM
 - **ST7305 4.2" monochrome reflective LCD** (e-ink-like), driven landscape
   **400×300, 1 bpp**
 - Onboard **SHTC3** temp/humidity (I2C 0x70), **PCF85063** RTC (I2C 0x51),
