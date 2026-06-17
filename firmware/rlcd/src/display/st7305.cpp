@@ -10,6 +10,10 @@
 #include "display/pins_config.h"
 #include "render/mono_pack.h"
 
+#ifndef RCRLCD_DEFAULT_DARK_MODE
+#define RCRLCD_DEFAULT_DARK_MODE 0
+#endif
+
 namespace rcpaper {
 namespace {
 
@@ -23,6 +27,7 @@ constexpr int kW = 400;
 constexpr int kH = 300;
 constexpr int kBufBytes = (kW * kH) / 8;  // 15000
 uint8_t g_buf[kBufBytes];
+bool g_dark_mode = RCRLCD_DEFAULT_DARK_MODE != 0;
 
 inline void cs_lo() { digitalWrite(ST7305_CS, LOW); }
 inline void cs_hi() { digitalWrite(ST7305_CS, HIGH); }
@@ -41,6 +46,15 @@ void cmd(uint8_t c, std::initializer_list<uint8_t> data = {}) {
 }
 
 }  // namespace
+
+bool st7305_dark_mode() {
+  return g_dark_mode;
+}
+
+void st7305_set_dark_mode(bool enabled) {
+  g_dark_mode = enabled;
+  Serial.printf("[st7305] polarity=%s\n", g_dark_mode ? "dark" : "light");
+}
 
 void st7305_init() {
   pinMode(ST7305_DC, OUTPUT);
@@ -93,7 +107,8 @@ void st7305_init() {
   cmd(0x29);                                  // display on
   g_spi.endTransaction();
 
-  Serial.printf("[st7305] init done %dx%d (%d-byte 1bpp buffer)\n", kW, kH, kBufBytes);
+  Serial.printf("[st7305] init done %dx%d (%d-byte 1bpp buffer, polarity=%s)\n",
+                kW, kH, kBufBytes, g_dark_mode ? "dark" : "light");
 }
 
 void st7305_push_mono(const uint16_t* px, int w, int h) {
@@ -101,7 +116,8 @@ void st7305_push_mono(const uint16_t* px, int w, int h) {
     Serial.printf("[st7305] push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
     return;
   }
-  pack_mono_landscape(px, w, h, g_buf);
+  pack_mono_landscape(px, w, h, g_buf,
+                      g_dark_mode ? MonoPolarity::Dark : MonoPolarity::Light);
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
   cmd(0x2A, {0x12, 0x2A});
   cmd(0x2B, {0x00, 0xC7});

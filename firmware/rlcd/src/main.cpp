@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "display/st7305.h"
 #include "display/pins_config.h"
 #include "net/axiom.h"
 #include "net/wifi.h"
@@ -177,10 +178,11 @@ void toggle_mode() {
 
 void dump_state() {
   Serial.printf("[state] mode=%s pages=%u idx=%u T=%.1f RH=%.0f env_ok=%d "
-                "last_fetch=%llu heap=%u psram=%u batt=%u%%/%umV\n",
+                "dark=%d last_fetch=%llu heap=%u psram=%u batt=%u%%/%umV\n",
                 g_mode == Mode::Dashboard ? "dash" : "deck",
                 (unsigned)g_state.pages.size(), (unsigned)g_state.page_index,
                 g_env.temp_c, g_env.rh, (int)g_env.ok,
+                (int)st7305_dark_mode(),
                 (unsigned long long)g_state.last_fetch_s,
                 (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv);
@@ -224,7 +226,7 @@ void dash_tick_poll() {
 
 void console_help() {
   Serial.println("[console] f fetch, r render, m toggle-mode, n next(deck), "
-                 "t read-sensors, s state, q layout, c clear, R reboot, h help");
+                 "t read-sensors, i invert, s state, q layout, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -250,6 +252,10 @@ void console_dispatch(char c) {
       break;
     case 't':
       render_dashboard_now();
+      break;
+    case 'i':
+      st7305_set_dark_mode(!st7305_dark_mode());
+      render_current_mode();
       break;
     case 's':
       dump_state();

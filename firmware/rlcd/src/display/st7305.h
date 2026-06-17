@@ -10,6 +10,9 @@ namespace rcpaper {
 
 void st7305_init();
 
+bool st7305_dark_mode();
+void st7305_set_dark_mode(bool enabled);
+
 // Threshold + pack a `w`x`h` RGB565 sprite buffer and flush the full frame.
 // `w`/`h` must be 400/300 (the panel's fixed landscape geometry).
 void st7305_push_mono(const uint16_t* rgb565, int w, int h);

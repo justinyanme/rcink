@@ -3,6 +3,11 @@
 
 namespace rcpaper {
 
+enum class MonoPolarity : uint8_t {
+  Light,
+  Dark,
+};
+
 // The render stack composes into a 16-bit RGB565 sprite (black ink on a white
 // field, like the e-ink targets). The ST7305 is a 1bpp reflective panel, so at
 // push time every sprite pixel is thresholded to one bit: a pixel is "ink"
@@ -20,6 +25,7 @@ inline bool mono_is_ink(uint16_t px) { return px != 0xFFFF; }
 // The buffer starts all-white (0xFF) and ink pixels CLEAR their bit (display
 // inversion 0x21 is on). `out` must be w*h/8 bytes; `w` even, `h` a multiple
 // of 4 (400x300 -> 15000 bytes).
-void pack_mono_landscape(const uint16_t* rgb565, int w, int h, uint8_t* out);
+void pack_mono_landscape(const uint16_t* rgb565, int w, int h, uint8_t* out,
+                         MonoPolarity polarity = MonoPolarity::Light);
 
 }  // namespace rcpaper

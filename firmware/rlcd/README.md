@@ -44,6 +44,10 @@ is used only as a sprite/font engine (its ILI9341 setup is never driven against
 real hardware). CJK in deck mode renders via U8g2 + a baked WenQuanYi GB2312
 font.
 
+The dev build currently boots in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
+the final packed 1 bpp frame is inverted after normal black-on-white rendering.
+Use console `i` to toggle light/dark live and redraw the current screen.
+
 ## Build + Flash
 
 Create `src/config.h` from `src/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
@@ -86,6 +90,7 @@ mode when held across a reset).
 - `m` toggle dashboard ↔ deck
 - `n` next page (deck only)
 - `t` re-read sensors + redraw dashboard
+- `i` invert light/dark polarity + redraw current mode
 - `s` state dump
 - `q` dump current `layout_json`
 - `c` clear screen

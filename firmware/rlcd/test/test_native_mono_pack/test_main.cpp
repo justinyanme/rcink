@@ -33,6 +33,33 @@ void test_all_ink() {
   for (uint8_t b : out) TEST_ASSERT_EQUAL_HEX8(0x00, b);
 }
 
+// Dark polarity is a final-frame inversion: the exact light-mode 1bpp buffer
+// is flipped so all drawing paths (dashboard, deck, status/error screens) get
+// the same black-background treatment.
+void test_dark_polarity_inverts_light_buffer() {
+  const int w = 4, h = 8;
+  std::vector<uint16_t> px(w * h, 0xFFFF);
+  px[7 * w + 0] = 0x0000;
+  px[0 * w + 3] = 0x0000;
+  px[3 * w + 1] = 0x1234;
+
+  uint8_t light[4];
+  uint8_t dark[4];
+  pack_mono_landscape(px.data(), w, h, light, MonoPolarity::Light);
+  pack_mono_landscape(px.data(), w, h, dark, MonoPolarity::Dark);
+  for (int i = 0; i < 4; ++i) {
+    TEST_ASSERT_EQUAL_HEX8((uint8_t)~light[i], dark[i]);
+  }
+}
+
+void test_dark_all_white_is_all_ink() {
+  const int w = 4, h = 8;
+  std::vector<uint16_t> px(w * h, 0xFFFF);
+  uint8_t out[4];
+  pack_mono_landscape(px.data(), w, h, out, MonoPolarity::Dark);
+  for (uint8_t b : out) TEST_ASSERT_EQUAL_HEX8(0x00, b);
+}
+
 // Hand-computed single pixels (w=4, h=8 => 4-byte buffer, blocks_y = h/4 = 2).
 //   idx = (x>>1)*blocks_y + ((h-1-y)>>2)
 //   bit = 7 - ((((h-1-y)&3)<<1) | (x&1)) ; ink clears that bit.
@@ -91,6 +118,8 @@ int main() {
   RUN_TEST(test_is_ink);
   RUN_TEST(test_all_white);
   RUN_TEST(test_all_ink);
+  RUN_TEST(test_dark_polarity_inverts_light_buffer);
+  RUN_TEST(test_dark_all_white_is_all_ink);
   RUN_TEST(test_single_pixels);
   RUN_TEST(test_full_panel_size);
   return UNITY_END();
