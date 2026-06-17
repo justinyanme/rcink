@@ -56,7 +56,7 @@ void draw_text(TFT_eSprite& canvas, const TextNode& t, Rect r) {
   int16_t tx = r.x + pad;
   if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;
   if (t.align == Align::End) tx = r.x + r.w - text_w - pad;
-  const int16_t ty = r.y + pad;
+  const int16_t ty = (int16_t)(r.y + pad + scale_px(t.dy));
   const uint16_t bg = t.has_bg ? c565(t.bg) : rgb565(kRgbWhite);
   draw_utf8(canvas, tx, ty, t.size, t.weight, c565(t.color), t.has_bg, bg, fitted);
 }

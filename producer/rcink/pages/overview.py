@@ -23,6 +23,7 @@ from rcink.sources.reminders import TodaysReminders
 # Visual-cell budget for one wrapped quote line at h2-bold on a 540px panel.
 _QUOTE_LINE_LIMIT = 30
 _QUOTE_MAX_LINES = 3
+_ROW_CONTENT_DY = 2
 
 
 def _quote_block(q: Quote | None) -> list[dict]:
@@ -51,8 +52,8 @@ def _github_row(gh: GitHubActivity | None) -> dict:
             gap=8,
             align="center",
             children=[
-                text("GITHUB", size="body", weight="bold", color="white", bg="black", pad=4),
-                text("—", size="body", weight="bold"),
+                text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+                text("—", size="sm", weight="bold"),
                 spacer(),
             ],
         )
@@ -60,20 +61,20 @@ def _github_row(gh: GitHubActivity | None) -> dict:
     week_color: ColorToken = "success" if gh.week_contributions > 0 else "black"
     streak_color: ColorToken = "accent" if gh.streak >= 7 else "warning" if gh.streak >= 3 else "success"
     children: list[dict] = [
-        text("GITHUB", size="body", weight="bold", color="white", bg="black", pad=4),
-        text(str(gh.today_contributions), size="body", color=today_color, weight="bold"),
-        text("today", size="body", weight="bold"),
-        text(str(gh.week_contributions), size="body", color=week_color, weight="bold"),
-        text("week", size="body", weight="bold"),
+        text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+        text(str(gh.today_contributions), size="sm", color=today_color, weight="bold"),
+        text("today", size="sm", weight="bold"),
+        text(str(gh.week_contributions), size="sm", color=week_color, weight="bold"),
+        text("week", size="sm", weight="bold"),
     ]
     if gh.repos_week:
         children += [
-            text("top:", size="body"),
-            text(gh.repos_week[0].name, size="body", weight="bold"),
+            text("top:", size="sm"),
+            text(gh.repos_week[0].name, size="sm", weight="bold"),
         ]
     children += [
         spacer(),
-        text(f"{gh.streak}d", size="body", weight="bold", color=streak_color),
+        text(f"{gh.streak}d", size="sm", weight="bold", color=streak_color),
     ]
     return hstack(gap=8, align="center", children=children)
 
@@ -86,6 +87,10 @@ def _pct_color(pct: float | None) -> ColorToken:
     if pct >= 50:
         return "warning"
     return "success"
+
+
+def _compact_time(s: str) -> str:
+    return s.replace(" ", "")
 
 
 def _usage_row(
@@ -110,7 +115,7 @@ def _usage_row(
             text(pct_text, size="body", color=_pct_color(primary_pct), weight="bold"),
             hbar(pct=primary_pct if primary_pct is not None else 0, color=brand_color, height=14),
             text(f"{secondary_label} {secondary_text}", size="body", weight="bold", color=_pct_color(secondary_pct)),
-            text(primary_reset or "", size="body"),
+            text(_compact_time(primary_reset), size="body"),
         ],
     )
 
@@ -122,7 +127,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             align="center",
             children=[
                 text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
-                text("—", size="body", weight="bold"),
+                text("—", size="body", weight="bold", pad=4),
                 spacer(),
             ],
         )
@@ -147,10 +152,10 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             align="center",
             children=[
                 text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
-                text(when, size="body", color="info", weight="bold"),
-                text(title, size="body", weight="bold"),
+                text(when, size="body", color="info", weight="bold", pad=4),
+                text(title, size="body", weight="bold", pad=4, dy=_ROW_CONTENT_DY),
                 spacer(),
-                text(sub, size="body"),
+                text(sub, size="body", pad=4),
             ],
         )
 
@@ -166,8 +171,8 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             align="center",
             children=[
                 text("SOON", size="body", weight="bold", color="white", bg="info", pad=4),
-                text(f"{dow} {when}", size="body", color="info", weight="bold"),
-                text(title, size="body", weight="bold"),
+                text(f"{dow} {when}", size="body", color="info", weight="bold", pad=4),
+                text(title, size="body", weight="bold", pad=4, dy=_ROW_CONTENT_DY),
                 spacer(),
             ],
         )
@@ -177,9 +182,9 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
         align="center",
         children=[
             text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
-            text("CLEAR", size="body", weight="bold", color="success"),
+            text("CLEAR", size="body", weight="bold", color="success", pad=4),
             spacer(),
-            text("nothing this week", size="body"),
+            text("nothing this week", size="body", pad=4),
         ],
     )
 
@@ -194,7 +199,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
             align="center",
             children=[
                 text("TODO", size="body", weight="bold", color="white", bg="black", pad=4),
-                text("—", size="body", weight="bold"),
+                text("—", size="body", weight="bold", pad=4),
                 spacer(),
             ],
         )
@@ -202,13 +207,13 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     count_color: ColorToken = "accent" if count >= 20 else "warning" if count >= 5 else "success"
     children: list[dict] = [
         text("TODO", size="body", weight="bold", color="white", bg="black", pad=4),
-        text(str(count), size="body", color=count_color, weight="bold"),
+        text(str(count), size="body", color=count_color, weight="bold", pad=4),
     ]
     if not rem.items:
         children += [
-            text("ALL CLEAR", size="body", weight="bold", color="success"),
+            text("ALL CLEAR", size="body", weight="bold", color="success", pad=4, dy=_ROW_CONTENT_DY),
             spacer(),
-            text(rem.list_name, size="body"),
+            text(rem.list_name, size="body", pad=4),
         ]
         return hstack(gap=8, align="center", children=children)
     top = rem.items[0]
@@ -218,9 +223,9 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     title_display = f'"{title_text}' if title_text.endswith("…") else f'"{title_text}"'
     rel = relative_short(top.updated, now=now)
     children += [
-        text(title_display, size="body", weight="bold"),
+        text(title_display, size="body", weight="bold", pad=4, dy=_ROW_CONTENT_DY),
         spacer(),
-        text(rel, size="body", weight="bold", color="info"),
+        text(rel, size="body", weight="bold", color="info", pad=4),
     ]
     return hstack(gap=8, align="center", children=children)
 

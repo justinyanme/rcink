@@ -23,18 +23,19 @@ void test_text_minimal() {
 void test_text_full() {
   auto n = parse_str(R"({
     "type":"text","value":"CLAUDE",
-    "size":"h1","color":"white","weight":"bold",
-    "align":"center","bg":"red","pad":8
-  })");
+	    "size":"h1","color":"white","weight":"bold",
+	    "align":"center","bg":"red","pad":8,"dy":2
+	  })");
   TEST_ASSERT_EQUAL(NodeType::Text, n.type);
   TEST_ASSERT_EQUAL(TextSize::H1, n.as_text.size);
   TEST_ASSERT_EQUAL(Color::White, n.as_text.color);
   TEST_ASSERT_EQUAL(Weight::Bold, n.as_text.weight);
   TEST_ASSERT_EQUAL(Align::Center, n.as_text.align);
-  TEST_ASSERT_EQUAL(Color::Red, n.as_text.bg);
-  TEST_ASSERT_EQUAL(8, n.as_text.pad);
-  TEST_ASSERT_TRUE(n.as_text.has_bg);
-}
+	  TEST_ASSERT_EQUAL(Color::Red, n.as_text.bg);
+	  TEST_ASSERT_EQUAL(8, n.as_text.pad);
+	  TEST_ASSERT_EQUAL(2, n.as_text.dy);
+	  TEST_ASSERT_TRUE(n.as_text.has_bg);
+	}
 
 void test_vstack_with_children() {
   auto n = parse_str(R"({

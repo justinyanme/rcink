@@ -244,7 +244,7 @@ def _paint_text(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDraw, pr
         tx = rect.x + rect.w - text_w2 - pad
     else:
         tx = rect.x + pad
-    ty = rect.y + (rect.h - text_h) // 2
+    ty = rect.y + (rect.h - text_h) // 2 + int(node.get("dy", 0) or 0)
     draw.text((tx, ty), text, font=font, fill=color)
 
 

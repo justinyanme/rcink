@@ -2,6 +2,8 @@ import datetime as dt
 
 from rcink.pages.overview import build_overview_page
 from rcink.sources.calendar import CalEvent, TodaysCalendar
+from rcink.sources.claude import ClaudeUsage
+from rcink.sources.codex import CodexUsage
 from rcink.sources.github import GRID_CELLS, GitHubActivity, RepoWeek
 from rcink.sources.quotes import Quote
 from rcink.sources.reminders import Reminder, TodaysReminders
@@ -38,6 +40,16 @@ def _find_nodes(node: dict, typ: str) -> list[dict]:
             out.append(n)
         stack.extend(n.get("children", []) or [])
     return out
+
+
+def _find_hstack_with_direct_text(node: dict, value: str) -> dict:
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.get("type") == "hstack" and any(c.get("value") == value for c in n.get("children", [])):
+            return n
+        stack.extend(n.get("children", []) or [])
+    raise AssertionError(f"hstack containing direct text {value!r} not found")
 
 
 _NOW = dt.datetime(2026, 5, 23, 9, 0)
@@ -207,22 +219,115 @@ def test_overview_rows_have_no_letter_icon_markers_and_no_h2_values():
 
     assert _find_nodes(page, "icon") == []
 
-    row_values = {
+    body_row_values = {
         "CLAUDE",
         "CODEX",
-        "GITHUB",
         "NEXT",
         "TODO",
         "5H",
         "7D",
-        "today",
-        "week",
         "12",
     }
-    row_text_nodes = [n for n in _all_text_nodes(page) if n.get("value") in row_values]
+    row_text_nodes = [n for n in _all_text_nodes(page) if n.get("value") in body_row_values]
     assert row_text_nodes
     assert all(n.get("size") == "body" for n in row_text_nodes)
-    assert not any(n.get("size") == "h2" for n in row_text_nodes)
+    assert not any(n.get("size") == "h2" for n in _all_text_nodes(page))
+
+
+def test_overview_usage_reset_times_are_compact():
+    page = build_overview_page(
+        claude=ClaudeUsage(
+            five_hour_pct=42,
+            seven_day_pct=68,
+            opus_pct=None,
+            sonnet_pct=None,
+            five_hour_reset="1h 39m",
+            seven_day_reset="5d 4h",
+        ),
+        codex=CodexUsage(
+            primary_pct=70,
+            primary_reset="1h 0m",
+            primary_window_min=300,
+            secondary_pct=75,
+            secondary_reset="5d 21h",
+            secondary_window_min=10080,
+            credits_dollars=None,
+        ),
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    texts = _all_text(page)
+    assert "1h39m" in texts
+    assert "1h0m" in texts
+    assert "1h 39m" not in texts
+    assert "1h 0m" not in texts
+
+
+def test_overview_github_row_uses_smaller_font():
+    gh = GitHubActivity(
+        user="rocry",
+        today_contributions=12,
+        week_contributions=113,
+        streak=151,
+        total_14w=4468,
+        total_year=9000,
+        daily_counts=[0] * GRID_CELLS,
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        github=gh,
+        quote=None,
+        now=_NOW,
+    )
+
+    row = _find_hstack_with_direct_text(page, "GITHUB")
+    values = {"GITHUB", "12", "today", "113", "week", "151d"}
+    nodes = [n for n in row["children"] if n.get("value") in values]
+    assert {n.get("value") for n in nodes} == values
+    assert all(n.get("size") == "sm" for n in nodes)
+
+
+def test_overview_calendar_and_todo_titles_share_chip_row_padding():
+    cal = TodaysCalendar(
+        today=_NOW.date(),
+        events=[_ev("2026-05-23T11:00", "Lunch")],
+        upcoming=[],
+    )
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=cal,
+        reminders=TodaysReminders(
+            list_name="Inbox", items=[_reminder("fix bug", updated_min_ago=5)], incomplete_total=12
+        ),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    next_row = _find_hstack_with_direct_text(page, "NEXT")
+    todo_row = _find_hstack_with_direct_text(page, "TODO")
+
+    next_chip = next(c for c in next_row["children"] if c.get("value") == "NEXT")
+    next_title = next(c for c in next_row["children"] if c.get("value") == "Lunch")
+    todo_chip = next(c for c in todo_row["children"] if c.get("value") == "TODO")
+    todo_title = next(c for c in todo_row["children"] if "fix bug" in c.get("value", ""))
+
+    assert next_chip.get("pad") == 4
+    assert "dy" not in next_chip
+    assert next_title.get("pad") == 4
+    assert next_title.get("dy") == 2
+    assert todo_chip.get("pad") == 4
+    assert "dy" not in todo_chip
+    assert todo_title.get("pad") == 4
+    assert todo_title.get("dy") == 2
 
 
 def test_overview_github_row_no_top_repo_when_quiet_week():

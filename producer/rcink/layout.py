@@ -54,6 +54,7 @@ def text(
     align: str | None = None,
     bg: ColorToken | None = None,
     pad: int | None = None,
+    dy: int | None = None,
 ) -> dict:
     return _node(
         "text",
@@ -64,6 +65,7 @@ def text(
         align=align,
         bg=bg,
         pad=pad,
+        dy=dy,
     )
 
 

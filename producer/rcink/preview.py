@@ -59,11 +59,13 @@ def _node_html(node: dict[str, Any]) -> str:
         weight = "700" if node.get("weight") == "bold" else "400"
         color = _color(node.get("color"), BLACK)
         bg = _color(node.get("bg"))
+        dy = int(node.get("dy", 0) or 0)
         align_text = {"center": "center", "end": "right"}.get(node.get("align"), "left")
         value = html.escape(str(node.get("value", "")))
         style = (
             f"font-size:{size}px;line-height:1.15;font-weight:{weight};color:{color};"
             f"background:{bg};padding:{pad}px;text-align:{align_text};"
+            f"position:relative;top:{dy}px;"
         )
         # Centered/right-aligned text expects the box to fill its parent main axis.
         if align_text != "left":

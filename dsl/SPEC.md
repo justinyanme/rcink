@@ -33,7 +33,7 @@ Unknown node types are skipped at render time — they don't bump version.
 
 | `type`      | Required props      | Optional props                                                                |
 |-------------|---------------------|-------------------------------------------------------------------------------|
-| `text`      | `value`             | `size`, `color`, `weight`, `align`, `bg`, `pad`, `max_lines`                  |
+| `text`      | `value`             | `size`, `color`, `weight`, `align`, `bg`, `pad`, `dy`, `max_lines`            |
 | `hbar`      | `pct` (0–100)       | `color`, `height`, `label_left`, `label_right`                                |
 | `icon`      | `name`              | `size`, `color`                                                               |
 | `image`     | (`name` or `url`)   | `width`, `height`, `format`                                                   |
