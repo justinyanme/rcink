@@ -3,18 +3,20 @@
 namespace rcpaper {
 
 static constexpr int16_t kMinLatinFontH = 16;
+static constexpr int16_t kSmLatinFontH = 8;
 
 // Nominal line heights (px) at scale 1.0, matching the FreeSans GFX ladder
 // rungs (see kLadder). The fit-to-height pass scales these down; the ladder
-// then picks the tallest crisp font that fits. Latin and CJK both floor at 16px
-// for page content. Mirror in producer devices_profile._T_AMOLED_SIZES.
+// then picks the tallest crisp font that fits. Sm is allowed to use the 8px
+// GLCD rung for labels; non-Sm Latin and CJK still floor at 16px for readable
+// page content. Mirror in producer devices_profile._T_AMOLED_SIZES.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
     case TextSize::H1:   return 40;
     case TextSize::H2:   return 30;
     case TextSize::Body: return 21;
-    case TextSize::Sm:
-    default:             return 16;
+    case TextSize::Sm:   return kSmLatinFontH;
+    default:             return 21;
   }
 }
 
@@ -49,6 +51,7 @@ struct FontPick {
   int16_t height;
 };
 const FontPick kLadder[] = {
+  {false, nullptr,        nullptr,            kSmLatinFontH},
   {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  min_latin_font_height()},
   {true,  &FreeSans12pt7b, &FreeSansBold12pt7b, 21},
   {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 30},
@@ -65,6 +68,7 @@ const FontPick& pick_font(int16_t target_px) {
 
 int16_t scaled_target_px(TextSize size) {
   int16_t px = (int16_t)(font_height(size, Weight::Regular) * g_text_scale + 0.5f);
+  if (size != TextSize::Sm && px < kMinLatinFontH) return kMinLatinFontH;
   return px < 1 ? 1 : px;
 }
 }  // namespace

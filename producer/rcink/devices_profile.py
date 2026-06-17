@@ -130,18 +130,18 @@ _TLSR_SIZES: dict[str, int] = {
     "sm": 10,
 }
 # Mirrors firmware render/fonts.cpp font_height() — nominal FreeSans ladder
-# rungs at scale 1.0. The firmware fit-to-height pass shrinks these per page;
-# the producer renders at nominal size (no fit pass), so goldens are a
-# layout-logic reference, not a pixel match.
+# rungs at scale 1.0, with Sm using the 8px GLCD label rung. The firmware
+# fit-to-height pass shrinks these per page; the producer renders at nominal
+# size (no fit pass), so goldens are a layout-logic reference, not a pixel match.
 _T_AMOLED_SIZES: dict[str, int] = {
     "H1": 40,
     "H2": 30,
     "Body": 21,
-    "Sm": 16,
+    "Sm": 8,
     "h1": 40,
     "h2": 30,
     "body": 21,
-    "sm": 16,
+    "sm": 8,
 }
 
 
