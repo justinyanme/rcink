@@ -8,7 +8,8 @@ dashboard.
   **400×300, 1 bpp**
 - Onboard **SHTC3** temp/humidity (I2C 0x70), **PCF85063** RTC (I2C 0x51),
   18650 battery ADC (GPIO4, 3:1 divider)
-- Two side buttons: **BOOT** (GPIO0) and **KEY** (GPIO18)
+- Two firmware-readable side buttons: **BOOT** (GPIO0) and **KEY** (GPIO18).
+  The physical **PWR** key is handled by the board power circuit, not by the app.
 - USB-CDC console on `/dev/cu.usbmodem*`
 
 ## What it shows
@@ -65,6 +66,9 @@ pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
 ```
 
 ## Buttons
+
+Only BOOT and KEY generate firmware events. PWR is a hardware power key: short
+press powers on, long press powers off, and normal taps do not reach the app.
 
 | Gesture | Dashboard | Deck |
 |---|---|---|

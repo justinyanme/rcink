@@ -22,8 +22,9 @@
 // --- battery sense: ADC1_CH3 on GPIO4, behind a 3:1 resistor divider --------
 #define PIN_BAT_VOLT 4
 
-// --- side buttons (both active-low) -----------------------------------------
+// --- firmware-readable buttons (both active-low) ----------------------------
 // BOOT doubles as the download-mode strap but is safe as a runtime button (it
-// only enters download mode when held across a reset).
+// only enters download mode when held across a reset). The physical PWR key is
+// handled by the board power circuit and is not exposed as an application GPIO.
 #define PIN_BUTTON_1 0   // BOOT
 #define PIN_BUTTON_2 18  // KEY

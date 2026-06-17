@@ -285,12 +285,13 @@ void console_dispatch(char c) {
   }
 }
 
-// Two side buttons, both active-low.
+// Two firmware-readable buttons, both active-low.
 //   KEY  (GPIO18) tap  -> toggle dashboard <-> deck mode
 //   BOOT (GPIO0)  tap  -> dashboard: re-read sensors; deck: next page (wraps)
 //   either, hold       -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
 // BOOT doubles as the download strap but is safe at runtime (download only
-// engages when it is held across a reset).
+// engages when it is held across a reset). PWR is a hardware power key
+// (short-press power on, long-press power off), not an application button.
 struct Button {
   int pin;
   bool pressed;

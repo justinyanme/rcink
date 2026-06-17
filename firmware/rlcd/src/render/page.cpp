@@ -185,7 +185,7 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.setCursor(cx, SCREEN_H - 40);
   g_canvas.print("KEY HOME");
   g_canvas.setCursor(cx, SCREEN_H - 22);
-  g_canvas.print("BTN NEXT");
+  g_canvas.print("BOOT NXT");
 }
 
 class SpriteMeasurer : public Measurer {
