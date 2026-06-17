@@ -93,17 +93,43 @@ mode when held across a reset).
 - `i` invert light/dark polarity + redraw current mode
 - `s` state dump
 - `q` dump current `layout_json`
+- `p` dump current packed ST7305 framebuffer as hex for screenshot capture
 - `c` clear screen
 - `R` reboot
 
 For hands-free console testing over USB (no DTR/RTS reset), see
 `tools/serial_probe.py`, e.g. `uv run tools/serial_probe.py --send "t,m,s" --seconds 20`.
 
+## Exact screenshots
+
+Use `tools/capture_frames.py` for screenshot previews that match the real
+device. It drives the firmware console, captures the current ST7305 1 bpp
+framebuffer with `p`, decodes the panel-native byte layout, and writes PNGs:
+
+```bash
+uv run tools/capture_frames.py --port /dev/cu.usbmodem31301 --open
+```
+
+Output:
+
+- `native/*.png` — exact 400×300 panel frames
+- `preview-3x/*.png` — 1200×900 nearest-neighbor previews for Mac inspection
+- `contact-sheet.png` — dashboard + all cached deck pages
+
+By default the script sends `f` first to refresh Axiom data. To capture the
+current cached deck without network refresh:
+
+```bash
+uv run tools/capture_frames.py --port /dev/cu.usbmodem31301 --no-refresh --open
+```
+
 ## Layout oracle
 
 `tools/preview_dashboard.py` is a headless 400×300 PIL mock of the dashboard
 (same black-on-white threshold as the firmware) for iterating layout without
-flashing:
+flashing. It is not a deck/page-deck fidelity test; use `capture_frames.py`
+when font choice, CJK rendering, sidebar layout, polarity, or page scale must
+match the device exactly.
 
 ```bash
 uv run tools/preview_dashboard.py && open /tmp/rlcd_dashboard.png

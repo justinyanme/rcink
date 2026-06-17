@@ -12,13 +12,14 @@ from rcink.palette import ColorToken
 from rcink.sources.github import GRID_WEEKS, GitHubActivity
 
 
-def _kpi_cell(label: str, value: str, color: ColorToken, sub: str) -> dict:
+def _kpi_cell(label: str, value: str, color: ColorToken, sub: str, *, align: str = "start") -> dict:
     return vstack(
+        align=align,
         gap=2,
         children=[
-            text(label, size="sm", weight="bold"),
-            text(value, size="h1", color=color, weight="bold"),
-            text(sub, size="sm"),
+            text(label, size="sm", weight="bold", align=align),
+            text(value, size="h1", color=color, weight="bold", align=align),
+            text(sub, size="sm", align=align),
         ],
     )
 
@@ -57,11 +58,14 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
         ),
         spacer(size=6),
         hstack(
-            gap=12,
+            align="center",
+            gap=6,
             children=[
-                _kpi_cell("TODAY", str(activity.today_contributions), "success", "CONTRIBS"),
-                _kpi_cell("WEEK", str(activity.week_contributions), "info", "CONTRIBS"),
-                _kpi_cell("14W", str(activity.total_14w), "accent", "TOTAL"),
+                _kpi_cell("TODAY", str(activity.today_contributions), "success", "CONTRIBS", align="start"),
+                spacer(),
+                _kpi_cell("WEEK", str(activity.week_contributions), "info", "CONTRIBS", align="center"),
+                spacer(),
+                _kpi_cell("14W", str(activity.total_14w), "accent", "TOTAL", align="end"),
             ],
         ),
         spacer(size=6),

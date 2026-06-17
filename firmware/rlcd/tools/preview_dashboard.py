@@ -37,7 +37,7 @@ BLACK = (0, 0, 0)
 # Firmware sizes (px cap-ish height) we target on-device:
 #   hero temp  ~ FreeSansBold24pt @ textSize 2  (~66 px)
 #   clock      ~ FreeSansBold18pt                (~26 px)
-#   humidity   ~ FreeSansBold24pt @ textSize 1  (~33 px)
+#   humidity   ~ FreeSansBold18pt @ textSize 1  (~25 px)
 #   value sm   ~ FreeSansBold12pt                (~17 px)
 #   label      ~ FreeSans9pt                     (~13 px)
 _CANDIDATES_R = [
@@ -128,11 +128,11 @@ def render_dashboard(
     c.text(W - PAD - cw, 6, clock, clk_f)
     dd = reg(11)
     ddtxt = f"{weekday}  {date}"
-    c.text(W - PAD - c.text_w(ddtxt, dd), 36, ddtxt, dd)
-    c.line(PAD, 62, W - PAD, 62, t=1)
+    c.text(W - PAD - c.text_w(ddtxt, dd), 45, ddtxt, dd)
+    c.line(PAD, 66, W - PAD, 66, t=1)
 
     # ---- hero: temperature (centered) ----
-    c.text(W // 2, 66, "TEMPERATURE", reg(11), anchor="ma")
+    c.text(W // 2, 72, "TEMPERATURE", reg(11), anchor="ma")
     num = f"{temp_c:.1f}"
     num_h = 64
     nf = bold(num_h)
@@ -146,14 +146,15 @@ def render_dashboard(
     draw_degree_c(c, nx + nw + 4, ny, num_h)
 
     # ---- humidity row ----
-    hy = 170
+    hy = 174
     c.text(PAD, hy + 4, "HUMIDITY", reg(12))
-    hf = bold(26)
+    hf = bold(22)
     htxt = f"{rh:.0f}%"
-    c.text(W - PAD - c.text_w(htxt, hf), hy - 4, htxt, hf)
+    c.text(W - PAD - c.text_w(htxt, hf), hy + 2, htxt, hf)
     # RH bar
-    by = hy + 30
-    bx, bw, bh = PAD, W - 2 * PAD, 12
+    by = hy + 40
+    bx, bh = PAD + 4, 12
+    bw = W - 2 * bx
     c.rect_outline(bx, by, bw, bh, t=1)
     fill = int((bw - 4) * max(0.0, min(100.0, rh)) / 100.0)
     if fill > 0:

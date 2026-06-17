@@ -417,15 +417,15 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   if (dd.length()) dd += "  ";
   dd += format_local_md(epoch);
   const int16_t dw = gfx_w(dd.c_str(), &FreeSans9pt7b, 1);
-  gfx_text((int16_t)(SCREEN_W - PAD - dw), 40, dd.c_str(), &FreeSans9pt7b, 1, ink);
+  gfx_text((int16_t)(SCREEN_W - PAD - dw), 45, dd.c_str(), &FreeSans9pt7b, 1, ink);
   // Divider sits clear of the second row: FreeSans glyphs run ~16 px tall from
   // their top, so the date bottom is ~56 — keep the rule below that.
-  g_canvas.drawFastHLine(PAD, 62, (int16_t)(SCREEN_W - 2 * PAD), ink);
+  g_canvas.drawFastHLine(PAD, 66, (int16_t)(SCREEN_W - 2 * PAD), ink);
 
   // --- temperature hero (centered) ---
   const char* tlabel = "TEMPERATURE";
   const int16_t tlw = gfx_w(tlabel, &FreeSans9pt7b, 1);
-  gfx_text((int16_t)((SCREEN_W - tlw) / 2), 66, tlabel, &FreeSans9pt7b, 1, ink);
+  gfx_text((int16_t)((SCREEN_W - tlw) / 2), 72, tlabel, &FreeSans9pt7b, 1, ink);
   char num[16];
   if (env.ok) snprintf(num, sizeof(num), "%.1f", env.temp_c);
   else snprintf(num, sizeof(num), "--.-");
@@ -433,7 +433,7 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   constexpr int16_t kDegR = 7;  // degree-ring radius
   const int16_t deg_block = (int16_t)(2 * kDegR + 4 + gfx_w("C", &FreeSansBold18pt7b, 1));
   const int16_t nx = (int16_t)((SCREEN_W - (nw + 6 + deg_block)) / 2);
-  const int16_t ny = 86;
+  const int16_t ny = 90;
   gfx_text(nx, ny, num, &FreeSansBold24pt7b, 2, ink);
   // degree ring + C, top-aligned to the number
   const int16_t dcx = (int16_t)(nx + nw + 6 + kDegR);
@@ -443,14 +443,15 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
   gfx_text((int16_t)(dcx + kDegR + 4), (int16_t)(ny + 4), "C", &FreeSansBold18pt7b, 1, ink);
 
   // --- humidity ---
-  constexpr int16_t hy = 168;
+  constexpr int16_t hy = 174;
   gfx_text(PAD, (int16_t)(hy + 6), "HUMIDITY", &FreeSans12pt7b, 1, ink);
   char hum[8];
   if (env.ok) snprintf(hum, sizeof(hum), "%.0f%%", env.rh);
   else snprintf(hum, sizeof(hum), "--%%");
-  const int16_t hw = gfx_w(hum, &FreeSansBold24pt7b, 1);
-  gfx_text((int16_t)(SCREEN_W - PAD - hw), (int16_t)(hy - 2), hum, &FreeSansBold24pt7b, 1, ink);
-  dash_bar(PAD, (int16_t)(hy + 34), (int16_t)(SCREEN_W - 2 * PAD), 12, env.ok ? env.rh : 0.0f);
+  const int16_t hw = gfx_w(hum, &FreeSansBold18pt7b, 1);
+  gfx_text((int16_t)(SCREEN_W - PAD - hw), (int16_t)(hy + 2), hum, &FreeSansBold18pt7b, 1, ink);
+  constexpr int16_t hbar_x = PAD + 4;
+  dash_bar(hbar_x, (int16_t)(hy + 40), (int16_t)(SCREEN_W - 2 * hbar_x), 12, env.ok ? env.rh : 0.0f);
 
   // --- bottom battery strip ---
   g_canvas.drawFastHLine(PAD, 250, (int16_t)(SCREEN_W - 2 * PAD), ink);

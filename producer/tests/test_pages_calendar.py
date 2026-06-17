@@ -26,6 +26,16 @@ def _all_text(node: dict) -> list[str]:
     return out
 
 
+def _find_hstack_containing(node: dict, value: str) -> dict:
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.get("type") == "hstack" and any(c.get("value") == value for c in n.get("children", [])):
+            return n
+        stack.extend(n.get("children", []) or [])
+    raise AssertionError(f"hstack containing {value!r} not found")
+
+
 def test_calendar_today_has_events_unchanged():
     now = dt.datetime(2026, 5, 23, 9, 0)
     cal = TodaysCalendar(
@@ -37,6 +47,23 @@ def test_calendar_today_has_events_unchanged():
     texts = _all_text(page)
     assert "NEXT" in texts
     assert "Standup" in texts
+
+
+def test_calendar_next_title_and_relative_time_align_right():
+    now = dt.datetime(2026, 5, 23, 9, 0)
+    cal = TodaysCalendar(
+        today=now.date(),
+        events=[_ev("2026-05-23T10:00", "Standup")],
+        upcoming=[],
+    )
+    page = build_calendar_page(cal, now=now)
+
+    row = _find_hstack_containing(page, "10:00")
+    assert any(c.get("type") == "spacer" and "size" not in c for c in row["children"])
+    detail = row["children"][-1]
+    assert detail["type"] == "vstack"
+    assert detail.get("align") == "end"
+    assert all(c.get("align") == "end" for c in detail["children"] if c.get("type") == "text")
 
 
 def test_calendar_today_empty_with_upcoming_renders_upcoming_section():

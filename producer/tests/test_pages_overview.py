@@ -29,6 +29,17 @@ def _all_text_nodes(node: dict) -> list[dict]:
     return out
 
 
+def _find_nodes(node: dict, typ: str) -> list[dict]:
+    out: list[dict] = []
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.get("type") == typ:
+            out.append(n)
+        stack.extend(n.get("children", []) or [])
+    return out
+
+
 _NOW = dt.datetime(2026, 5, 23, 9, 0)
 
 
@@ -179,6 +190,39 @@ def test_overview_github_row_shows_week_and_top_repo():
     assert any("5d" in t for t in texts)
     # PR counts must NOT be on the row anymore.
     assert not any("/" in t and "PR" in t for t in texts)
+
+
+def test_overview_rows_have_no_letter_icon_markers_and_no_h2_values():
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=TodaysReminders(
+            list_name="Inbox", items=[_reminder("fix bug", updated_min_ago=5)], incomplete_total=12
+        ),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    assert _find_nodes(page, "icon") == []
+
+    row_values = {
+        "CLAUDE",
+        "CODEX",
+        "GITHUB",
+        "NEXT",
+        "TODO",
+        "5H",
+        "7D",
+        "today",
+        "week",
+        "12",
+    }
+    row_text_nodes = [n for n in _all_text_nodes(page) if n.get("value") in row_values]
+    assert row_text_nodes
+    assert all(n.get("size") == "body" for n in row_text_nodes)
+    assert not any(n.get("size") == "h2" for n in row_text_nodes)
 
 
 def test_overview_github_row_no_top_repo_when_quiet_week():

@@ -66,14 +66,17 @@ def _append_today_body(children: list[dict], events: list[CalEvent], now: dt.dat
                 gap=6,
                 children=[
                     text(_fmt_time(nxt.start, nxt.is_all_day), size="h1", color="accent", weight="bold"),
+                    spacer(),
                     vstack(
+                        align="end",
                         gap=2,
                         children=[
-                            text(nxt.title, size="body", weight="bold"),
+                            text(nxt.title, size="body", weight="bold", align="end"),
                             text(
                                 f"{_fmt_duration(nxt.start, nxt.end, nxt.is_all_day)} · "
                                 f"{_next_in_label(nxt.start, now)}",
                                 size="sm",
+                                align="end",
                             ),
                         ],
                     ),

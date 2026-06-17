@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from rcink.layout import divider, hbar, hstack, icon, spacer, text, vstack
+from rcink.layout import divider, hbar, hstack, spacer, text, vstack
 from rcink.pages._common import relative_short, wrap_visual
 from rcink.palette import ColorToken
 from rcink.sources.calendar import TodaysCalendar
@@ -45,14 +45,13 @@ def _quote_block(q: Quote | None) -> list[dict]:
 
 
 def _github_row(gh: GitHubActivity | None) -> dict:
-    """One row: [github icon] [GITHUB chip] [N today] [N week] [top:repo] [streak]."""
+    """One row: [GITHUB chip] [N today] [N week] [top:repo] [streak]."""
     if gh is None:
         return hstack(
             gap=8,
             align="center",
             children=[
-                icon("github", size=16, color="black"),
-                text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
+                text("GITHUB", size="body", weight="bold", color="white", bg="black", pad=4),
                 text("—", size="body", weight="bold"),
                 spacer(),
             ],
@@ -61,21 +60,20 @@ def _github_row(gh: GitHubActivity | None) -> dict:
     week_color: ColorToken = "success" if gh.week_contributions > 0 else "black"
     streak_color: ColorToken = "accent" if gh.streak >= 7 else "warning" if gh.streak >= 3 else "success"
     children: list[dict] = [
-        icon("github", size=16, color="black"),
-        text("GITHUB", size="sm", weight="bold", color="white", bg="black", pad=4),
-        text(str(gh.today_contributions), size="h2", color=today_color, weight="bold"),
-        text("today", size="sm", weight="bold"),
-        text(str(gh.week_contributions), size="h2", color=week_color, weight="bold"),
-        text("week", size="sm", weight="bold"),
+        text("GITHUB", size="body", weight="bold", color="white", bg="black", pad=4),
+        text(str(gh.today_contributions), size="body", color=today_color, weight="bold"),
+        text("today", size="body", weight="bold"),
+        text(str(gh.week_contributions), size="body", color=week_color, weight="bold"),
+        text("week", size="body", weight="bold"),
     ]
     if gh.repos_week:
         children += [
-            text("top:", size="sm"),
+            text("top:", size="body"),
             text(gh.repos_week[0].name, size="body", weight="bold"),
         ]
     children += [
         spacer(),
-        text(f"{gh.streak}d", size="sm", weight="bold", color=streak_color),
+        text(f"{gh.streak}d", size="body", weight="bold", color=streak_color),
     ]
     return hstack(gap=8, align="center", children=children)
 
@@ -93,7 +91,6 @@ def _pct_color(pct: float | None) -> ColorToken:
 def _usage_row(
     brand: str,
     brand_color: ColorToken,
-    icon_name: str,
     primary_pct: float | None,
     primary_label: str,
     primary_reset: str,
@@ -108,13 +105,12 @@ def _usage_row(
         gap=8,
         align="center",
         children=[
-            icon(icon_name, size=16, color=brand_color),
-            text(brand, size="sm", weight="bold", color="white", bg=brand_color, pad=4),
-            text(primary_label, size="sm", weight="bold"),
-            text(pct_text, size="h2", color=_pct_color(primary_pct), weight="bold"),
+            text(brand, size="body", weight="bold", color="white", bg=brand_color, pad=4),
+            text(primary_label, size="body", weight="bold"),
+            text(pct_text, size="body", color=_pct_color(primary_pct), weight="bold"),
             hbar(pct=primary_pct if primary_pct is not None else 0, color=brand_color, height=14),
-            text(f"{secondary_label} {secondary_text}", size="sm", weight="bold", color=_pct_color(secondary_pct)),
-            text(primary_reset or "", size="sm"),
+            text(f"{secondary_label} {secondary_text}", size="body", weight="bold", color=_pct_color(secondary_pct)),
+            text(primary_reset or "", size="body"),
         ],
     )
 
@@ -125,8 +121,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="info"),
-                text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
+                text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
                 text("—", size="body", weight="bold"),
                 spacer(),
             ],
@@ -151,12 +146,11 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="info"),
-                text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
+                text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
                 text(when, size="body", color="info", weight="bold"),
                 text(title, size="body", weight="bold"),
                 spacer(),
-                text(sub, size="sm"),
+                text(sub, size="body"),
             ],
         )
 
@@ -171,8 +165,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("calendar", size=16, color="info"),
-                text("SOON", size="sm", weight="bold", color="white", bg="info", pad=4),
+                text("SOON", size="body", weight="bold", color="white", bg="info", pad=4),
                 text(f"{dow} {when}", size="body", color="info", weight="bold"),
                 text(title, size="body", weight="bold"),
                 spacer(),
@@ -183,11 +176,10 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
         gap=8,
         align="center",
         children=[
-            icon("calendar", size=16, color="info"),
-            text("NEXT", size="sm", weight="bold", color="white", bg="info", pad=4),
+            text("NEXT", size="body", weight="bold", color="white", bg="info", pad=4),
             text("CLEAR", size="body", weight="bold", color="success"),
             spacer(),
-            text("nothing this week", size="sm"),
+            text("nothing this week", size="body"),
         ],
     )
 
@@ -201,8 +193,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
             gap=8,
             align="center",
             children=[
-                icon("todo", size=16, color="black"),
-                text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
+                text("TODO", size="body", weight="bold", color="white", bg="black", pad=4),
                 text("—", size="body", weight="bold"),
                 spacer(),
             ],
@@ -210,15 +201,14 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     count = rem.incomplete_total
     count_color: ColorToken = "accent" if count >= 20 else "warning" if count >= 5 else "success"
     children: list[dict] = [
-        icon("todo", size=16, color="black"),
-        text("TODO", size="sm", weight="bold", color="white", bg="black", pad=4),
-        text(str(count), size="h2", color=count_color, weight="bold"),
+        text("TODO", size="body", weight="bold", color="white", bg="black", pad=4),
+        text(str(count), size="body", color=count_color, weight="bold"),
     ]
     if not rem.items:
         children += [
             text("ALL CLEAR", size="body", weight="bold", color="success"),
             spacer(),
-            text(rem.list_name, size="sm"),
+            text(rem.list_name, size="body"),
         ]
         return hstack(gap=8, align="center", children=children)
     top = rem.items[0]
@@ -230,7 +220,7 @@ def _todos_row(rem: TodaysReminders | None, *, now: dt.datetime) -> dict:
     children += [
         text(title_display, size="body", weight="bold"),
         spacer(),
-        text(rel, size="sm", weight="bold", color="info"),
+        text(rel, size="body", weight="bold", color="info"),
     ]
     return hstack(gap=8, align="center", children=children)
 
@@ -255,7 +245,6 @@ def build_overview_page(
     claude_row = _usage_row(
         brand="CLAUDE",
         brand_color="accent",
-        icon_name="claude",
         primary_pct=claude.five_hour_pct if claude else None,
         primary_label="5H",
         primary_reset=claude.five_hour_reset if claude else "",
@@ -265,7 +254,6 @@ def build_overview_page(
     codex_row = _usage_row(
         brand="CODEX",
         brand_color="success",
-        icon_name="codex",
         primary_pct=codex.primary_pct if codex else None,
         primary_label="5H",
         primary_reset=codex.primary_reset if codex else "",

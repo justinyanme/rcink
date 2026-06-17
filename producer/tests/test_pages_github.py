@@ -26,6 +26,21 @@ def _find_nodes(node: dict, typ: str) -> list[dict]:
     return out
 
 
+def _find_hstack_with_texts(node: dict, values: set[str]) -> dict:
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.get("type") == "hstack":
+            texts = {c.get("value") for c in n.get("children", []) if c.get("type") == "text"}
+            nested_texts = set()
+            for child in n.get("children", []) or []:
+                nested_texts.update(_all_text(child))
+            if values <= (texts | nested_texts):
+                return n
+        stack.extend(n.get("children", []) or [])
+    raise AssertionError(f"hstack with {values!r} not found")
+
+
 def _make(
     *,
     today: int = 3,
@@ -49,6 +64,16 @@ def test_github_page_kpi_strip_shows_today_week_14w():
     texts = _all_text(page)
     assert "TODAY" in texts and "WEEK" in texts and "14W" in texts
     assert "3" in texts and "18" in texts and "142" in texts
+
+
+def test_github_kpi_strip_distributes_left_center_right():
+    page = build_github_page(_make(today=3, week=18, total_14w=142), now=dt.datetime(2026, 5, 23))
+    row = _find_hstack_with_texts(page, {"TODAY", "WEEK", "14W"})
+
+    assert [c["type"] for c in row["children"]] == ["vstack", "spacer", "vstack", "spacer", "vstack"]
+    assert row["children"][0].get("align") == "start"
+    assert row["children"][2].get("align") == "center"
+    assert row["children"][4].get("align") == "end"
 
 
 def test_github_page_user_line_shows_streak():
