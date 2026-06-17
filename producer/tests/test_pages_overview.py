@@ -204,7 +204,7 @@ def test_overview_github_row_shows_week_and_top_repo():
     assert not any("/" in t and "PR" in t for t in texts)
 
 
-def test_overview_rows_have_no_letter_icon_markers_and_no_h2_values():
+def test_overview_rows_have_no_letter_icon_markers_and_labels_are_sm():
     page = build_overview_page(
         claude=None,
         codex=None,
@@ -219,11 +219,19 @@ def test_overview_rows_have_no_letter_icon_markers_and_no_h2_values():
 
     assert _find_nodes(page, "icon") == []
 
-    body_row_values = {
+    label_values = {
         "CLAUDE",
         "CODEX",
         "NEXT",
         "TODO",
+        "GITHUB",
+    }
+    label_nodes = [n for n in _all_text_nodes(page) if n.get("value") in label_values]
+    assert label_nodes
+    assert {n.get("value") for n in label_nodes} == label_values
+    assert all(n.get("size") == "sm" for n in label_nodes)
+
+    body_row_values = {
         "5H",
         "7D",
         "12",
