@@ -240,14 +240,19 @@ int16_t content_bottom(const LaidOutNode& n) {
   return b;
 }
 
-// Right-most pixel a laid-out tree reaches, for fit-to-width. Text nodes size to
-// their content and can be wider than the viewport (e.g. a long masthead quote
-// on the wide 800px panel), so the fit pass shrinks to keep them out of the
-// sidebar instead of letting them clip.
-int16_t content_right(const LaidOutNode& n) {
-  int16_t r = (int16_t)(n.rect.x + n.rect.w);
-  for (const auto& c : n.children) r = std::max(r, content_right(c));
-  return r;
+// Clamp every node's rect to the content width. Text nodes size to their content
+// and can be wider than the viewport (a long label row, or the overview's quote
+// masthead on the wide 800px panel). Clamping makes a too-wide leaf truncate via
+// draw_text's ellipsis instead of forcing a whole-page width shrink (which would
+// drag every font down). Full-width bars sit exactly at CONTENT_W and are
+// unaffected.
+void clamp_to_width(LaidOutNode& n, int16_t max_right) {
+  if (n.rect.x >= max_right) {
+    n.rect.w = 0;
+  } else if (n.rect.x + n.rect.w > max_right) {
+    n.rect.w = (int16_t)(max_right - n.rect.x);
+  }
+  for (auto& c : n.children) clamp_to_width(c, max_right);
 }
 
 }  // namespace
@@ -357,36 +362,27 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   SpriteMeasurer m(g_canvas);
   Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
 
-  // Fit-to-FILL on the roomy 800x480 X4: pick the largest scale at which the
-  // visible content still fits the panel HEIGHT and the content area WIDTH, then
-  // let flex spacers absorb any slack. Sparse pages (a short masthead + a few
-  // rows) grow big and fill the screen; the dense overview, whose long quote
-  // masthead is the width bottleneck, settles near 1.0 and stays legible. Height
-  // is measured from the *visible* leaves, not the viewport-filling containers.
-  // Spacing scales with the text so padding grows proportionally.
+  // Keep the chosen font sizes: render at scale 1.0 and only shrink if leaf
+  // content genuinely runs past the BOTTOM (the root container fills the panel,
+  // so content_bottom == SCREEN_H normally). WIDTH overflow is NOT handled by
+  // shrinking the whole page — that would drag every font down whenever one row
+  // is a little too wide. Instead the laid-out tree is clamped to the content
+  // width below, so a too-wide leaf (a long label/quote) truncates via
+  // draw_text's ellipsis while everything else stays full size.
   constexpr float kSpacing = 0.7f;
   constexpr float kMinScale = 0.45f;
   float scale = 1.0f;
   set_text_scale(scale);
   auto laid = run_layout(root, vp, m, scale * kSpacing);
   int16_t used = (int16_t)(content_bottom(laid) - vp.y);
-  // Only SHRINK, and only on a real overflow: height when leaf content runs past
-  // the bottom (the root container fills the panel, so `used`==SCREEN_H normally
-  // and the big nominal fonts stay put), width when a node — the overview's long
-  // quote masthead — spills toward the sidebar. Full-width bars sit exactly at
-  // CONTENT_W and never trigger it.
-  for (int pass = 0; pass < 3 && scale > kMinScale; ++pass) {
-    const int16_t wide = (int16_t)(content_right(laid) - vp.x);
-    const float hs = used > SCREEN_H ? (float)SCREEN_H / (float)used : 1.0f;
-    const float ws = wide > CONTENT_W ? (float)CONTENT_W / (float)wide : 1.0f;
-    const float s = std::min(hs, ws);
-    if (s > 0.995f) break;  // fits both
-    scale *= s * 0.97f;
+  for (int pass = 0; pass < 3 && scale > kMinScale && used > SCREEN_H; ++pass) {
+    scale *= (float)SCREEN_H / (float)used * 0.97f;
     if (scale < kMinScale) scale = kMinScale;
     set_text_scale(scale);
     laid = run_layout(root, vp, m, scale * kSpacing);
     used = (int16_t)(content_bottom(laid) - vp.y);
   }
+  clamp_to_width(laid, CONTENT_W);
 
   g_canvas.fillSprite(rgb565(kRgbWhite));
   paint_layout(g_canvas, laid);

@@ -5,21 +5,19 @@ namespace rcpaper {
 static constexpr int16_t kMinLatinFontH = 16;
 static constexpr int16_t kSmLatinFontH = 8;
 
-// Nominal line heights (px) at scale 1.0, picking rungs from kLadder. Sized up
-// for the roomy 800x480 X4. Per the producer's pages (verified in layout_json):
-// the five detail pages use H1 for their mastheads and big stat numbers — all
-// short strings ("CODEX", "50%", "ALL") — so H1 gets the huge 2x rung (80px) and
-// fills the screen. The overview uses H2 for its LONG quote masthead, so H2
-// stays small (18pt) to fit the content width without forcing a page shrink.
-// Body and Sm step up a crisp rung each. render_page only scales DOWN, on a real
-// overflow.
+// Nominal line heights (px) at scale 1.0, picking rungs from kLadder. A gentle
+// 24/18/12pt hierarchy: titles (H1: page mastheads + big stat numbers) are
+// prominent but not huge, body is readable, and the small labels/fine print are
+// no longer tiny. Values sit comfortably inside their rungs so a mild page
+// shrink doesn't demote them. (Earlier the contrast was far too extreme — 24pt
+// doubled titles vs 9pt labels.) render_page only scales DOWN, on a real overflow.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:   return 80;  // 24pt @2x — big detail-page mastheads/numbers
-    case TextSize::H2:   return 30;  // 18pt — overview's long quote masthead
-    case TextSize::Body: return 30;  // 18pt
-    case TextSize::Sm:   return min_latin_font_height();  // 9pt (16px)
-    default:             return 30;
+    case TextSize::H1:   return 52;  // 24pt — titles + big numbers (CLAUDE / 50% / ALL)
+    case TextSize::H2:   return 34;  // 18pt — overview's long quote masthead
+    case TextSize::Body: return 34;  // 18pt — body content
+    case TextSize::Sm:   return 24;  // 12pt — labels / fine print
+    default:             return 34;
   }
 }
 
