@@ -1,0 +1,16 @@
+# Partition table for Xteink X4 — 16MB flash, no meaningful OTA.
+#
+# A full re-flash over USB is always available, so we run a single app slot.
+# `otadata` is kept (Arduino-ESP32 references it during boot) but never points
+# anywhere meaningful. `rcdata` is a dedicated 128KB NVS partition for the page
+# cache blob (nvs.cpp opens the "rcpaper" namespace there via
+# Preferences::begin(name, readOnly, "rcdata")); the default 20KB nvs is too
+# tight for the pages blob plus wear-leveling slack.
+
+# Name,    Type, SubType,  Offset,   Size,     Flags
+nvs,       data, nvs,      0x9000,   0x5000,
+otadata,   data, ota,      0xe000,   0x2000,
+app0,      app,  ota_0,    0x10000,  0x500000,
+spiffs,    data, spiffs,   0x510000, 0xAC0000,
+rcdata,    data, nvs,      0xFD0000, 0x20000,
+coredump,  data, coredump, 0xFF0000, 0x10000,

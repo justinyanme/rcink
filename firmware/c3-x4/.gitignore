@@ -1,0 +1,9 @@
+# PlatformIO build/cache
+.pio/
+.vscode/
+
+# Local config with secrets (config.h.example is committed)
+src/config.h
+
+# macOS
+.DS_Store
