@@ -119,10 +119,10 @@ void push_canvas(bool full = false) {
 }
 
 void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
-  constexpr int16_t w = 28;
-  constexpr int16_t h = 12;
+  constexpr int16_t w = 44;
+  constexpr int16_t h = 20;
   g_canvas.drawRect(x, y, w, h, c565(Color::Black));
-  g_canvas.fillRect(x + w, y + 4, 2, 4, c565(Color::Black));
+  g_canvas.fillRect(x + w, y + 6, 3, 8, c565(Color::Black));  // terminal nub
   if (!batt.ok) return;
   Color fill = Color::Green;
   if (batt.pct < 30) fill = Color::Yellow;
@@ -140,7 +140,7 @@ void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
 void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
   if (count <= 1) return;
   constexpr int16_t kTop = 8;
-  constexpr int16_t kBot = SCREEN_H - 64;  // stay clear of the PREV/NEXT block
+  constexpr int16_t kBot = SCREEN_H - 100;  // stay clear of the PREV/NEXT block
   const int16_t track = kBot - kTop;
   int16_t th = (int16_t)(track / (int16_t)count);
   if (th < 6) th = 6;
@@ -155,50 +155,51 @@ void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
 // when the cache is past its window.
 void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
                    uint64_t last_fetch_s, bool stale) {
-  const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 480
-  const int16_t cx = x0 + 6;                // text inset inside the sidebar
+  const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 690
+  const int16_t cx = x0 + 9;                // text inset inside the sidebar
   g_canvas.fillRect(x0, 0, SIDEBAR_W, SCREEN_H, rgb565(kRgbWhite));
   g_canvas.drawFastVLine(x0, 0, SCREEN_H, c565(Color::Black));
 
+  // Size-2 GLCD (12x16) — the size-1 chrome was tiny next to the big X4 page
+  // content. Rows are spaced for the 480px panel.
   g_canvas.setTextFont(1);
-  g_canvas.setTextSize(1);
+  g_canvas.setTextSize(2);
   g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
 
   // --- status block (top): battery, weekday + date, clock; page-position
   //     rail rides the divider (drawn below) instead of a "N/M" text row ---
-  draw_battery(cx, 8, batt);
+  draw_battery(cx, 14, batt);
   char pct[8];
   if (batt.ok) snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
   else snprintf(pct, sizeof(pct), "--");
-  g_canvas.setCursor(cx, 24);
+  g_canvas.setCursor(cx, 44);
   g_canvas.print(pct);
 
-  g_canvas.setCursor(cx, 38);
+  g_canvas.setCursor(cx, 78);
   g_canvas.print(format_local_wday(last_fetch_s));
-  g_canvas.setCursor(cx, 50);
+  g_canvas.setCursor(cx, 104);
   g_canvas.print(format_local_md(last_fetch_s));
-  g_canvas.setCursor(cx, 62);
+  g_canvas.setCursor(cx, 130);
   g_canvas.print(format_local_hhmm(last_fetch_s));
 
   draw_page_rail(x0, state.pages.size(), state.page_index);
 
   if (stale) {
-    g_canvas.fillRect(cx, 102, 42, 11, c565(Color::Red));
+    g_canvas.fillRect(cx, 166, 78, 22, c565(Color::Red));
     g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Red));
-    g_canvas.setCursor(cx + 4, 104);
+    g_canvas.setCursor(cx + 5, 169);
     g_canvas.print("STALE");
     g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   }
 
-  // --- nav hints (bottom, by the buttons) ---
-  // Upper button (GPIO21) = prev, lower (GPIO0) = next, so PREV sits on top.
-  const int16_t prev_y = SCREEN_H - 58;
-  const int16_t next_y = SCREEN_H - 26;
-  g_canvas.fillTriangle(cx + 4, prev_y, cx, prev_y + 7, cx + 8, prev_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, prev_y + 1);
+  // --- nav hints (bottom, by the buttons): PREV on top, NEXT below ---
+  const int16_t prev_y = SCREEN_H - 86;
+  const int16_t next_y = SCREEN_H - 42;
+  g_canvas.fillTriangle(cx + 8, prev_y, cx, prev_y + 13, cx + 16, prev_y + 13, c565(Color::Black));
+  g_canvas.setCursor(cx + 24, prev_y);
   g_canvas.print("PREV");
-  g_canvas.fillTriangle(cx, next_y, cx + 8, next_y, cx + 4, next_y + 7, c565(Color::Black));
-  g_canvas.setCursor(cx + 13, next_y);
+  g_canvas.fillTriangle(cx, next_y, cx + 16, next_y, cx + 8, next_y + 13, c565(Color::Black));
+  g_canvas.setCursor(cx + 24, next_y);
   g_canvas.print("NEXT");
 }
 
@@ -356,29 +357,34 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   SpriteMeasurer m(g_canvas);
   Rect vp{0, 0, CONTENT_W, SCREEN_H};  // full height, left of the right sidebar
 
-  // Spacing compaction: the panel is small but high-res, so we tighten the
-  // producer's whitespace (pads/gaps/spacers/bar heights) to ~half. Text is NOT
-  // compacted — packing the layout tighter leaves more room for the fit pass to
-  // keep fonts large. Text scale (g_text_scale) and the engine's spacing scale
-  // are therefore decoupled: spacing = scale * kSpacingCompact, text = scale.
-  constexpr float kSpacingCompact = 0.55f;
+  // Fit-to-FILL on the roomy 800x480 X4: pick the largest scale at which the
+  // visible content still fits the panel HEIGHT and the content area WIDTH, then
+  // let flex spacers absorb any slack. Sparse pages (a short masthead + a few
+  // rows) grow big and fill the screen; the dense overview, whose long quote
+  // masthead is the width bottleneck, settles near 1.0 and stays legible. Height
+  // is measured from the *visible* leaves, not the viewport-filling containers.
+  // Spacing scales with the text so padding grows proportionally.
+  constexpr float kSpacing = 0.7f;
   constexpr float kMinScale = 0.45f;
   float scale = 1.0f;
   set_text_scale(scale);
-  auto laid = run_layout(root, vp, m, scale * kSpacingCompact);
+  auto laid = run_layout(root, vp, m, scale * kSpacing);
   int16_t used = (int16_t)(content_bottom(laid) - vp.y);
-  // Shrink to fit BOTH dimensions: height (content must not run off the bottom)
-  // and width (a long masthead must not spill into the right sidebar).
+  // Only SHRINK, and only on a real overflow: height when leaf content runs past
+  // the bottom (the root container fills the panel, so `used`==SCREEN_H normally
+  // and the big nominal fonts stay put), width when a node — the overview's long
+  // quote masthead — spills toward the sidebar. Full-width bars sit exactly at
+  // CONTENT_W and never trigger it.
   for (int pass = 0; pass < 3 && scale > kMinScale; ++pass) {
     const int16_t wide = (int16_t)(content_right(laid) - vp.x);
     const float hs = used > SCREEN_H ? (float)SCREEN_H / (float)used : 1.0f;
     const float ws = wide > CONTENT_W ? (float)CONTENT_W / (float)wide : 1.0f;
     const float s = std::min(hs, ws);
-    if (s > 0.995f) break;  // already fits both
+    if (s > 0.995f) break;  // fits both
     scale *= s * 0.97f;
     if (scale < kMinScale) scale = kMinScale;
     set_text_scale(scale);
-    laid = run_layout(root, vp, m, scale * kSpacingCompact);
+    laid = run_layout(root, vp, m, scale * kSpacing);
     used = (int16_t)(content_bottom(laid) - vp.y);
   }
 

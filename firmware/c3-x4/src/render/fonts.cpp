@@ -5,18 +5,21 @@ namespace rcpaper {
 static constexpr int16_t kMinLatinFontH = 16;
 static constexpr int16_t kSmLatinFontH = 8;
 
-// Nominal line heights (px) at scale 1.0, matching the FreeSans GFX ladder
-// rungs (see kLadder). The fit-to-height pass scales these down; the ladder
-// then picks the tallest crisp font that fits. Sm is allowed to use the 8px
-// GLCD rung for labels; non-Sm Latin and CJK still floor at 16px for readable
-// page content. Mirror in producer devices_profile._T_AMOLED_SIZES.
+// Nominal line heights (px) at scale 1.0, picking rungs from kLadder. Sized up
+// for the roomy 800x480 X4. Per the producer's pages (verified in layout_json):
+// the five detail pages use H1 for their mastheads and big stat numbers — all
+// short strings ("CODEX", "50%", "ALL") — so H1 gets the huge 2x rung (80px) and
+// fills the screen. The overview uses H2 for its LONG quote masthead, so H2
+// stays small (18pt) to fit the content width without forcing a page shrink.
+// Body and Sm step up a crisp rung each. render_page only scales DOWN, on a real
+// overflow.
 int16_t font_height(TextSize size, Weight /*weight*/) {
   switch (size) {
-    case TextSize::H1:   return 40;
-    case TextSize::H2:   return 30;
-    case TextSize::Body: return 21;
-    case TextSize::Sm:   return kSmLatinFontH;
-    default:             return 21;
+    case TextSize::H1:   return 80;  // 24pt @2x — big detail-page mastheads/numbers
+    case TextSize::H2:   return 30;  // 18pt — overview's long quote masthead
+    case TextSize::Body: return 30;  // 18pt
+    case TextSize::Sm:   return min_latin_font_height();  // 9pt (16px)
+    default:             return 30;
   }
 }
 
@@ -49,13 +52,20 @@ struct FontPick {
   const GFXfont* reg;
   const GFXfont* bold;
   int16_t height;
+  uint8_t mult;  // integer GFX text-size multiplier (>1 for the big X4 rungs)
 };
+// The standard FreeSans GFX set tops out at 24pt (~40px). The 800x480 X4 has
+// room for much larger headers than the other panels, so the top two rungs
+// re-use the 18/24pt faces at 2x. They're blocky, but on a 1-bit e-ink panel
+// there's no anti-aliasing to lose, and big crisp headers fill the screen.
 const FontPick kLadder[] = {
-  {false, nullptr,        nullptr,            kSmLatinFontH},
-  {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  min_latin_font_height()},
-  {true,  &FreeSans12pt7b, &FreeSansBold12pt7b, 21},
-  {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 30},
-  {true,  &FreeSans24pt7b, &FreeSansBold24pt7b, 40},
+  {false, nullptr,        nullptr,            kSmLatinFontH,            1},
+  {true,  &FreeSans9pt7b,  &FreeSansBold9pt7b,  min_latin_font_height(), 1},
+  {true,  &FreeSans12pt7b, &FreeSansBold12pt7b, 21,                      1},
+  {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 30,                      1},
+  {true,  &FreeSans24pt7b, &FreeSansBold24pt7b, 40,                      1},
+  {true,  &FreeSans18pt7b, &FreeSansBold18pt7b, 60,                      2},
+  {true,  &FreeSans24pt7b, &FreeSansBold24pt7b, 80,                      2},
 };
 
 const FontPick& pick_font(int16_t target_px) {
@@ -88,6 +98,7 @@ static void select_font(TFT_eSprite& canvas, TextSize size, Weight weight) {
   const FontPick& p = pick_font(scaled_target_px(size));
   if (p.gfx) {
     canvas.setFreeFont(weight == Weight::Bold ? p.bold : p.reg);
+    canvas.setTextSize(p.mult);
   } else {
     canvas.setTextFont(1);
     canvas.setTextSize(1);
