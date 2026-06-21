@@ -8,7 +8,7 @@ Umbrella repo for rc e-ink dashboard devices. One DSL, one producer, multiple fi
 - `producer/` — shared Python producer (pages, sources, transports, CLI).
 - `firmware/s3/` — M5Stack PaperColor (ESP32-S3, 400×600, 6-color). Wi-Fi/Axiom.
 - `firmware/t-amoled/` — LILYGO T-Display-S3 AMOLED (ESP32-S3, 240×536, RGB). Wi-Fi/Axiom.
-- `firmware/c3-x4/` — Xteink X4 (ESP32-C3, 800×480, B&W). Wi-Fi/Axiom. *(v1 work in progress)*
+- `firmware/c3-x4/` — Xteink X4 (ESP32-C3, 800×480, B&W e-ink / SSD1677). Wi-Fi/Axiom.
 - `firmware/tlsr/` — TLSR8258 BWR tag (250×128, 3-color). BLE.
 - `docs/superpowers/{specs,plans}/` — design specs and implementation plans.
 
@@ -26,6 +26,9 @@ cd firmware/s3 && pio run -e m5stack-papercolor
 
 # t-amoled (PlatformIO)
 cd firmware/t-amoled && pio run -e lilygo-t-amoled-dev
+
+# c3-x4 (PlatformIO, pioarduino platform)
+cd firmware/c3-x4 && pio run -e c3-x4-dev
 
 # tlsr (CMake + TC32)
 cd firmware/tlsr/firmware && cmake -S . -B build -G Ninja \
