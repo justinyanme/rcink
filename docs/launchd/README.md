@@ -2,53 +2,19 @@
 
 User-level launchd plists for the rcink producer.
 
-## Claude credentials & relogin avoidance
+## Claude credentials (read-only, no relogins)
 
 The Claude usage fetchers (`claude-fetch`, `overview-fetch`, `tlsr-push claude`,
-all reached via `fetch-all`) share one OAuth credential with the interactive
-`claude` CLI — the macOS Keychain item `Claude Code-credentials` (or, on Linux,
-`~/.claude/.credentials.json`).
+all reached via `fetch-all`) reuse the OAuth credential the interactive `claude`
+CLI maintains — the macOS Keychain item `Claude Code-credentials` (or, on Linux,
+`~/.claude/.credentials.json`). No env vars, no separate login.
 
-That credential is read **read-only**. The producer never refreshes it, because
-an OAuth refresh **rotates the refresh token** and rewrites the Keychain item —
-which invalidates the credential the running `claude` CLI holds and forces a
-relogin. When the shared token has expired, the fetcher raises
-`ClaudeTokenExpired`; `fetch-all` logs it and skips that page (usage doesn't
-change while you're idle anyway), and it recovers the next time you use `claude`.
-
-For uninterrupted 24/7 updates, give the producer its **own independent**
-credential and set `RCINK_CLAUDE_CREDS` to its path:
-
-```bash
-# Mint a long-lived, independent OAuth token (separate grant; does NOT touch the
-# Keychain item the interactive CLI uses):
-claude setup-token            # prints sk-ant-oat01-...  (interactive, ~1 yr)
-
-# Store it where only the producer reads it, in the shape the fetcher expects.
-# expiresAt is set far in the future so the producer never tries to refresh it.
-python3 - "$(pbpaste)" <<'PY'   # or paste the token in place of $(pbpaste)
-import json, sys, time, os
-tok = sys.argv[1].strip()
-p = os.path.expanduser("~/.claude/.rcink-producer-creds.json")
-json.dump({"claudeAiOauth": {
-    "accessToken": tok, "refreshToken": "",
-    "expiresAt": int((time.time() + 365*86400) * 1000),
-    "scopes": ["user:profile", "user:inference"],
-}}, open(p, "w"))
-os.chmod(p, 0o600); print("wrote", p)
-PY
-```
-
-Then add to the job's plist (see the `EnvironmentVariables` block in
-`com.rocry.rcpaper.all.plist`):
-
-```xml
-<key>RCINK_CLAUDE_CREDS</key>
-<string>/Users/&lt;you&gt;/.claude/.rcink-producer-creds.json</string>
-```
-
-Because that file is a separate grant, the producer refreshing/using it never
-disturbs the interactive CLI's login.
+They read it **read-only** and never refresh it: an OAuth refresh **rotates the
+refresh token** and rewrites the Keychain item, which would invalidate the
+running CLI's credential and force a relogin. If the token is missing or expired
+the fetcher raises `ClaudeCredsError`; `fetch-all` logs it and skips just that
+page (usage doesn't change while you're idle anyway). Keep using `claude`
+normally — the CLI keeps the token fresh and the producer rides along.
 
 ## `com.rocry.tlsr-push.claude.plist`
 
