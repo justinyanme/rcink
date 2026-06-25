@@ -6,6 +6,16 @@ Axiom dataset. The firmware reads them back at the next fetch interval.
 Sources:
 - **Claude / Codex** — usage via the OAuth files those CLIs already maintain
   (`~/.claude/.credentials.json`, `~/.codex/auth.json`).
+  - The Claude credential is **shared with the interactive `claude` CLI** (macOS
+    Keychain item `Claude Code-credentials`, or the file on Linux). The producer
+    reads it **read-only** and never refreshes it: an OAuth refresh rotates the
+    refresh token and rewrites the Keychain item, which logs the running CLI out.
+    So when the shared token has expired the fetcher fails fast and is skipped
+    (`fetch-all` keeps the other pages fresh) until you next use `claude`.
+  - For uninterrupted 24/7 updates, point `RCINK_CLAUDE_CREDS` at a
+    **producer-owned** credential file (an independent OAuth grant the producer
+    may refresh on its own without touching the CLI's). See
+    [docs/launchd/README.md](../docs/launchd/README.md).
 - **Calendar** — today's events from all macOS Calendars (EventKit).
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
