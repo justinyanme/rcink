@@ -1,21 +1,21 @@
 import datetime as dt
 import json
 
-from rcink.sources.codex import CodexUsage, fetch_codex_usage
+import pytest
+from rcink.sources.codex import USAGE_URL, CodexCredsError, CodexUsage, fetch_codex_usage
 
 
-def write_auth(tmp_path, last_refresh_days_ago: float):
+def write_auth(tmp_path, access_token: str = "old-access"):
     p = tmp_path / "auth.json"
-    last = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=last_refresh_days_ago)
     p.write_text(
         json.dumps(
             {
                 "tokens": {
-                    "access_token": "old-access",
+                    "access_token": access_token,
                     "refresh_token": "rrr",
                     "id_token": "iii",
                 },
-                "last_refresh": last.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "last_refresh": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
         )
     )
@@ -50,12 +50,9 @@ def _usage_payload(
     }
 
 
-def test_fresh_auth_skips_refresh(httpx_mock, tmp_path):
-    p = write_auth(tmp_path, last_refresh_days_ago=1)
-    httpx_mock.add_response(
-        url="https://chatgpt.com/backend-api/wham/usage",
-        json=_usage_payload(),
-    )
+def test_token_used_read_only(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    httpx_mock.add_response(url=USAGE_URL, json=_usage_payload())
     usage = fetch_codex_usage(p)
     assert isinstance(usage, CodexUsage)
     assert usage.primary_pct == 42.0
@@ -66,22 +63,25 @@ def test_fresh_auth_skips_refresh(httpx_mock, tmp_path):
     # Relative reset_after_seconds (7200) folded into an absolute epoch ~2h out.
     assert usage.primary_reset_at is not None
     assert 7100 <= usage.primary_reset_at - int(dt.datetime.now(dt.timezone.utc).timestamp()) <= 7200
+    # Exactly one request (no refresh round-trip), with the token verbatim.
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer old-access"
 
 
-def test_stale_auth_triggers_refresh(httpx_mock, tmp_path):
-    p = write_auth(tmp_path, last_refresh_days_ago=9)
-    httpx_mock.add_response(
-        url="https://auth.openai.com/oauth/token",
-        method="POST",
-        json={"access_token": "new-access", "refresh_token": "new-rrr", "id_token": "new-iii", "expires_in": 3600},
-    )
-    httpx_mock.add_response(
-        url="https://chatgpt.com/backend-api/wham/usage",
-        json=_usage_payload(primary_pct=1.0, secondary_pct=None, has_credits=False, balance="0"),
-    )
-    fetch_codex_usage(p)
-    on_disk = json.loads(p.read_text())
-    assert on_disk["tokens"]["access_token"] == "new-access"
-    assert on_disk["tokens"]["refresh_token"] == "new-rrr"
+def test_missing_auth_raises(tmp_path):
+    with pytest.raises(CodexCredsError):
+        fetch_codex_usage(tmp_path / "absent.json")
+
+
+def test_no_access_token_raises(tmp_path):
+    p = tmp_path / "auth.json"
+    p.write_text(json.dumps({"tokens": {}}))
+    with pytest.raises(CodexCredsError):
+        fetch_codex_usage(p)
+
+
+def test_rejected_token_raises_creds_error(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    httpx_mock.add_response(url=USAGE_URL, status_code=401, json={"error": "unauthorized"})
+    with pytest.raises(CodexCredsError):
+        fetch_codex_usage(p)

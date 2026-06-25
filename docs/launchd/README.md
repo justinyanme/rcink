@@ -2,19 +2,21 @@
 
 User-level launchd plists for the rcink producer.
 
-## Claude credentials (read-only, no relogins)
+## Claude / Codex credentials (read-only, no relogins)
 
-The Claude usage fetchers (`claude-fetch`, `overview-fetch`, `tlsr-push claude`,
-all reached via `fetch-all`) reuse the OAuth credential the interactive `claude`
-CLI maintains — the macOS Keychain item `Claude Code-credentials` (or, on Linux,
-`~/.claude/.credentials.json`). No env vars, no separate login.
+The usage fetchers (`claude-fetch`, `codex-fetch`, `overview-fetch`,
+`tlsr-push claude`, all reached via `fetch-all`) reuse the OAuth credential the
+interactive `claude`/`codex` CLI maintains — the macOS Keychain item
+`Claude Code-credentials` (or `~/.claude/.credentials.json` on Linux) and
+`~/.codex/auth.json`. No env vars, no separate login.
 
-They read it **read-only** and never refresh it: an OAuth refresh **rotates the
-refresh token** and rewrites the Keychain item, which would invalidate the
-running CLI's credential and force a relogin. If the token is missing or expired
-the fetcher raises `ClaudeCredsError`; `fetch-all` logs it and skips just that
-page (usage doesn't change while you're idle anyway). Keep using `claude`
-normally — the CLI keeps the token fresh and the producer rides along.
+They read these **read-only** and never refresh them: an OAuth refresh **rotates
+the refresh token** and rewrites the Keychain item / `auth.json`, which would
+invalidate the running CLI's credential and force a relogin. If a token is
+missing or rejected the fetcher raises `ClaudeCredsError` / `CodexCredsError`;
+`fetch-all` logs it and skips just that page (usage doesn't change while you're
+idle anyway). Keep using the CLIs normally — they keep the tokens fresh and the
+producer rides along.
 
 ## `com.rocry.tlsr-push.claude.plist`
 

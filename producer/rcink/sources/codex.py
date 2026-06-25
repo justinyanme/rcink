@@ -1,18 +1,28 @@
-"""Read Codex OAuth from ~/.codex/auth.json, refresh + fetch usage."""
+"""Read the Codex CLI's OAuth token from ~/.codex/auth.json and fetch usage — read-only.
+
+Mirrors ``sources/claude``: the producer reuses the credential the interactive
+``codex`` CLI maintains and never modifies it. Refreshing would rotate the OpenAI
+refresh token and rewrite ``auth.json``, which forces the CLI to relogin. So we
+use the access token as-is and fail fast when it is missing or rejected: keep
+using ``codex`` normally and the producer keeps working off the freshly-maintained
+token.
+"""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
 AUTH_DEFAULT = Path.home() / ".codex" / "auth.json"
-CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"  # public, from Codex CLI
-REFRESH_AFTER_DAYS = 8
+USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+
+
+class CodexCredsError(RuntimeError):
+    """Codex credential is missing or rejected — refresh via the `codex` CLI."""
 
 
 @dataclass(slots=True)
@@ -48,47 +58,27 @@ def _reset_from_seconds(secs: float | int | None) -> str:
     return _format_countdown(int(secs))
 
 
-def _load(path: Path) -> dict:
-    return json.loads(Path(path).read_text())
-
-
-def _save(path: Path, data: dict) -> None:
-    Path(path).write_text(json.dumps(data, indent=2))
-    os.chmod(path, 0o600)
-
-
-def _refresh(refresh_token: str) -> dict:
-    r = httpx.post(
-        "https://auth.openai.com/oauth/token",
-        json={
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": CODEX_CLIENT_ID,
-        },
-        timeout=30,
-    )
-    r.raise_for_status()
-    return r.json()
+def load_token(path: Path = AUTH_DEFAULT) -> str:
+    """Read the CLI's access token from auth.json; raise if missing."""
+    try:
+        auth = json.loads(Path(path).read_text())
+    except FileNotFoundError as e:
+        raise CodexCredsError(f"Codex credential not found at {path}. Log in with the `codex` CLI first.") from e
+    token = (auth.get("tokens") or {}).get("access_token")
+    if not token:
+        raise CodexCredsError(f"Codex credential at {path} has no access token. Log in with the `codex` CLI first.")
+    return token
 
 
 def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
-    auth = _load(path)
-    last = dt.datetime.fromisoformat(auth["last_refresh"].replace("Z", "+00:00"))
-    if (dt.datetime.now(dt.timezone.utc) - last).days >= REFRESH_AFTER_DAYS:
-        new = _refresh(auth["tokens"]["refresh_token"])
-        auth["tokens"] = {
-            "access_token": new["access_token"],
-            "refresh_token": new["refresh_token"],
-            "id_token": new.get("id_token", auth["tokens"].get("id_token", "")),
-        }
-        auth["last_refresh"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        _save(path, auth)
+    token = load_token(path)
 
-    r = httpx.get(
-        "https://chatgpt.com/backend-api/wham/usage",
-        headers={"Authorization": f"Bearer {auth['tokens']['access_token']}"},
-        timeout=30,
-    )
+    r = httpx.get(USAGE_URL, headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    if r.status_code == 401:
+        raise CodexCredsError(
+            "Codex rejected the token (401) — it was likely rotated by the `codex` "
+            "CLI. Use the CLI and the producer picks up the new token automatically."
+        )
     r.raise_for_status()
     data = r.json()
 
