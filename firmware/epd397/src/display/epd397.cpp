@@ -107,6 +107,24 @@ void init_4gray() {
   send_cmd(0x1A, {0x5A});  // 4-gray waveform select
 }
 
+void init_fast() {
+  hw_reset();
+  wait_busy();
+  send_command(0x12);  // SWRESET
+  wait_busy();
+  send_cmd(0x0C, {0xAE, 0xC7, 0xC3, 0xC0, 0x80});
+  send_cmd(0x01, {(uint8_t)((kH - 1) % 256), (uint8_t)((kH - 1) / 256), 0x02});
+  send_cmd(0x11, {0x01});
+  send_cmd(0x44, {0x00, 0x00, (uint8_t)((kW - 1) % 256), (uint8_t)((kW - 1) / 256)});
+  send_cmd(0x45, {(uint8_t)((kH - 1) % 256), (uint8_t)((kH - 1) / 256), 0x00, 0x00});
+  send_cmd(0x4E, {0x00, 0x00});
+  send_cmd(0x4F, {0x00, 0x00});
+  wait_busy();
+  send_cmd(0x3C, {0x01});
+  send_cmd(0x18, {0x80});
+  send_cmd(0x1A, {0x6A});  // fast (1.5s) waveform select
+}
+
 void turn_on(uint8_t mode) {  // 0xF7 = full, 0xD7 = fast / 4-gray
   send_cmd(0x22, {mode});
   send_command(0x20);
@@ -129,6 +147,26 @@ void display_4gray() {
   send_plane_bulk(0x24, 0);
   delay(1);
   send_plane_bulk(0x26, 1);
+  turn_on(0xD7);
+}
+
+// Threshold the gray buffer to 1bpp and stream a plane, CS held low across it.
+void send_mono_bulk(uint8_t reg) {
+  send_command(reg);
+  digitalWrite(EPD_DC, HIGH);
+  cs_lo();
+  for (int base = 0; base < kW * kH; base += 8) {
+    g_spi.transfer(gray_to_mono_byte(g_gray, base));
+  }
+  cs_hi();
+}
+
+// Fast (~1.5s) mono refresh. Writes the thresholded image to both RAM planes so
+// it renders fully and ghost-free as a standalone frame (vendor Display_Fast_Base).
+void display_fast() {
+  send_mono_bulk(0x24);
+  delay(1);
+  send_mono_bulk(0x26);
   turn_on(0xD7);
 }
 
@@ -193,6 +231,21 @@ void epd397_push(const uint16_t* px, int w, int h) {
   display_4gray();
   g_spi.endTransaction();
   Serial.printf("[epd] 4-gray refresh in %u ms\n", (unsigned)(millis() - t0));
+}
+
+void epd397_push_fast(const uint16_t* px, int w, int h) {
+  if (w != kW || h != kH) {
+    Serial.printf("[epd] fast push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
+    return;
+  }
+  if (!g_gray) return;
+  const uint32_t t0 = millis();
+  pack_gray_landscape(px, w, h, g_gray);
+  g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
+  init_fast();
+  display_fast();
+  g_spi.endTransaction();
+  Serial.printf("[epd] fast refresh in %u ms\n", (unsigned)(millis() - t0));
 }
 
 const uint8_t* epd397_last_frame(size_t* len) {

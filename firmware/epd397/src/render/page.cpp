@@ -108,6 +108,12 @@ void push_canvas() {
   epd397_push((const uint16_t*)g_canvas.getPointer(), SCREEN_W, SCREEN_H);
 }
 
+// Fast (~1.5s) mono refresh of the composed sprite — used for deck page turns.
+void push_canvas_fast() {
+  if (!g_canvas_ready) return;
+  epd397_push_fast((const uint16_t*)g_canvas.getPointer(), SCREEN_W, SCREEN_H);
+}
+
 void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
   constexpr int16_t w = 56;
   constexpr int16_t h = 24;
@@ -129,7 +135,7 @@ void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
 void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
   if (count <= 1) return;
   constexpr int16_t kTop = 12;
-  constexpr int16_t kBot = SCREEN_H - 96;  // stay clear of the FN/BT nav block
+  constexpr int16_t kBot = SCREEN_H - 112;  // stay clear of the 3-line nav block
   const int16_t track = kBot - kTop;
   int16_t th = (int16_t)(track / (int16_t)count);
   if (th < 10) th = 10;
@@ -179,13 +185,13 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
     g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   }
 
-  // --- nav hints (bottom) ---
-  // In deck mode FUNCTION returns to the dashboard (HOME) and BOOT advances the
-  // page (NEXT, wrapping). See src/main.cpp for the full mapping.
-  g_canvas.setCursor(cx, SCREEN_H - 72);
+  // --- nav hints (bottom): the 3-way wheel maps UP=prev, FN=home, DOWN=next ---
+  g_canvas.setCursor(cx, SCREEN_H - 96);
+  g_canvas.print("UP PREV");
+  g_canvas.setCursor(cx, SCREEN_H - 64);
   g_canvas.print("FN HOME");
-  g_canvas.setCursor(cx, SCREEN_H - 40);
-  g_canvas.print("BT NEXT");
+  g_canvas.setCursor(cx, SCREEN_H - 32);
+  g_canvas.print("DN NEXT");
 }
 
 class SpriteMeasurer : public Measurer {
@@ -308,7 +314,7 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
 }
 
 void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
-                 const DeviceState& state, const BatteryReading& batt) {
+                 const DeviceState& state, const BatteryReading& batt, bool fast) {
   if (!g_canvas_ready) {
     Serial.println("[render] skipped: display not ready");
     return;
@@ -347,7 +353,7 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   paint_sidebar(state, batt, state.last_fetch_s, stale);
   set_text_scale(1.0f);  // chrome renders at nominal size
 
-  push_canvas();
+  if (fast) push_canvas_fast(); else push_canvas();
   Serial.printf("[render] page=%s scale=%.2f fit=%dx%d/%dx%d in %u ms\n",
                 rec.id.c_str(), scale, (int)used_w, (int)used_h,
                 (int)CONTENT_W, (int)SCREEN_H, (unsigned)(millis() - t0));

@@ -141,10 +141,11 @@ bool refetch_now() {
   return true;
 }
 
-void render_current() {
+// `fast` uses the panel's quick mono refresh (page turns) instead of 4-gray.
+void render_current(bool fast = false) {
   g_battery = read_battery();
   if (g_state.pages.empty()) {
-    render_error("no pages - long-press to fetch");
+    render_error("no pages - hold FN to fetch");
     return;
   }
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
@@ -158,7 +159,7 @@ void render_current() {
 
   const uint64_t now = (uint64_t)time(nullptr);
   const bool stale = g_state.last_fetch_s > 0 && now > g_state.last_fetch_s + FETCH_INTERVAL_SEC;
-  render_page(rec, root, stale, g_state, g_battery);
+  render_page(rec, root, stale, g_state, g_battery, fast);
 
   g_state.last_rendered_id = rec.id;
   g_state.last_rendered_data_ts = rec.data_ts;
@@ -224,7 +225,19 @@ void next_page() {
   g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
   nvs_save_progress(g_state.page_index);
   Serial.printf("[nav] next idx=%u\n", (unsigned)g_state.page_index);
-  render_current();
+  render_current(/*fast=*/true);  // page turns use the quick mono refresh
+}
+
+void prev_page() {
+  if (g_state.pages.empty()) {
+    Serial.println("[nav] no pages");
+    return;
+  }
+  const size_t n = g_state.pages.size();
+  g_state.page_index = (g_state.page_index + n - 1) % n;
+  nvs_save_progress(g_state.page_index);
+  Serial.printf("[nav] prev idx=%u\n", (unsigned)g_state.page_index);
+  render_current(/*fast=*/true);
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
@@ -321,13 +334,13 @@ void console_dispatch(char c) {
   }
 }
 
-// Two firmware-readable buttons, both active-low.
-//   FUNCTION (GPIO5) tap -> toggle dashboard <-> deck mode
-//   BOOT (GPIO0)  tap  -> dashboard: re-read sensors; deck: next page (wraps)
-//   either, hold       -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
-// BOOT doubles as the download strap but is safe at runtime (download only
-// engages when it is held across a reset). PWR is a hardware power key
-// (short-press power on, long-press power off), not an application button.
+// The 拨轮 (3-way wheel) drives the whole UI, leaving BOOT and the hardware PWR
+// key free — so PWR can power the board off cleanly. All three are active-low.
+//   UP   (GPIO4) tap  -> deck: previous page; dashboard: re-read sensors
+//   FN   (GPIO5) tap  -> toggle dashboard <-> deck mode
+//   DOWN (GPIO6) tap  -> deck: next page; dashboard: re-read sensors
+//   any, hold >=800ms -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
+// Deck page turns use the fast ~1.5s mono refresh; everything else is 4-gray.
 struct Button {
   int pin;
   bool pressed;
@@ -336,21 +349,25 @@ struct Button {
 };
 
 Button g_buttons[] = {
-    {PIN_BUTTON_1, false, 0, false},  // GPIO0 = BOOT
-    {PIN_BUTTON_2, false, 0, false},  // GPIO5 = FUNCTION
+    {PIN_BUTTON_UP, false, 0, false},    // GPIO4 = wheel UP
+    {PIN_BUTTON_2, false, 0, false},     // GPIO5 = wheel FUNCTION (centre)
+    {PIN_BUTTON_DOWN, false, 0, false},  // GPIO6 = wheel DOWN
 };
 
 constexpr uint32_t kLongPressMs = 800;
 constexpr uint32_t kDebounceMs = 40;
 
 void on_button_tap(int pin) {
-  if (pin == PIN_BUTTON_2) {  // FUNCTION
+  if (pin == PIN_BUTTON_2) {  // FUNCTION centre
     toggle_mode();
     return;
   }
-  // BOOT
-  if (g_mode == Mode::Deck) next_page();
-  else render_dashboard_now();
+  if (g_mode == Mode::Deck) {
+    if (pin == PIN_BUTTON_UP) prev_page();
+    else next_page();  // DOWN
+  } else {
+    render_dashboard_now();  // either wheel end re-reads sensors on the dashboard
+  }
 }
 
 void on_button_long(int pin) {

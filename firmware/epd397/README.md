@@ -69,16 +69,18 @@ pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
 
 ## Buttons
 
-Only BOOT and FUNCTION generate firmware events. PWR is a hardware power key.
+The 3-way **wheel** (Up/Function/Down) drives the whole UI. **BOOT** and the
+hardware **PWR** key are left free, so PWR powers the board off cleanly.
 
 | Gesture | Dashboard | Deck |
 |---|---|---|
-| **FUNCTION** (GPIO5) tap | → deck mode | → dashboard mode |
-| **BOOT** (GPIO0) tap | re-read sensors | next page (wraps) |
-| either, hold ≥800 ms | network refresh (NTP/RTC + Axiom) | same |
+| **FN** (GPIO5) tap | → deck mode | → dashboard mode |
+| **UP** (GPIO4) tap | re-read sensors | previous page |
+| **DOWN** (GPIO6) tap | re-read sensors | next page |
+| any, hold ≥800 ms | network refresh (NTP/RTC + Axiom) | same |
 
-BOOT doubles as the download strap — safe at runtime (it only enters download
-mode when held across a reset).
+Deck page turns use the panel's **fast ~1.5 s mono** refresh; mode switches and
+the dashboard use the **~4 s 4-gray** refresh.
 
 ## Console
 

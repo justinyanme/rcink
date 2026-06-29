@@ -43,4 +43,14 @@ uint8_t gray_plane_byte(const uint8_t* g, int pixel8_base, int plane) {
   return o;
 }
 
+uint8_t gray_to_mono_byte(const uint8_t* g, int pixel8_base) {
+  uint8_t o = 0;
+  for (int k = 0; k < 8; ++k) {
+    const uint8_t code = gray_code_at(g, pixel8_base + k);
+    const uint8_t white = (uint8_t)(code >= 2);  // {2,3}=white(1), {0,1}=black(0)
+    o = (uint8_t)((o << 1) | white);
+  }
+  return o;
+}
+
 }  // namespace rcpaper

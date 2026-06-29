@@ -86,6 +86,13 @@ void test_plane_split() {
   TEST_ASSERT_EQUAL_HEX8(0xCC, gray_plane_byte(g, 0, 1));
 }
 
+// Fast-refresh mono threshold: white(1) for codes {2,3}, black(0) for {0,1}.
+void test_mono_threshold() {
+  uint8_t g[2] = {0x1B, 0x1B};  // codes [0,1,2,3,0,1,2,3]
+  // white bits: 0,0,1,1,0,0,1,1 -> 0x33
+  TEST_ASSERT_EQUAL_HEX8(0x33, gray_to_mono_byte(g, 0));
+}
+
 // Real panel geometry: 800x480 -> exactly 96000 bytes, no out-of-range writes.
 void test_full_panel_size() {
   const int w = 800, h = 480;
@@ -105,6 +112,7 @@ int main() {
   RUN_TEST(test_pixel_positions);
   RUN_TEST(test_code_extraction);
   RUN_TEST(test_plane_split);
+  RUN_TEST(test_mono_threshold);
   RUN_TEST(test_full_panel_size);
   return UNITY_END();
 }

@@ -15,8 +15,12 @@ void epd397_init();
 // Full white refresh (clears ghosting).
 void epd397_clear();
 
-// Quantise + 4-gray refresh a `w`x`h` RGB565 sprite (must be 800x480).
+// Quantise + 4-gray refresh a `w`x`h` RGB565 sprite (must be 800x480). ~4 s.
 void epd397_push(const uint16_t* rgb565, int w, int h);
+
+// Fast (~1.5 s) mono refresh of the same sprite, thresholded to 1bpp. Used for
+// deck page turns where speed beats grayscale fidelity.
+void epd397_push_fast(const uint16_t* rgb565, int w, int h);
 
 // Last packed 2bpp gray buffer (96000 bytes) sent to the panel, for the
 // screenshot oracle. Callers must treat it as read-only.

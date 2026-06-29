@@ -34,8 +34,11 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
                       uint64_t epoch);
 
 bool parse_page_layout(const PageRecord& rec, LayoutNode& root);
+// `fast` uses the panel's ~1.5s mono refresh instead of the ~4s 4-gray refresh
+// (for deck page turns, where speed beats grayscale fidelity).
 void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
-                 const DeviceState& state, const BatteryReading& batt);
+                 const DeviceState& state, const BatteryReading& batt,
+                 bool fast = false);
 void render_error(const char* msg);
 
 // Transient centred status (e.g. "Fetching data...") shown during the
