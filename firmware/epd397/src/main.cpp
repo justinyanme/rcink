@@ -141,8 +141,7 @@ bool refetch_now() {
   return true;
 }
 
-// `fast` uses the panel's quick mono refresh (page turns) instead of 4-gray.
-void render_current(bool fast = false) {
+void render_current() {
   g_battery = read_battery();
   if (g_state.pages.empty()) {
     render_error("no pages - hold FN to fetch");
@@ -159,7 +158,7 @@ void render_current(bool fast = false) {
 
   const uint64_t now = (uint64_t)time(nullptr);
   const bool stale = g_state.last_fetch_s > 0 && now > g_state.last_fetch_s + FETCH_INTERVAL_SEC;
-  render_page(rec, root, stale, g_state, g_battery, fast);
+  render_page(rec, root, stale, g_state, g_battery);
 
   g_state.last_rendered_id = rec.id;
   g_state.last_rendered_data_ts = rec.data_ts;
@@ -225,7 +224,7 @@ void next_page() {
   g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
   nvs_save_progress(g_state.page_index);
   Serial.printf("[nav] next idx=%u\n", (unsigned)g_state.page_index);
-  render_current(/*fast=*/true);  // page turns use the quick mono refresh
+  render_current();
 }
 
 void prev_page() {
@@ -237,7 +236,7 @@ void prev_page() {
   g_state.page_index = (g_state.page_index + n - 1) % n;
   nvs_save_progress(g_state.page_index);
   Serial.printf("[nav] prev idx=%u\n", (unsigned)g_state.page_index);
-  render_current(/*fast=*/true);
+  render_current();
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {

@@ -108,12 +108,6 @@ void push_canvas() {
   epd397_push((const uint16_t*)g_canvas.getPointer(), SCREEN_W, SCREEN_H);
 }
 
-// Fast (~1.5s) mono refresh of the composed sprite — used for deck page turns.
-void push_canvas_fast() {
-  if (!g_canvas_ready) return;
-  epd397_push_fast((const uint16_t*)g_canvas.getPointer(), SCREEN_W, SCREEN_H);
-}
-
 void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
   constexpr int16_t w = 56;
   constexpr int16_t h = 24;
@@ -314,7 +308,7 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
 }
 
 void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
-                 const DeviceState& state, const BatteryReading& batt, bool fast) {
+                 const DeviceState& state, const BatteryReading& batt) {
   if (!g_canvas_ready) {
     Serial.println("[render] skipped: display not ready");
     return;
@@ -353,7 +347,7 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   paint_sidebar(state, batt, state.last_fetch_s, stale);
   set_text_scale(1.0f);  // chrome renders at nominal size
 
-  if (fast) push_canvas_fast(); else push_canvas();
+  push_canvas();
   Serial.printf("[render] page=%s scale=%.2f fit=%dx%d/%dx%d in %u ms\n",
                 rec.id.c_str(), scale, (int)used_w, (int)used_h,
                 (int)CONTENT_W, (int)SCREEN_H, (unsigned)(millis() - t0));

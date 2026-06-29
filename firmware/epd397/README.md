@@ -79,8 +79,9 @@ hardware **PWR** key are left free, so PWR powers the board off cleanly.
 | **DOWN** (GPIO6) tap | re-read sensors | next page |
 | any, hold ≥800 ms | network refresh (NTP/RTC + Axiom) | same |
 
-Deck page turns use the panel's **fast ~1.5 s mono** refresh; mode switches and
-the dashboard use the **~4 s 4-gray** refresh.
+All refreshes use the panel's 4-gray waveform (~3 s, hardware-fixed — there is
+no fast 4-gray mode in the controller). Holding the wheel triggers a network
+refresh.
 
 ## Console
 

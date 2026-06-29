@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
+#include <cstring>
 #include <initializer_list>
 
 #include "display/pins_config.h"
@@ -20,12 +21,14 @@ constexpr int kH = 480;
 constexpr int kGrayBytes = (kW * kH) / 4;   // 96000
 constexpr int kPlaneBytes = (kW * kH) / 8;  // 48000
 
-// HSPI mirrors the vendor's SPI host. 12 MHz is conservative for this panel and
-// plenty — the ~3 s waveform dominates, not the byte transfer.
+// HSPI mirrors the vendor's SPI host. The panel's ~3 s 4-gray waveform
+// dominates, so 20 MHz is only a small win over 12 — but free.
 SPIClass g_spi(HSPI);
-constexpr uint32_t kSpiHz = 12 * 1000 * 1000;
+constexpr uint32_t kSpiHz = 20 * 1000 * 1000;
 
-uint8_t* g_gray = nullptr;  // ps_malloc'd 96000-byte 2bpp gray buffer
+uint8_t* g_gray = nullptr;   // 96000-byte 2bpp gray buffer (PSRAM)
+uint8_t* g_plane = nullptr;  // 48000-byte scratch plane for bulk SPI writes
+bool g_in_4gray = false;     // panel currently armed in the 4-gray waveform mode
 
 inline void cs_lo() { digitalWrite(EPD_CS, LOW); }
 inline void cs_hi() { digitalWrite(EPD_CS, HIGH); }
@@ -47,6 +50,16 @@ void send_data(uint8_t d) {
 void send_cmd(uint8_t c, std::initializer_list<uint8_t> data) {
   send_command(c);
   for (uint8_t b : data) send_data(b);
+}
+
+// Stream a precomputed full plane (48000 bytes) in one bulk SPI burst, CS held
+// low across it — far faster than per-byte transfer().
+void write_plane(uint8_t reg) {
+  send_command(reg);
+  digitalWrite(EPD_DC, HIGH);
+  cs_lo();
+  g_spi.writeBytes(g_plane, kPlaneBytes);
+  cs_hi();
 }
 
 // BUSY is active HIGH (HIGH = busy, LOW = idle).
@@ -87,6 +100,7 @@ void init_full() {
   send_cmd(0x4E, {0x00, 0x00});
   send_cmd(0x4F, {0x00, 0x00});
   wait_busy();
+  g_in_4gray = false;
 }
 
 void init_4gray() {
@@ -105,82 +119,33 @@ void init_4gray() {
   send_cmd(0x3C, {0x01});
   send_cmd(0x18, {0x80});
   send_cmd(0x1A, {0x5A});  // 4-gray waveform select
+  g_in_4gray = true;
 }
 
-void init_fast() {
-  hw_reset();
-  wait_busy();
-  send_command(0x12);  // SWRESET
-  wait_busy();
-  send_cmd(0x0C, {0xAE, 0xC7, 0xC3, 0xC0, 0x80});
-  send_cmd(0x01, {(uint8_t)((kH - 1) % 256), (uint8_t)((kH - 1) / 256), 0x02});
-  send_cmd(0x11, {0x01});
-  send_cmd(0x44, {0x00, 0x00, (uint8_t)((kW - 1) % 256), (uint8_t)((kW - 1) / 256)});
-  send_cmd(0x45, {(uint8_t)((kH - 1) % 256), (uint8_t)((kH - 1) / 256), 0x00, 0x00});
-  send_cmd(0x4E, {0x00, 0x00});
-  send_cmd(0x4F, {0x00, 0x00});
-  wait_busy();
-  send_cmd(0x3C, {0x01});
-  send_cmd(0x18, {0x80});
-  send_cmd(0x1A, {0x6A});  // fast (1.5s) waveform select
-}
-
-void turn_on(uint8_t mode) {  // 0xF7 = full, 0xD7 = fast / 4-gray
+void turn_on(uint8_t mode) {  // 0xF7 = full, 0xD7 = 4-gray
   send_cmd(0x22, {mode});
   send_command(0x20);
   wait_busy();
 }
 
-// Compute one SSD1677 plane (0=RAM 0x24, 1=RAM 0x26) from the 2bpp gray buffer
-// and stream it, holding CS low across the whole plane.
-void send_plane_bulk(uint8_t reg, int plane) {
-  send_command(reg);
-  digitalWrite(EPD_DC, HIGH);
-  cs_lo();
-  for (int base = 0; base < kW * kH; base += 8) {
-    g_spi.transfer(gray_plane_byte(g_gray, base, plane));
-  }
-  cs_hi();
-}
-
 void display_4gray() {
-  send_plane_bulk(0x24, 0);
-  delay(1);
-  send_plane_bulk(0x26, 1);
+  // Reset the RAM address counter so each frame starts from the top — makes
+  // skipping the per-push re-init safe (the two full planes each wrap exactly).
+  send_cmd(0x4E, {0x00, 0x00});
+  send_cmd(0x4F, {0x00, 0x00});
+  for (int i = 0, base = 0; base < kW * kH; base += 8, ++i)
+    g_plane[i] = gray_plane_byte(g_gray, base, 0);
+  write_plane(0x24);
+  for (int i = 0, base = 0; base < kW * kH; base += 8, ++i)
+    g_plane[i] = gray_plane_byte(g_gray, base, 1);
+  write_plane(0x26);
   turn_on(0xD7);
-}
-
-// Threshold the gray buffer to 1bpp and stream a plane, CS held low across it.
-void send_mono_bulk(uint8_t reg) {
-  send_command(reg);
-  digitalWrite(EPD_DC, HIGH);
-  cs_lo();
-  for (int base = 0; base < kW * kH; base += 8) {
-    g_spi.transfer(gray_to_mono_byte(g_gray, base));
-  }
-  cs_hi();
-}
-
-// Fast (~1.5s) mono refresh. Writes the thresholded image to both RAM planes so
-// it renders fully and ghost-free as a standalone frame (vendor Display_Fast_Base).
-void display_fast() {
-  send_mono_bulk(0x24);
-  delay(1);
-  send_mono_bulk(0x26);
-  turn_on(0xD7);
-}
-
-void fill_plane(uint8_t reg, uint8_t value) {
-  send_command(reg);
-  digitalWrite(EPD_DC, HIGH);
-  cs_lo();
-  for (int i = 0; i < kPlaneBytes; ++i) g_spi.transfer(value);
-  cs_hi();
 }
 
 void clear_white_full() {
-  fill_plane(0x24, 0xFF);
-  fill_plane(0x26, 0xFF);
+  std::memset(g_plane, 0xFF, kPlaneBytes);
+  write_plane(0x24);
+  write_plane(0x26);
   turn_on(0xF7);
 }
 
@@ -197,8 +162,9 @@ void epd397_init() {
   g_spi.begin(EPD_SCK, -1, EPD_MOSI, -1);
 
   if (!g_gray) g_gray = (uint8_t*)ps_malloc(kGrayBytes);
-  if (!g_gray) {
-    Serial.println("[epd] FATAL gray buffer alloc failed");
+  if (!g_plane) g_plane = (uint8_t*)ps_malloc(kPlaneBytes);
+  if (!g_gray || !g_plane) {
+    Serial.println("[epd] FATAL buffer alloc failed");
     return;
   }
 
@@ -211,7 +177,7 @@ void epd397_init() {
 }
 
 void epd397_clear() {
-  if (!g_gray) return;
+  if (!g_plane) return;
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
   init_full();
   clear_white_full();
@@ -223,29 +189,15 @@ void epd397_push(const uint16_t* px, int w, int h) {
     Serial.printf("[epd] push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
     return;
   }
-  if (!g_gray) return;
+  if (!g_gray || !g_plane) return;
   const uint32_t t0 = millis();
   pack_gray_landscape(px, w, h, g_gray);
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
-  init_4gray();
+  if (!g_in_4gray) init_4gray();  // arm 4-gray once; later pushes reuse it
   display_4gray();
   g_spi.endTransaction();
-  Serial.printf("[epd] 4-gray refresh in %u ms\n", (unsigned)(millis() - t0));
-}
-
-void epd397_push_fast(const uint16_t* px, int w, int h) {
-  if (w != kW || h != kH) {
-    Serial.printf("[epd] fast push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
-    return;
-  }
-  if (!g_gray) return;
-  const uint32_t t0 = millis();
-  pack_gray_landscape(px, w, h, g_gray);
-  g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
-  init_fast();
-  display_fast();
-  g_spi.endTransaction();
-  Serial.printf("[epd] fast refresh in %u ms\n", (unsigned)(millis() - t0));
+  Serial.printf("[epd] 4-gray refresh in %u ms%s\n",
+                (unsigned)(millis() - t0), g_in_4gray ? "" : " (re-init)");
 }
 
 const uint8_t* epd397_last_frame(size_t* len) {
@@ -258,6 +210,7 @@ void epd397_sleep() {
   send_cmd(0x10, {0x01});  // deep sleep
   delay(100);
   g_spi.endTransaction();
+  g_in_4gray = false;  // sleep drops the waveform; next push must re-init
 }
 
 }  // namespace rcpaper

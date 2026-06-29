@@ -35,10 +35,4 @@ inline uint8_t gray_code_at(const uint8_t* g, int n) {
 // EPD_3IN97_Display_4Gray bit mapping.
 uint8_t gray_plane_byte(const uint8_t* g, int pixel8_base, int plane);
 
-// One 1bpp byte (8 pixels, MSB first) thresholding the gray buffer to black/
-// white for the fast (mono, ~1.5s) refresh: white bit (1) for light codes
-// {2,3}, black bit (0) for dark codes {0,1}. Antialiased edges split at the
-// midpoint. Panel convention: 1 = white, 0 = black.
-uint8_t gray_to_mono_byte(const uint8_t* g, int pixel8_base);
-
 }  // namespace rcpaper
