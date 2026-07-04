@@ -17,11 +17,11 @@ from typing import Annotated
 
 import typer
 
-from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR, DeviceProfile
+from rcink.devices_profile import C3_X4, EPD397, RLCD, S3, T_AMOLED, TLSR, DeviceProfile
 from rcink.preview_png import render_to_png, unsupported_node_type
 
 GOLDEN_ROOT = Path(__file__).resolve().parent.parent.parent / "dsl" / "golden"
-DEVICES: tuple[DeviceProfile, ...] = (S3, C3_X4, TLSR, T_AMOLED)
+DEVICES: tuple[DeviceProfile, ...] = (S3, C3_X4, TLSR, T_AMOLED, EPD397, RLCD)
 
 
 # ---- frozen fixtures + builder invocations ------------------------------
@@ -65,6 +65,22 @@ def _build_claude() -> dict:
     return build_claude_page(usage, sparkline=[5, 12, 18, 14, 22, 19, 28, 31])
 
 
+def _build_claude_compact() -> dict:
+    from rcink.pages.claude import build_claude_compact_page
+    from rcink.sources.claude import ClaudeUsage
+
+    usage = ClaudeUsage(
+        five_hour_pct=42.0,
+        seven_day_pct=15.0,
+        opus_pct=None,
+        sonnet_pct=None,
+        five_hour_reset="2h 14m",
+        seven_day_reset="5d 4h",
+        plan="Max 20x",
+    )
+    return build_claude_compact_page(usage)
+
+
 def _build_codex() -> dict:
     from rcink.pages.codex import build_codex_page
     from rcink.sources.codex import CodexUsage
@@ -96,12 +112,102 @@ def _build_overview() -> dict:
     )
 
 
+def _build_calendar() -> dict:
+    from rcink.pages.calendar import build_calendar_page
+    from rcink.sources.calendar import CalEvent, TodaysCalendar
+
+    events = [
+        CalEvent(
+            start=_NOW + dt.timedelta(minutes=30),
+            end=_NOW + dt.timedelta(minutes=75),
+            title="Design review",
+            calendar="Work",
+            is_all_day=False,
+        ),
+        CalEvent(
+            start=_NOW + dt.timedelta(hours=3),
+            end=_NOW + dt.timedelta(hours=4),
+            title="Firmware sync",
+            calendar="Work",
+            is_all_day=False,
+        ),
+        CalEvent(
+            start=dt.datetime(2026, 1, 1, 0, 0, tzinfo=_NOW.tzinfo),
+            end=dt.datetime(2026, 1, 2, 0, 0, tzinfo=_NOW.tzinfo),
+            title="New Year",
+            calendar="Holidays",
+            is_all_day=True,
+        ),
+    ]
+    upcoming = [
+        CalEvent(
+            start=_NOW + dt.timedelta(days=1, hours=2),
+            end=_NOW + dt.timedelta(days=1, hours=3),
+            title="Coffee with Ada",
+            calendar="Personal",
+            is_all_day=False,
+        )
+    ]
+    return build_calendar_page(TodaysCalendar(today=_NOW.date(), events=events, upcoming=upcoming), now=_NOW)
+
+
+def _build_github() -> dict:
+    from rcink.pages.github import build_github_page
+    from rcink.sources.github import GRID_CELLS, GitHubActivity, LangWeek, RepoWeek
+
+    daily_counts = [((i * 7) + (i // 5)) % 11 for i in range(GRID_CELLS)]
+    return build_github_page(
+        GitHubActivity(
+            user="rocry",
+            today_contributions=daily_counts[-1],
+            week_contributions=sum(daily_counts[-7:]),
+            streak=8,
+            total_14w=sum(daily_counts),
+            total_year=1842,
+            daily_counts=daily_counts,
+            repos_week=[
+                RepoWeek(name="rcink", commits=12),
+                RepoWeek(name="carevie", commits=7),
+                RepoWeek(name="siu", commits=4),
+            ],
+            langs_week=[
+                LangWeek(name="Python", pct=42),
+                LangWeek(name="C++", pct=31),
+                LangWeek(name="Go", pct=27),
+            ],
+        ),
+        now=_NOW,
+    )
+
+
+def _build_todo() -> dict:
+    from rcink.pages.todo import build_todo_page
+    from rcink.sources.reminders import Reminder, TodaysReminders
+
+    items = [
+        Reminder(title="Review rcink golden output", due=None, updated=_NOW, priority=1),
+        Reminder(
+            title="https://github.com/rocrp/rcink/pulls/42",
+            due=_NOW + dt.timedelta(hours=2),
+            updated=_NOW - dt.timedelta(minutes=40),
+            priority=4,
+        ),
+        Reminder(title="Order replacement flex cable", due=None, updated=_NOW - dt.timedelta(hours=3), priority=0),
+        Reminder(title="Check battery current after sleep", due=None, updated=_NOW - dt.timedelta(days=1), priority=7),
+    ]
+    return build_todo_page(TodaysReminders(list_name="Inbox", items=items, incomplete_total=9), now=_NOW)
+
+
 _BUILDERS: dict[str, Callable[[], dict]] = {
     "quote": _build_quote,
     "image": _build_image,
     "claude": _build_claude,
+    "claude_compact": _build_claude_compact,
     "codex": _build_codex,
     "overview": _build_overview,
+    "calendar": _build_calendar,
+    "github": _build_github,
+    "todo": _build_todo,
 }
 
 

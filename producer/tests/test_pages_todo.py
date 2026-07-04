@@ -37,6 +37,22 @@ def test_todo_page_shows_recent_items_with_relative_time():
     assert "1h" in text_values
 
 
+def test_todo_count_chip_is_visible_on_mono_profiles():
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    page = build_todo_page(
+        TodaysReminders(
+            list_name="Inbox",
+            items=[_reminder("ship it", updated_min_ago=90, priority=1)],
+            incomplete_total=12,
+        ),
+        now=now,
+    )
+    header = page["children"][0]
+    chip = header["children"][2]
+    assert chip["bg"] == "black"
+    assert chip["color"] == "white"
+
+
 def test_todo_page_caps_visible_rows():
     now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
     items = [_reminder(f"task {i}", updated_min_ago=i) for i in range(VISIBLE_ITEMS + 3)]

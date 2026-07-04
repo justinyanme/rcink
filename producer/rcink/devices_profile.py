@@ -69,6 +69,24 @@ def _resolve_t_amoled(token: str) -> str:
     return _AMOLED_TABLE.get(c, _AMOLED_TABLE["black"])
 
 
+_GRAY4_HEX: tuple[str, ...] = ("#000000", "#555555", "#AAAAAA", "#FFFFFF")
+
+
+def _rgb_luma(hex_color: str) -> int:
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return (77 * r + 150 * g + 29 * b) >> 8
+
+
+def _resolve_epd397(token: str) -> str:
+    """epd397 is 4-gray; quantize the TFT RGB palette by firmware Rec.601 luma."""
+    c = normalize_color(token)
+    rgb = _AMOLED_TABLE.get(c or "black", _AMOLED_TABLE["black"])
+    code = (_rgb_luma(rgb) * 3 + 127) // 255
+    return _GRAY4_HEX[code]
+
+
 # tlsr (BWR) physical inks
 _TLSR_BLACK = "#000000"
 _TLSR_WHITE = "#FFFFFF"
@@ -98,52 +116,64 @@ def _resolve_tlsr(token: str) -> str:
     return _TLSR_TABLE.get(c, _TLSR_BLACK)
 
 
+def _with_lower(values: dict[str, int]) -> dict[str, int]:
+    return values | {k.lower(): v for k, v in values.items()}
+
+
 # Font registries — mirror each firmware's px settings per the design spec.
 # Lowercase aliases included because rcpaper builders historically use lowercase.
-_S3_SIZES: dict[str, int] = {
-    "H1": 60,
-    "H2": 32,
-    "Body": 20,
-    "Sm": 14,
-    "h1": 60,
-    "h2": 32,
-    "body": 20,
-    "sm": 14,
-}
-_C3_X4_SIZES: dict[str, int] = {
-    "H1": 56,
-    "H2": 28,
-    "Body": 18,
-    "Sm": 12,
-    "h1": 56,
-    "h2": 28,
-    "body": 18,
-    "sm": 12,
-}
-_TLSR_SIZES: dict[str, int] = {
-    "H1": 24,
-    "H2": 16,
-    "Body": 12,
-    "Sm": 10,
-    "h1": 24,
-    "h2": 16,
-    "body": 12,
-    "sm": 10,
-}
+_S3_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 60,
+        "H2": 32,
+        "Body": 20,
+        "Sm": 14,
+    }
+)
+_C3_X4_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 56,
+        "H2": 28,
+        "Body": 18,
+        "Sm": 12,
+    }
+)
+_TLSR_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 24,
+        "H2": 16,
+        "Body": 12,
+        "Sm": 10,
+    }
+)
 # Mirrors firmware render/fonts.cpp font_height() — nominal FreeSans ladder
 # rungs at scale 1.0, with Sm using the 8px GLCD label rung. The firmware
 # fit-to-height pass shrinks these per page; the producer renders at nominal
 # size (no fit pass), so goldens are a layout-logic reference, not a pixel match.
-_T_AMOLED_SIZES: dict[str, int] = {
-    "H1": 40,
-    "H2": 30,
-    "Body": 21,
-    "Sm": 8,
-    "h1": 40,
-    "h2": 30,
-    "body": 21,
-    "sm": 8,
-}
+_T_AMOLED_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 40,
+        "H2": 30,
+        "Body": 21,
+        "Sm": 8,
+    }
+)
+_EPD397_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 80,
+        "H2": 30,
+        "Body": 30,
+        "Sm": 16,
+    }
+)
+_RLCD_SIZES: dict[str, int] = _with_lower(
+    {
+        "H1": 40,
+        "H2": 30,
+        "Body": 21,
+        "Sm": 16,
+    }
+)
 
 
 S3 = DeviceProfile(name="s3", width=400, height=600, resolve_color=_resolve_s3, sizes=_S3_SIZES)
@@ -165,8 +195,29 @@ T_AMOLED = DeviceProfile(
     resolve_color=_resolve_t_amoled,
     sizes=_T_AMOLED_SIZES,
 )
+EPD397 = DeviceProfile(
+    name="epd397",
+    width=800,
+    height=480,
+    resolve_color=_resolve_epd397,
+    sizes=_EPD397_SIZES,
+)
+RLCD = DeviceProfile(
+    name="rlcd",
+    width=400,
+    height=300,
+    resolve_color=_resolve_c3_x4,
+    sizes=_RLCD_SIZES,
+)
 
-PROFILES: dict[str, DeviceProfile] = {S3.name: S3, C3_X4.name: C3_X4, TLSR.name: TLSR, T_AMOLED.name: T_AMOLED}
+PROFILES: dict[str, DeviceProfile] = {
+    S3.name: S3,
+    C3_X4.name: C3_X4,
+    TLSR.name: TLSR,
+    T_AMOLED.name: T_AMOLED,
+    EPD397.name: EPD397,
+    RLCD.name: RLCD,
+}
 
 
 def get_profile(name: str) -> DeviceProfile:

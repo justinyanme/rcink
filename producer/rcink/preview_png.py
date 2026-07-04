@@ -131,10 +131,19 @@ def _intrinsic_size(node: dict[str, Any], parent: _Rect, prof: DeviceProfile, ax
         size_token = node.get("size", "Body")
         px = prof.sizes.get(size_token, prof.sizes.get("Body", 14))
         pad = _pad(node)
-        return (px + 2 * pad if axis == "v" else parent.w, False)
+        if axis == "v":
+            return (px + 2 * pad, False)
+        bold = (node.get("weight") or "Regular").lower() == "bold"
+        font = _load_font(px, bold)
+        text_w, _ = _measure_text(str(node.get("value", "")), font)
+        return (min(parent.w, text_w + 2 * pad), False)
     if typ == "hbar":
         h = int(node.get("height", 8))
-        return (h if axis == "v" else parent.w, False)
+        if axis == "v":
+            return (h, False)
+        if "width" in node:
+            return (int(node["width"]), False)
+        return (0, True)
     if typ == "marker":
         return (4 if axis == "v" else 1, False)
     if typ == "sparkline":

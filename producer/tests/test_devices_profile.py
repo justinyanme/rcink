@@ -1,5 +1,5 @@
 import pytest
-from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR, get_profile
+from rcink.devices_profile import C3_X4, EPD397, RLCD, S3, T_AMOLED, TLSR, get_profile
 
 
 def test_get_profile_known():
@@ -7,6 +7,8 @@ def test_get_profile_known():
     assert get_profile("c3-x4") is C3_X4
     assert get_profile("tlsr") is TLSR
     assert get_profile("t-amoled") is T_AMOLED
+    assert get_profile("epd397") is EPD397
+    assert get_profile("rlcd") is RLCD
 
 
 def test_get_profile_unknown_raises():
@@ -24,6 +26,8 @@ def test_tlsr_declares_grid_unsupported():
     assert S3.unsupported == frozenset()
     assert C3_X4.unsupported == frozenset()
     assert T_AMOLED.unsupported == frozenset()
+    assert EPD397.unsupported == frozenset()
+    assert RLCD.unsupported == frozenset()
 
 
 @pytest.mark.parametrize(
@@ -90,3 +94,38 @@ def test_tlsr_bwr_reduction(token, expect):
 )
 def test_t_amoled_resolves_rgb_palette(token, expect):
     assert T_AMOLED.resolve_color(token) == expect
+
+
+@pytest.mark.parametrize(
+    "token,expect",
+    [
+        ("black", "#000000"),
+        ("white", "#FFFFFF"),
+        ("red", "#555555"),
+        ("yellow", "#AAAAAA"),
+        ("green", "#AAAAAA"),
+        ("blue", "#555555"),
+        ("accent", "#555555"),
+        ("warning", "#AAAAAA"),
+        ("success", "#AAAAAA"),
+        ("info", "#555555"),
+        ("muted", "#000000"),
+    ],
+)
+def test_epd397_resolves_four_gray_palette(token, expect):
+    assert EPD397.resolve_color(token) == expect
+
+
+def test_new_profile_sizes_match_firmware_ladders():
+    assert EPD397.sizes["H1"] == 80
+    assert EPD397.sizes["Body"] == 30
+    assert EPD397.sizes["Sm"] == 16
+    assert RLCD.sizes["H1"] == 40
+    assert RLCD.sizes["Body"] == 21
+    assert RLCD.sizes["Sm"] == 16
+
+
+def test_rlcd_only_white_stays_white():
+    assert RLCD.resolve_color("white") == "#FFFFFF"
+    for t in ("black", "red", "yellow", "green", "blue", "accent", "warning", "success", "info", "muted"):
+        assert RLCD.resolve_color(t) == "#000000"

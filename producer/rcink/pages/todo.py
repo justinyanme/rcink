@@ -150,7 +150,7 @@ def build_todo_page(rem: TodaysReminders, *, now: dt.datetime | None = None) -> 
             children=[
                 text("TODO", size="h1", color="white", bg="black", pad=6, weight="bold"),
                 spacer(),
-                text(count_chip, size="sm", weight="bold", bg="warning", pad=6),
+                text(count_chip, size="sm", weight="bold", color="white", bg="black", pad=6),
             ],
         ),
         spacer(size=6),

@@ -70,6 +70,28 @@ def test_hbar_labels_change_rendered_pixels():
     assert labeled.tobytes() != unlabeled.tobytes()
 
 
+def test_hbar_in_hstack_gets_visible_flex_width():
+    img = render_to_png(
+        vstack(
+            pad=10,
+            children=[
+                hstack(
+                    gap=4,
+                    children=[
+                        text("5H", size="body", weight="bold"),
+                        hbar(pct=100, color="accent", height=14),
+                        text("42%", size="body", weight="bold"),
+                    ],
+                )
+            ],
+        ),
+        S3,
+    )
+
+    red_pixels = sum(1 for p in _pixels(img) if p == (255, 0, 0))
+    assert red_pixels > 100
+
+
 def test_marker_changes_rendered_pixels():
     plain = render_to_png(vstack(pad=10, children=[spacer(size=20)]), S3)
     marked = render_to_png(vstack(pad=10, children=[marker(pct=50, color="accent")]), S3)
