@@ -25,6 +25,7 @@ DeviceState nvs_load() {
   Preferences p;
   bool opened = p.begin(NS, true, PART);
   s.page_index            = p.getUChar("idx", 0);
+  s.ui_mode               = p.getUChar("mode", 0);
   s.last_fetch_s          = p.getULong64("last", 0);
   s.last_rendered_id      = p.getString("rid", "").c_str();
   s.last_rendered_data_ts = p.getULong64("rts", 0);
@@ -36,8 +37,8 @@ DeviceState nvs_load() {
     blob = String(buf.data());
   }
   p.end();
-  Serial.printf("[nvs] load opened=%d idx=%u last=%llu blob_len=%u rid=%s rts=%llu\n",
-                (int)opened, (unsigned)s.page_index,
+  Serial.printf("[nvs] load opened=%d idx=%u mode=%u last=%llu blob_len=%u rid=%s rts=%llu\n",
+                (int)opened, (unsigned)s.page_index, (unsigned)s.ui_mode,
                 (unsigned long long)s.last_fetch_s,
                 (unsigned)blob_len, s.last_rendered_id.c_str(),
                 (unsigned long long)s.last_rendered_data_ts);
@@ -75,6 +76,7 @@ void nvs_save(const DeviceState& s) {
   // at the 4 KB NVS string ceiling — see K_PAGES comment above.
   size_t written = p.putBytes(K_PAGES, blob.c_str(), blob.length());
   p.putUChar("idx", s.page_index);
+  p.putUChar("mode", s.ui_mode);
   p.putULong64("last", s.last_fetch_s);
   p.end();
   if (written != blob.length()) {
@@ -93,6 +95,13 @@ void nvs_save_progress(uint8_t idx) {
   Preferences p;
   p.begin(NS, false, PART);
   p.putUChar("idx", idx);
+  p.end();
+}
+
+void nvs_save_ui_mode(uint8_t mode) {
+  Preferences p;
+  p.begin(NS, false, PART);
+  p.putUChar("mode", mode);
   p.end();
 }
 

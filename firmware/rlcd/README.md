@@ -47,6 +47,10 @@ font.
 The dev build currently boots in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
 the final packed 1 bpp frame is inverted after normal black-on-white rendering.
 Use console `i` to toggle light/dark live and redraw the current screen.
+The default `waveshare-s3-rlcd-dev` environment stays awake for console work.
+The production `waveshare-s3-rlcd` environment renders once, puts the ST7305 in
+sleep mode, wakes every 30 seconds, and also wakes from GPIO18/KEY. Default
+remains dev until hardware-in-loop timer wake and battery-current checks pass.
 
 ## Build + Flash
 
@@ -55,6 +59,13 @@ Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom +
 ```bash
 pio run -e waveshare-s3-rlcd-dev
 pio run -e waveshare-s3-rlcd-dev -t upload --upload-port /dev/cu.usbmodem83401
+```
+
+Use `waveshare-s3-rlcd` only for production sleep testing:
+
+```bash
+pio run -e waveshare-s3-rlcd
+pio run -e waveshare-s3-rlcd -t upload --upload-port /dev/cu.usbmodem83401
 ```
 
 Native logic tests (palette, parser, layout engine, ST7305 1 bpp packing):
@@ -82,6 +93,8 @@ press powers on, long press powers off, and normal taps do not reach the app.
 
 BOOT doubles as the download strap — safe at runtime (it only enters download
 mode when held across a reset).
+In the production sleep build, only GPIO18/KEY is armed as an EXT1 wake source;
+GPIO0/BOOT is intentionally excluded.
 
 ## Console
 

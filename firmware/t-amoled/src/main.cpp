@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -9,6 +10,7 @@
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
+#include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
 #include "sense/battery.h"
@@ -21,6 +23,23 @@ BatteryReading g_battery;
 static uint32_t g_next_auto_refresh_ms = 0;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
+
+#ifndef RCAMOLED_DEV_CONSOLE
+static constexpr uint64_t kWakeButtonMask = 1ULL << PIN_BUTTON_2;  // GPIO21 only; never GPIO0/BOOT.
+
+static bool woke_from_next_button() {
+  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 &&
+         (esp_sleep_get_ext1_wakeup_status() & kWakeButtonMask) != 0;
+}
+
+[[noreturn]] void sleep_after_render() {
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  display_sleep();  // AMOLED panel must be dark between production wakes.
+  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
+  esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  deep_sleep_until((uint64_t)time(nullptr) + FETCH_INTERVAL_SEC);
+}
+#endif
 
 bool refetch_now() {
   g_battery = read_battery();
@@ -276,7 +295,17 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
-  if (g_state.pages.empty()) {
+#ifdef RCAMOLED_DEV_CONSOLE
+  const bool timer_wake = false;
+  const bool next_wake = false;
+#else
+  const bool timer_wake = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
+  const bool next_wake = woke_from_next_button();
+#endif
+  if (timer_wake) {
+    Serial.println("[wake] timer -> refresh");
+    do_refresh();
+  } else if (g_state.pages.empty()) {
     Serial.println("[main] empty cache -> initial fetch");
     if (refetch_now()) {
       render_current();
@@ -285,14 +314,26 @@ void setup() {
     }
     if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
   } else {
+    if (next_wake) {
+      g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
+      nvs_save_progress(g_state.page_index);
+      Serial.printf("[wake] gpio%d -> next idx=%u\n",
+                    PIN_BUTTON_2, (unsigned)g_state.page_index);
+    }
     render_current();
   }
+
+#ifdef RCAMOLED_DEV_CONSOLE
   console_help();
   schedule_next_auto_refresh(millis());
   Serial.println("[console] ready");
+#else
+  sleep_after_render();
+#endif
 }
 
 void loop() {
+#ifdef RCAMOLED_DEV_CONSOLE
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
@@ -301,4 +342,5 @@ void loop() {
   buttons_poll();
   auto_refresh_poll();
   delay(20);
+#endif
 }

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <sys/time.h>
 #include <time.h>
@@ -12,6 +13,7 @@
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
+#include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
 #include "sense/battery.h"
@@ -39,6 +41,57 @@ static uint32_t g_next_auto_refresh_ms = 0;
 static int g_last_dash_min = -1;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
+
+static constexpr uint64_t kWakeButtonMask =
+    (1ULL << PIN_BUTTON_UP) | (1ULL << PIN_BUTTON_2) | (1ULL << PIN_BUTTON_DOWN);
+
+static const char* mode_name(Mode m) {
+  return m == Mode::Dashboard ? "dashboard" : "deck";
+}
+
+static uint8_t mode_to_nvs(Mode m) {
+  return m == Mode::Dashboard ? 0 : 1;
+}
+
+static Mode mode_from_nvs(uint8_t raw) {
+  return raw == 1 ? Mode::Deck : Mode::Dashboard;
+}
+
+static bool wall_clock_is_valid() {
+  return time(nullptr) >= 1704067200;  // 2024-01-01 UTC; before that means RTC/NTP absent.
+}
+
+static bool network_refresh_due() {
+  const uint64_t now = (uint64_t)time(nullptr);
+  return g_state.pages.empty() || !wall_clock_is_valid() ||
+         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + FETCH_INTERVAL_SEC;
+}
+
+#ifndef RCEPD397_DEV_CONSOLE
+static int wake_button_pin() {
+  if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT1) return -1;
+  const uint64_t mask = esp_sleep_get_ext1_wakeup_status();
+  if (mask & (1ULL << PIN_BUTTON_UP)) return PIN_BUTTON_UP;
+  if (mask & (1ULL << PIN_BUTTON_2)) return PIN_BUTTON_2;
+  if (mask & (1ULL << PIN_BUTTON_DOWN)) return PIN_BUTTON_DOWN;
+  return -1;
+}
+
+static uint64_t next_minute_epoch() {
+  const uint64_t now = (uint64_t)time(nullptr);
+  return ((now / 60) + 1) * 60;
+}
+
+[[noreturn]] void sleep_after_render() {
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  display_sleep();
+  pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
+  esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  deep_sleep_until(next_minute_epoch());
+}
+#endif
 
 // Seed the system clock from the battery-backed RTC so the dashboard shows a
 // correct time immediately at boot, before (or without) any Wi-Fi/NTP.
@@ -144,9 +197,15 @@ void render_current_mode() {
   else render_current();
 }
 
-void enter_mode(Mode m) {
+void set_mode(Mode m) {
   g_mode = m;
-  Serial.printf("[mode] -> %s\n", m == Mode::Dashboard ? "dashboard" : "deck");
+  g_state.ui_mode = mode_to_nvs(m);
+  nvs_save_ui_mode(g_state.ui_mode);
+  Serial.printf("[mode] -> %s\n", mode_name(m));
+}
+
+void enter_mode(Mode m) {
+  set_mode(m);
   render_current_mode();
 }
 
@@ -157,7 +216,7 @@ void toggle_mode() {
 void dump_state() {
   Serial.printf("[state] mode=%s pages=%u idx=%u T=%.1f RH=%.0f env_ok=%d "
                 "last_fetch=%llu heap=%u psram=%u batt=%u%%/%umV\n",
-                g_mode == Mode::Dashboard ? "dash" : "deck",
+                mode_name(g_mode),
                 (unsigned)g_state.pages.size(), (unsigned)g_state.page_index,
                 g_env.temp_c, g_env.rh, (int)g_env.ok,
                 (unsigned long long)g_state.last_fetch_s,
@@ -211,6 +270,30 @@ void prev_page() {
   nvs_save_progress(g_state.page_index);
   Serial.printf("[nav] prev idx=%u\n", (unsigned)g_state.page_index);
   render_current();
+}
+
+void apply_wake_button(int pin) {
+  if (pin == PIN_BUTTON_2) {  // FUNCTION centre
+    set_mode(g_mode == Mode::Dashboard ? Mode::Deck : Mode::Dashboard);
+    return;
+  }
+  if (g_mode == Mode::Deck) {
+    if (g_state.pages.empty()) {
+      Serial.println("[wake] deck nav ignored: no pages");
+      return;
+    }
+    if (pin == PIN_BUTTON_UP) {
+      const size_t n = g_state.pages.size();
+      g_state.page_index = (g_state.page_index + n - 1) % n;
+      Serial.printf("[wake] gpio%d -> prev idx=%u\n", pin, (unsigned)g_state.page_index);
+    } else {
+      g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
+      Serial.printf("[wake] gpio%d -> next idx=%u\n", pin, (unsigned)g_state.page_index);
+    }
+    nvs_save_progress(g_state.page_index);
+    return;
+  }
+  Serial.printf("[wake] gpio%d -> dashboard refresh\n", pin);
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
@@ -404,7 +487,10 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
+  g_mode = mode_from_nvs(g_state.ui_mode);
+  Serial.printf("[mode] loaded %s\n", mode_name(g_mode));
 
+#ifdef RCEPD397_DEV_CONSOLE
   // Draw the dashboard immediately from RTC + sensors (instant, offline)...
   render_dashboard_now();
   // ...then go online to sync the clock and warm the deck cache.
@@ -412,9 +498,23 @@ void setup() {
 
   console_help();
   Serial.println("[console] ready");
+#else
+  const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
+  const int wake_pin = wake_button_pin();
+  Serial.printf("[wake] cause=%d gpio=%d\n", (int)wake, wake_pin);
+  if (wake_pin >= 0) apply_wake_button(wake_pin);
+
+  if (network_refresh_due()) {
+    do_refresh();
+  } else {
+    render_current_mode();
+  }
+  sleep_after_render();
+#endif
 }
 
 void loop() {
+#ifdef RCEPD397_DEV_CONSOLE
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
@@ -424,4 +524,5 @@ void loop() {
   dash_tick_poll();
   auto_refresh_poll();
   delay(20);
+#endif
 }

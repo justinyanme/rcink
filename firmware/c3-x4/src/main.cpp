@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <driver/gpio.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <time.h>
 
@@ -9,6 +11,7 @@
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
+#include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
 #include "sense/battery.h"
@@ -21,6 +24,64 @@ BatteryReading g_battery;
 static uint32_t g_next_auto_refresh_ms = 0;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
+
+constexpr uint32_t kAwakeButtonWindowMs = 60000;
+static constexpr gpio_num_t kBatteryLatchGpio = (gpio_num_t)PIN_BATTERY_LATCH;
+static constexpr uint64_t kPowerWakeMask = 1ULL << PIN_BTN_POWER;
+
+void buttons_poll();    // production sleep path keeps a short physical-button window
+
+static bool wall_clock_is_valid() {
+  return time(nullptr) >= 1704067200;  // 2024-01-01 UTC; before that means RTC/NTP absent.
+}
+
+static bool network_refresh_due() {
+  const uint64_t now = (uint64_t)time(nullptr);
+  return g_state.pages.empty() || !wall_clock_is_valid() ||
+         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + FETCH_INTERVAL_SEC;
+}
+
+static uint64_t next_refresh_epoch() {
+  const uint64_t now = (uint64_t)time(nullptr);
+  if (g_state.pages.empty() || !wall_clock_is_valid() || g_state.last_fetch_s == 0) {
+    return now + 60;
+  }
+  return g_state.last_fetch_s + FETCH_INTERVAL_SEC;
+}
+
+#ifndef RCX4_DEV_CONSOLE
+static void release_battery_latch_hold() {
+  gpio_deep_sleep_hold_dis();
+  pinMode(PIN_BATTERY_LATCH, OUTPUT);
+  digitalWrite(PIN_BATTERY_LATCH, LOW);
+  gpio_hold_dis(kBatteryLatchGpio);
+}
+
+static void hold_battery_latch_for_sleep() {
+  pinMode(PIN_BATTERY_LATCH, OUTPUT);
+  digitalWrite(PIN_BATTERY_LATCH, LOW);
+  gpio_hold_en(kBatteryLatchGpio);
+  gpio_deep_sleep_hold_en();
+}
+
+void button_window() {
+  Serial.printf("[sleep] awake button window %u ms\n", (unsigned)kAwakeButtonWindowMs);
+  const uint32_t deadline = millis() + kAwakeButtonWindowMs;
+  while ((int32_t)(deadline - millis()) > 0) {
+    buttons_poll();
+    delay(20);
+  }
+}
+
+[[noreturn]] void sleep_after_button_window() {
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  display_sleep();
+  hold_battery_latch_for_sleep();
+  pinMode(PIN_BTN_POWER, INPUT_PULLUP);
+  esp_deep_sleep_enable_gpio_wakeup(kPowerWakeMask, ESP_GPIO_WAKEUP_GPIO_LOW);
+  deep_sleep_until(next_refresh_epoch());
+}
+#endif
 
 void render_current();  // defined below; fetch_and_restart re-renders on failure
 
@@ -298,6 +359,10 @@ void setup() {
   delay(200);
   Serial.println("\n[boot] rcink c3-x4 (Xteink X4)");
 
+#ifndef RCX4_DEV_CONSOLE
+  release_battery_latch_hold();
+#endif
+
   apply_local_tz(LOCAL_TZ);
   display_init();
   buttons_init();
@@ -307,6 +372,7 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
+#ifdef RCX4_DEV_CONSOLE
   if (g_state.pages.empty()) {
     // No cache: fetch, save, and reboot to render (fetch_and_restart only
     // returns if the fetch failed, leaving an error on screen).
@@ -318,9 +384,24 @@ void setup() {
   console_help();
   schedule_next_auto_refresh(millis());
   Serial.println("[console] ready");
+#else
+  if (g_state.pages.empty()) {
+    Serial.println("[main] empty cache -> initial fetch");
+    fetch_and_restart();
+  } else {
+    render_current();
+    if (network_refresh_due()) {
+      Serial.println("[main] refresh due -> fetch");
+      fetch_and_restart();
+    }
+  }
+  button_window();
+  sleep_after_button_window();
+#endif
 }
 
 void loop() {
+#ifdef RCX4_DEV_CONSOLE
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
@@ -329,4 +410,5 @@ void loop() {
   buttons_poll();
   auto_refresh_poll();
   delay(20);
+#endif
 }

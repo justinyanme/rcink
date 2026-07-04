@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <sys/time.h>
 #include <time.h>
@@ -12,6 +13,7 @@
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
+#include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
 #include "sense/battery.h"
@@ -36,8 +38,48 @@ Mode g_mode = Mode::Dashboard;
 static uint32_t g_next_auto_refresh_ms = 0;
 static uint32_t g_next_dash_ms = 0;
 constexpr uint32_t kDashRefreshMs = 30000;  // re-read sensors + clock every 30 s
+constexpr uint32_t kDashRefreshSec = kDashRefreshMs / 1000;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
+
+static constexpr uint64_t kWakeButtonMask = 1ULL << PIN_BUTTON_2;  // GPIO18 only; never GPIO0/BOOT.
+
+static const char* mode_name(Mode m) {
+  return m == Mode::Dashboard ? "dashboard" : "deck";
+}
+
+static uint8_t mode_to_nvs(Mode m) {
+  return m == Mode::Dashboard ? 0 : 1;
+}
+
+static Mode mode_from_nvs(uint8_t raw) {
+  return raw == 1 ? Mode::Deck : Mode::Dashboard;
+}
+
+static bool wall_clock_is_valid() {
+  return time(nullptr) >= 1704067200;  // 2024-01-01 UTC; before that means RTC/NTP absent.
+}
+
+static bool network_refresh_due() {
+  const uint64_t now = (uint64_t)time(nullptr);
+  return g_state.pages.empty() || !wall_clock_is_valid() ||
+         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + FETCH_INTERVAL_SEC;
+}
+
+#ifndef RCRLCD_DEV_CONSOLE
+static bool woke_from_key() {
+  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 &&
+         (esp_sleep_get_ext1_wakeup_status() & kWakeButtonMask) != 0;
+}
+
+[[noreturn]] void sleep_after_render() {
+  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
+  display_sleep();
+  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
+  esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  deep_sleep_until((uint64_t)time(nullptr) + kDashRefreshSec);
+}
+#endif
 
 // Seed the system clock from the battery-backed RTC so the dashboard shows a
 // correct time immediately at boot, before (or without) any Wi-Fi/NTP.
@@ -140,9 +182,15 @@ void render_current_mode() {
   else render_current();
 }
 
-void enter_mode(Mode m) {
+void set_mode(Mode m) {
   g_mode = m;
-  Serial.printf("[mode] -> %s\n", m == Mode::Dashboard ? "dashboard" : "deck");
+  g_state.ui_mode = mode_to_nvs(m);
+  nvs_save_ui_mode(g_state.ui_mode);
+  Serial.printf("[mode] -> %s\n", mode_name(m));
+}
+
+void enter_mode(Mode m) {
+  set_mode(m);
   render_current_mode();
 }
 
@@ -153,7 +201,7 @@ void toggle_mode() {
 void dump_state() {
   Serial.printf("[state] mode=%s pages=%u idx=%u T=%.1f RH=%.0f env_ok=%d "
                 "dark=%d last_fetch=%llu heap=%u psram=%u batt=%u%%/%umV\n",
-                g_mode == Mode::Dashboard ? "dash" : "deck",
+                mode_name(g_mode),
                 (unsigned)g_state.pages.size(), (unsigned)g_state.page_index,
                 g_env.temp_c, g_env.rh, (int)g_env.ok,
                 (int)st7305_dark_mode(),
@@ -197,6 +245,10 @@ void next_page() {
   nvs_save_progress(g_state.page_index);
   Serial.printf("[nav] next idx=%u\n", (unsigned)g_state.page_index);
   render_current();
+}
+
+void apply_wake_key() {
+  set_mode(g_mode == Mode::Dashboard ? Mode::Deck : Mode::Dashboard);
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
@@ -386,7 +438,10 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
+  g_mode = mode_from_nvs(g_state.ui_mode);
+  Serial.printf("[mode] loaded %s\n", mode_name(g_mode));
 
+#ifdef RCRLCD_DEV_CONSOLE
   // Draw the dashboard immediately from RTC + sensors (instant, offline)...
   render_dashboard_now();
   // ...then go online to sync the clock and warm the deck cache.
@@ -394,9 +449,23 @@ void setup() {
 
   console_help();
   Serial.println("[console] ready");
+#else
+  const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
+  const bool key_wake = woke_from_key();
+  Serial.printf("[wake] cause=%d key=%d\n", (int)wake, (int)key_wake);
+  if (key_wake) apply_wake_key();
+
+  if (network_refresh_due()) {
+    do_refresh();
+  } else {
+    render_current_mode();
+  }
+  sleep_after_render();
+#endif
 }
 
 void loop() {
+#ifdef RCRLCD_DEV_CONSOLE
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
@@ -406,4 +475,5 @@ void loop() {
   dash_tick_poll();
   auto_refresh_poll();
   delay(20);
+#endif
 }

@@ -45,6 +45,11 @@ hardware). CJK in deck mode renders via U8g2 + a baked WenQuanYi GB2312 font.
 E-paper can't flash on every tick, so the dashboard re-renders only when the
 displayed **minute** rolls over (≈once/min); mode switches and page changes do a
 full 4-gray refresh (~3 s). Boot does a full white clear to wipe ghosting.
+The default `waveshare-s3-epd397-dev` environment stays awake for console work.
+The production `waveshare-s3-epd397` environment renders once, puts the panel in
+deep sleep, wakes on the next minute boundary, and also wakes from the wheel's
+GPIO4/GPIO5/GPIO6 inputs. Default remains dev until hardware-in-loop timer wake
+and battery-current checks pass.
 
 ## Build + Flash
 
@@ -53,6 +58,13 @@ Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom +
 ```bash
 pio run -e waveshare-s3-epd397-dev
 pio run -e waveshare-s3-epd397-dev -t upload --upload-port /dev/cu.usbmodem83401
+```
+
+Use `waveshare-s3-epd397` only for production sleep testing:
+
+```bash
+pio run -e waveshare-s3-epd397
+pio run -e waveshare-s3-epd397 -t upload --upload-port /dev/cu.usbmodem83401
 ```
 
 Native logic tests (palette, parser, layout engine, 4-gray packing):
@@ -82,6 +94,8 @@ hardware **PWR** key are left free, so PWR powers the board off cleanly.
 All refreshes use the panel's 4-gray waveform (~3 s, hardware-fixed — there is
 no fast 4-gray mode in the controller). Holding the wheel triggers a network
 refresh.
+In the production sleep build, only the wheel GPIOs (4/5/6) are armed as EXT1
+wake sources; GPIO0/BOOT is intentionally excluded.
 
 ## Console
 
