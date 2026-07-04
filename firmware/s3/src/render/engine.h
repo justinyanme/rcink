@@ -2,9 +2,6 @@
 #include "proto/schema.h"
 #include <cstdint>
 #include <vector>
-#ifdef ARDUINO
-#include <M5GFX.h>
-#endif
 
 namespace rcpaper {
 
@@ -33,24 +30,9 @@ struct LaidOutNode {
   std::vector<LaidOutNode> children;
 };
 
-LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m);
-
-#ifdef ARDUINO
-class M5GFXMeasurer : public Measurer {
- public:
-  explicit M5GFXMeasurer(M5GFX& gfx) : gfx_(gfx) {}
-  Size text_size(const TextNode& t) const override;
-  Size icon_size(const IconNode& i) const override;
-  Size image_size(const ImageNode& i) const override;
- private:
-  M5GFX& gfx_;
-};
-
-// Accepts a LovyanGFX surface (M5.Display *or* an M5Canvas sprite) so the
-// caller can draw to an offscreen buffer and push once — color e-paper
-// panels commit per-call on the live framebuffer, so direct-draw shows up
-// as a refresh-per-element.
-void paint_layout(LovyanGFX& gfx, const LaidOutNode& laid);
-#endif
+// `scale` (<=1.0) shrinks pads/gaps/spacers/bar+grid extents; the Measurer
+// scales text/icon/image to match. Used by the fit-to-height pass; defaults to
+// 1.0 for the unscaled layout and the native tests.
+LaidOutNode run_layout(const LayoutNode& root, Rect viewport, const Measurer& m, float scale = 1.0f);
 
 }  // namespace rcpaper

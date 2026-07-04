@@ -4,10 +4,10 @@
 #include <cstring>
 #include <HTTPClient.h>
 #include <M5GFX.h>
-#include "render/engine.h"
 #include "render/fonts_icons.h"
 #include "render/icons_data.h"
 #include "render/palette.h"
+#include "render/primitives.h"
 #include "proto/schema.h"
 
 namespace rcpaper {
@@ -362,6 +362,53 @@ void draw_image(LovyanGFX& gfx, const ImageNode& i, Rect r) {
   }
 
   draw_image_placeholder(gfx, i, r, "img");
+}
+
+Size M5GFXMeasurer::text_size(const TextNode& t) const {
+  // Match the font draw_text() will actually use, otherwise the layout
+  // engine reserves the wrong horizontal width for CJK strings.
+  const bool needs_cjk = string_needs_cjk(t.value);
+  gfx_.setFont(needs_cjk ? cjk_font_for(t.size, t.weight) : font_for(t.size, t.weight));
+  int16_t w = gfx_.textWidth(t.value.c_str()) + 2 * t.pad;
+  int16_t h = font_height(t.size, t.weight) + 2 * t.pad;
+  return Size{w, h};
+}
+
+Size M5GFXMeasurer::icon_size(const IconNode& i) const {
+  return Size{i.size, i.size};
+}
+
+Size M5GFXMeasurer::image_size(const ImageNode& i) const {
+  return Size{i.width, i.height};
+}
+
+static void paint_node(LovyanGFX& gfx, const LaidOutNode& laid) {
+  if (!laid.node) return;
+  switch (laid.node->type) {
+    case NodeType::VStack:
+    case NodeType::HStack:
+      for (const auto& c : laid.children) paint_node(gfx, c);
+      break;
+    case NodeType::Spacer:
+      break;
+    case NodeType::Divider:
+      draw_divider(gfx, laid.node->as_divider, laid.rect, /*vertical_main=*/false);
+      break;
+    case NodeType::Text:      draw_text(gfx,      laid.node->as_text,      laid.rect); break;
+    case NodeType::HBar:      draw_hbar(gfx,      laid.node->as_hbar,      laid.rect); break;
+    case NodeType::Icon:      draw_icon(gfx,      laid.node->as_icon,      laid.rect); break;
+    case NodeType::Image:     draw_image(gfx,     laid.node->as_image,     laid.rect); break;
+    case NodeType::Sparkline: draw_sparkline(gfx, laid.node->as_sparkline, laid.rect); break;
+    case NodeType::Marker:    draw_marker(gfx,    laid.node->as_marker,    laid.rect); break;
+    case NodeType::Grid:      draw_grid(gfx,      laid.node->as_grid,      laid.rect); break;
+    case NodeType::Unknown:
+    default:
+      break;
+  }
+}
+
+void paint_layout(LovyanGFX& gfx, const LaidOutNode& laid) {
+  paint_node(gfx, laid);
 }
 
 }  // namespace rcpaper

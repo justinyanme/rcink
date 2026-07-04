@@ -9,6 +9,7 @@
 #include "render/engine.h"
 #include "render/nav_strip.h"
 #include "render/palette.h"
+#include "render/primitives.h"
 #include "render/status_bar.h"
 #include "render/warnings.h"
 #endif
