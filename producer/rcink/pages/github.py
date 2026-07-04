@@ -1,13 +1,13 @@
 """Build the GitHub activity page — compact contribution edition.
 
-KPI strip (TODAY / WEEK / 14W contributions), streak, and 14-week daily line chart.
+KPI strip (TODAY / WEEK / 14W contributions), streak, and 14-week contribution grid.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 
-from rcink.layout import divider, hstack, icon, spacer, sparkline, text, vstack
+from rcink.layout import divider, grid, hstack, icon, spacer, text, vstack
 from rcink.palette import ColorToken
 from rcink.sources.github import GRID_WEEKS, GitHubActivity
 
@@ -81,8 +81,10 @@ def build_github_page(activity: GitHubActivity, *, now: dt.datetime) -> dict:
             ],
         ),
         spacer(size=4),
-        sparkline(
-            activity.daily_counts,
+        grid(
+            cols=GRID_WEEKS,
+            rows=7,
+            values=activity.daily_counts,
             color="success",
             height=96,
         ),

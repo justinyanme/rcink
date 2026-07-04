@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 
 from rcink.layout import divider, hbar, hstack, spacer, text, vstack
-from rcink.pages._common import relative_short, wrap_visual
+from rcink.pages._common import relative_short, trim, wrap_visual
 from rcink.palette import ColorToken
 from rcink.sources.calendar import TodaysCalendar
 from rcink.sources.claude import ClaudeUsage
@@ -145,9 +145,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
             else:
                 h, m = divmod(delta_min, 60)
                 sub = f"in {h}h" if m == 0 else f"in {h}h {m}m"
-        title = nxt.title
-        if len(title) > 24:
-            title = title[:23] + "…"
+        title = trim(nxt.title, limit=24)
         return hstack(
             gap=8,
             align="center",
@@ -164,9 +162,7 @@ def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
         nxt = cal.upcoming[0]
         dow = nxt.start.strftime("%a").upper()
         when = "ALL" if nxt.is_all_day else nxt.start.strftime("%H:%M")
-        title = nxt.title
-        if len(title) > 22:
-            title = title[:21] + "…"
+        title = trim(nxt.title, limit=22)
         return hstack(
             gap=8,
             align="center",

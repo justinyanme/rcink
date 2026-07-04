@@ -20,6 +20,9 @@ from numbers import Real
 from pathlib import Path
 
 import httpx
+from loguru import logger
+
+from rcink.timefmt import format_countdown
 
 CREDS_DEFAULT = Path.home() / ".claude" / ".credentials.json"
 KEYCHAIN_SERVICE = "Claude Code-credentials"  # macOS Keychain item name
@@ -69,25 +72,12 @@ def load_creds(path: Path = CREDS_DEFAULT) -> dict:
     return creds
 
 
-def _format_countdown(secs: int) -> str:
-    if secs <= 0:
-        return "now"
-    d, rem = divmod(secs, 86400)
-    h, rem = divmod(rem, 3600)
-    m, _ = divmod(rem, 60)
-    if d:
-        return f"{d}d {h}h"
-    if h:
-        return f"{h}h {m}m"
-    return f"{m}m"
-
-
 def _reset_text(iso: str | None) -> str:
     if not iso:
         return ""
     when = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
     delta = (when - dt.datetime.now(dt.timezone.utc)).total_seconds()
-    return _format_countdown(int(delta))
+    return format_countdown(int(delta))
 
 
 def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
@@ -132,8 +122,11 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
         if isinstance(value, bool) or not isinstance(value, Real):
             raise ValueError(f"Claude usage response has invalid pct for {key}")
         pct = float(value)
-        if not 0.0 <= pct <= 100.0:
+        if pct < 0.0:
             raise ValueError(f"Claude usage response pct out of range for {key}: {pct}")
+        if pct > 100.0:
+            logger.warning(f"Claude usage response pct over 100 for {key}: {pct}; clamping to 100")
+            return 100.0
         return pct
 
     def reset(key: str) -> str:

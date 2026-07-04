@@ -42,7 +42,11 @@ class Transport:
 
     async def __aenter__(self) -> "Transport":
         await self._client.__aenter__()
-        await self._client.start_notify(CHAR_XFER_ACK, self._on_ack)
+        try:
+            await self._client.start_notify(CHAR_XFER_ACK, self._on_ack)
+        except BaseException:
+            await self._client.__aexit__(*sys.exc_info())
+            raise
         return self
 
     async def __aexit__(self, *args: Any) -> None:

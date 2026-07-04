@@ -1,6 +1,6 @@
 import datetime as dt
 
-from rcink.pages._common import relative_short, visual_width, wrap_visual
+from rcink.pages._common import relative_short, trim, visual_width, wrap_visual
 
 
 def test_wrap_visual_short_string_single_line():
@@ -40,6 +40,12 @@ def test_wrap_visual_max_lines_one_truncates():
     out = wrap_visual("alpha bravo charlie", line_limit=10, max_lines=1)
     assert len(out) == 1
     assert out[0].endswith("…")
+
+
+def test_trim_counts_cjk_as_two_cells():
+    out = trim("会议abcdef", limit=8)
+    assert out == "会议abc…"
+    assert visual_width(out) <= 8
 
 
 def test_relative_short_minutes():

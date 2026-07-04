@@ -19,6 +19,13 @@ def test_t_amoled_sm_size_matches_dsl_spec():
     assert T_AMOLED.sizes["sm"] == 8
 
 
+def test_tlsr_declares_grid_unsupported():
+    assert TLSR.unsupported == frozenset({"grid"})
+    assert S3.unsupported == frozenset()
+    assert C3_X4.unsupported == frozenset()
+    assert T_AMOLED.unsupported == frozenset()
+
+
 @pytest.mark.parametrize(
     "token,expect",
     [

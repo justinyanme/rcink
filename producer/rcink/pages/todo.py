@@ -11,7 +11,7 @@ import re
 from urllib.parse import urlparse
 
 from rcink.layout import divider, hbar, hstack, icon, spacer, text, vstack
-from rcink.pages._common import _trim, relative_short, visual_width, wrap_visual
+from rcink.pages._common import relative_short, trim, visual_width, wrap_visual
 from rcink.palette import ColorToken
 from rcink.sources.reminders import Reminder, TodaysReminders
 
@@ -89,7 +89,7 @@ def render_title_node(item: Reminder, *, line_limit: int = LINE_LIMIT) -> dict:
             gap=2,
             children=[
                 url_row,
-                text(_trim(residual, limit=line_limit), size="sm"),
+                text(trim(residual, limit=line_limit), size="sm"),
             ],
         )
 

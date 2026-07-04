@@ -18,7 +18,7 @@ from typing import Annotated
 import typer
 
 from rcink.devices_profile import C3_X4, S3, T_AMOLED, TLSR, DeviceProfile
-from rcink.preview_png import render_to_png
+from rcink.preview_png import render_to_png, unsupported_node_type
 
 GOLDEN_ROOT = Path(__file__).resolve().parent.parent.parent / "dsl" / "golden"
 DEVICES: tuple[DeviceProfile, ...] = (S3, C3_X4, TLSR, T_AMOLED)
@@ -107,7 +107,12 @@ _BUILDERS: dict[str, Callable[[], dict]] = {
 
 # ---- CLI ---------------------------------------------------------------
 
-app = typer.Typer(add_completion=False, help="Regenerate per-device golden PNGs.")
+app = typer.Typer(add_completion=False, help="Regenerate per-device golden PNGs.", no_args_is_help=True)
+
+
+@app.callback()
+def _main() -> None:
+    pass
 
 
 def _layout_of(result: dict) -> dict:
@@ -128,6 +133,10 @@ def regen(
     for page in selected_pages:
         layout = _layout_of(_BUILDERS[page]())
         for prof in selected_devices:
+            unsupported = unsupported_node_type(layout, prof)
+            if unsupported is not None:
+                typer.echo(f"skipped {prof.name}/{page}: unsupported {unsupported}")
+                continue
             out_dir = GOLDEN_ROOT / prof.name
             out_dir.mkdir(parents=True, exist_ok=True)
             out_path = out_dir / f"{page}.png"

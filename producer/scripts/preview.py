@@ -3,6 +3,7 @@
 Usage:
     uv run preview claude         # build via rcink.sources.claude + pages.claude
     uv run preview codex          # build via rcink.sources.codex + pages.codex
+    uv run preview github -d c3-x4 # render with a non-default device profile
     uv run preview --file f.json  # render an arbitrary layout dict from disk
     uv run preview --axiom claude # pull the latest page event from Axiom
 
@@ -22,6 +23,7 @@ from typing import Any
 
 import typer
 from loguru import logger
+from rcink.devices_profile import get_profile
 from rcink.preview import to_html
 
 app = typer.Typer(add_completion=False, help=__doc__, no_args_is_help=True)
@@ -30,6 +32,7 @@ FILE_OPTION = typer.Option(None, "--file", help="Render a layout dict from this 
 AXIOM_OPTION = typer.Option(False, "--axiom", help="Pull the latest layout for <page> from Axiom.")
 OUT_OPTION = typer.Option(DEFAULT_PREVIEW_OUT, "--out", help="Output HTML path.")
 NO_OPEN_OPTION = typer.Option(False, "--no-open", help="Don't open the browser.")
+DEVICE_OPTION = typer.Option("s3", "--device", "-d", help="Device profile for viewport, fonts, and palette.")
 
 
 def _build_local(page_id: str) -> dict[str, Any]:
@@ -90,7 +93,9 @@ def main(
     axiom: bool = AXIOM_OPTION,
     out: Path = OUT_OPTION,
     no_open: bool = NO_OPEN_OPTION,
+    device: str = DEVICE_OPTION,
 ) -> None:
+    prof = get_profile(device)
     if file:
         layout = json.loads(file.read_text())
         title = f"file:{file.name}"
@@ -105,7 +110,7 @@ def main(
         layout = _build_local(page)
         title = f"local:{page}"
 
-    html = to_html(layout, title=title)
+    html = to_html(layout, title=title, prof=prof)
     out.write_text(html)
     logger.info(f"wrote {out}")
     if not no_open:

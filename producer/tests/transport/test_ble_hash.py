@@ -32,3 +32,34 @@ def test_data_ver_insensitive_to_key_order():
     a = data_ver({"a": 1, "b": 2})
     b = data_ver({"b": 2, "a": 1})
     assert a == b
+
+
+def test_canonical_json_wire_stability_pin():
+    page = {
+        "type": "vstack",
+        "pad": 1,
+        "gap": 2,
+        "children": [
+            {
+                "type": "text",
+                "value": "你好",
+                "size": "body",
+                "weight": "bold",
+                "color": "accent",
+            },
+            {
+                "type": "hbar",
+                "pct": 42.5,
+                "height": 12,
+                "color": "success",
+                "label_left": "used",
+            },
+        ],
+    }
+
+    assert canonical_json(page) == (
+        b'{"children":[{"color":"accent","size":"body","type":"text","value":"\xe4\xbd\xa0\xe5\xa5\xbd",'
+        b'"weight":"bold"},{"color":"success","height":12,"label_left":"used","pct":42.5,"type":"hbar"}],'
+        b'"gap":2,"pad":1,"type":"vstack"}'
+    )
+    assert data_ver(page) == 3323409788

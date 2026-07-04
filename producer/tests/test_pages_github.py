@@ -83,12 +83,14 @@ def test_github_page_user_line_shows_streak():
     assert any("7d streak" in t for t in texts)
 
 
-def test_github_page_uses_daily_sparkline_instead_of_heatmap_grid():
+def test_github_page_uses_daily_heatmap_grid():
     page = build_github_page(_make(), now=dt.datetime(2026, 5, 23))
     texts = _all_text(page)
-    sparklines = _find_nodes(page, "sparkline")
+    grids = _find_nodes(page, "grid")
 
     assert any("CONTRIBS / DAY" in t for t in texts)
-    assert len(sparklines) == 1
-    assert sparklines[0]["values"] == [0] * (GRID_CELLS - 4) + [1, 5, 2, 8]
-    assert _find_nodes(page, "grid") == []
+    assert len(grids) == 1
+    assert grids[0]["cols"] == 14
+    assert grids[0]["rows"] == 7
+    assert grids[0]["values"] == [0] * (GRID_CELLS - 4) + [1, 5, 2, 8]
+    assert _find_nodes(page, "sparkline") == []

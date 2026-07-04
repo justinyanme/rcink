@@ -52,7 +52,7 @@ def visual_width(s: str) -> int:
     return sum(cell_width(c) for c in s)
 
 
-def _trim(s: str, *, limit: int) -> str:
+def trim(s: str, *, limit: int) -> str:
     """Truncate `s` to ≤ `limit` visual cells, appending `…` if cut."""
     if visual_width(s) <= limit:
         return s
@@ -87,7 +87,7 @@ def wrap_visual(body: str, *, line_limit: int, max_lines: int) -> list[str]:
             break
         # If this is the last line we're allowed to emit, trim with ellipsis.
         if len(lines) == max_lines - 1:
-            lines.append(_trim(remaining, limit=line_limit))
+            lines.append(trim(remaining, limit=line_limit))
             return lines
         # Walk chars accumulating width; remember the last whitespace inside
         # the budget. Prefer breaking there.

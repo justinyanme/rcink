@@ -2,6 +2,8 @@ import datetime as dt
 
 import pytest
 from rcink.axiom import AxiomError, ingest, query_apl
+from rcink.layout import text, vstack
+from rcink.validate import LayoutValidationError
 
 
 @pytest.fixture
@@ -17,7 +19,7 @@ def test_ingest_posts_event(httpx_mock, env):
         json={"ingested": 1, "failed": 0},
         status_code=200,
     )
-    ingest(id="claude", layout={"type": "text", "value": "X"}, order=10)
+    ingest(id="claude", layout=vstack(children=[text("X")]), order=10)
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer xaat-test"
     assert req.headers["Content-Type"] == "application/json"
@@ -30,7 +32,7 @@ def test_ingest_posts_event(httpx_mock, env):
     assert ev["type"] == "rcpaper_page"
     assert ev["id"] == "claude"
     assert ev["order"] == 10
-    assert json.loads(ev["layout_json"]) == {"type": "text", "value": "X"}
+    assert json.loads(ev["layout_json"]) == {"type": "vstack", "children": [{"type": "text", "value": "X"}]}
     # _time must be ISO8601 UTC
     dt.datetime.fromisoformat(ev["_time"].replace("Z", "+00:00"))
 
@@ -43,7 +45,7 @@ def test_ingest_raises_on_failure(httpx_mock, env):
         status_code=200,
     )
     with pytest.raises(AxiomError, match="ingest failed"):
-        ingest(id="claude", layout={})
+        ingest(id="claude", layout=vstack(children=[]))
 
 
 def test_ingest_http_error(httpx_mock, env):
@@ -54,7 +56,7 @@ def test_ingest_http_error(httpx_mock, env):
         text="unauthorized",
     )
     with pytest.raises(AxiomError, match="401"):
-        ingest(id="claude", layout={})
+        ingest(id="claude", layout=vstack(children=[]))
 
 
 def test_query_apl_returns_rows(httpx_mock, env):
@@ -74,7 +76,13 @@ def test_query_apl_returns_rows(httpx_mock, env):
 
 def test_missing_env_raises():
     with pytest.raises(RuntimeError, match="AXIOM_TOKEN"):
-        ingest(id="x", layout={})
+        ingest(id="x", layout=vstack(children=[]))
+
+
+def test_ingest_rejects_invalid_layout_before_http(httpx_mock, env):
+    with pytest.raises(LayoutValidationError):
+        ingest(id="bad", layout={"type": "text", "value": "X"})
+    assert httpx_mock.get_request() is None
 
 
 def test_ingest_metric(httpx_mock, env):

@@ -10,10 +10,11 @@ GITHUB_TOKEN needs `read:user`; GITHUB_USERNAME is the login to report on.
 from __future__ import annotations
 
 import datetime as dt
-import os
 from dataclasses import dataclass, field
 
 import httpx
+
+from rcink.envutil import require_env
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 
@@ -75,13 +76,6 @@ class GitHubActivity:
     daily_counts: list[int]
     repos_week: list[RepoWeek] = field(default_factory=list)
     langs_week: list[LangWeek] = field(default_factory=list)
-
-
-def _env(key: str) -> str:
-    v = os.environ.get(key)
-    if not v:
-        raise RuntimeError(f"{key} not set in environment")
-    return v
 
 
 def _normalize(counts: list[int]) -> list[int]:
@@ -196,8 +190,8 @@ def fetch_github_activity(
     token: str | None = None,
     now: dt.datetime | None = None,
 ) -> GitHubActivity:
-    user = user or _env("GITHUB_USERNAME")
-    token = token or _env("GITHUB_TOKEN")
+    user = user or require_env("GITHUB_USERNAME")
+    token = token or require_env("GITHUB_TOKEN")
     now = now or dt.datetime.now(tz=dt.timezone.utc)
     windows = _local_day_windows(now, days=7)
     week_from = _iso_utc(windows[-7][0])

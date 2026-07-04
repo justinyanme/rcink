@@ -21,6 +21,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from rcink.devices_profile import DeviceProfile
+from rcink.grid_ramp import grid_color_token
 
 _FONT_CACHE: dict[tuple[int, bool], Any] = {}
 
@@ -134,6 +135,8 @@ def _intrinsic_size(node: dict[str, Any], parent: _Rect, prof: DeviceProfile, ax
     if typ == "hbar":
         h = int(node.get("height", 8))
         return (h if axis == "v" else parent.w, False)
+    if typ == "marker":
+        return (4 if axis == "v" else 1, False)
     if typ == "sparkline":
         h = int(node.get("height", 32))
         return (h if axis == "v" else parent.w, False)
@@ -192,6 +195,9 @@ def _paint_node(node: dict[str, Any], draw: ImageDraw.ImageDraw, prof: DevicePro
     if typ == "hbar":
         _paint_hbar(node, rect, draw, prof)
         return
+    if typ == "marker":
+        _paint_marker(node, rect, draw, prof)
+        return
     if typ == "sparkline":
         _paint_sparkline(node, rect, draw, prof)
         return
@@ -207,8 +213,7 @@ def _paint_node(node: dict[str, Any], draw: ImageDraw.ImageDraw, prof: DevicePro
         draw.line((rect.x + rect.w, rect.y, rect.x, rect.y + rect.h), fill=color, width=1)
         return
     if typ == "grid":
-        color = prof.resolve_color(node.get("color", "black"))
-        draw.rectangle((rect.x, rect.y, rect.x + rect.w, rect.y + rect.h), outline=color, width=1)
+        _paint_grid(node, rect, draw, prof)
         return
 
 
@@ -259,6 +264,27 @@ def _paint_hbar(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDraw, pr
             (rect.x + 1, rect.y + 1, rect.x + fw, rect.y + rect.h - 1),
             fill=color,
         )
+    font = _load_font(prof.sizes.get("Sm", 10), bold=True)
+    label_left = str(node.get("label_left", ""))
+    if label_left:
+        _, text_h = _measure_text(label_left, font)
+        draw.text((rect.x + 4, rect.y + (rect.h - text_h) // 2), label_left, font=font, fill="#FFFFFF")
+    label_right = str(node.get("label_right", ""))
+    if label_right:
+        text_w, text_h = _measure_text(label_right, font)
+        draw.text(
+            (rect.x + rect.w - text_w - 4, rect.y + (rect.h - text_h) // 2),
+            label_right,
+            font=font,
+            fill="#000000",
+        )
+
+
+def _paint_marker(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDraw, prof: DeviceProfile) -> None:
+    pct = max(0.0, min(100.0, float(node.get("pct", 0))))
+    color = prof.resolve_color(node.get("color", "red"))
+    x = rect.x + int(rect.w * pct / 100.0)
+    draw.line((x, rect.y - 4, x, rect.y + rect.h + 4), fill=color, width=1)
 
 
 def _paint_sparkline(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDraw, prof: DeviceProfile) -> None:
@@ -281,8 +307,52 @@ def _paint_sparkline(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDra
         draw.line(points, fill=color, width=1)
 
 
+def _grid_color(value: float | int | None, prof: DeviceProfile) -> str:
+    return prof.resolve_color(grid_color_token(value))
+
+
+def _paint_grid(node: dict[str, Any], rect: _Rect, draw: ImageDraw.ImageDraw, prof: DeviceProfile) -> None:
+    cols = int(node.get("cols", 0) or 0)
+    rows = int(node.get("rows", 0) or 0)
+    if cols <= 0 or rows <= 0:
+        return
+    gap = int(node.get("gap", 2) or 0)
+    avail_w = rect.w - (cols - 1) * gap
+    avail_h = rect.h - (rows - 1) * gap
+    if avail_w <= 0 or avail_h <= 0:
+        return
+    cell = min(avail_w // cols, avail_h // rows)
+    if cell <= 0:
+        return
+    total_w = cols * cell + (cols - 1) * gap
+    total_h = rows * cell + (rows - 1) * gap
+    ox = rect.x + (rect.w - total_w) // 2
+    oy = rect.y + (rect.h - total_h) // 2
+    values = node.get("values") or []
+    border = prof.resolve_color("black")
+    for col in range(cols):
+        for row in range(rows):
+            idx = col * rows + row
+            value = values[idx] if idx < len(values) else 0
+            x = ox + col * (cell + gap)
+            y = oy + row * (cell + gap)
+            draw.rectangle((x, y, x + cell, y + cell), fill=_grid_color(value, prof), outline=border, width=1)
+
+
+def unsupported_node_type(layout: dict[str, Any], prof: DeviceProfile) -> str | None:
+    typ = str(layout.get("type", ""))
+    if typ in prof.unsupported:
+        return typ
+    for child in layout.get("children", []) or []:
+        if unsupported := unsupported_node_type(child, prof):
+            return unsupported
+    return None
+
+
 def render_to_png(layout: dict[str, Any], prof: DeviceProfile) -> Image.Image:
     """Render one page layout to a PIL Image at the device's viewport size."""
+    if unsupported := unsupported_node_type(layout, prof):
+        raise ValueError(f"{prof.name} does not support DSL node type {unsupported!r}")
     img = Image.new("RGB", (prof.width, prof.height), color="#FFFFFF")
     draw = ImageDraw.Draw(img)
     root = copy.deepcopy(layout)

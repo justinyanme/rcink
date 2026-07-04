@@ -1,11 +1,13 @@
 import zlib
 
 import pytest
+from rcink.layout import text, vstack
 from rcink.transport.ble_encode import EncodedPage, chunk_payload, encode_page
+from rcink.validate import LayoutValidationError
 
 
 def test_encode_page_roundtrip():
-    page = {"type": "text", "value": "hi"}
+    page = vstack(children=[text("hi")])
     encoded = encode_page(page)
 
     assert isinstance(encoded, EncodedPage)
@@ -17,9 +19,14 @@ def test_encode_page_roundtrip():
 
 
 def test_encode_page_compact_json():
-    page = {"a": 1, "b": [2, 3]}
+    page = vstack(children=[text("hi")])
     encoded = encode_page(page)
-    assert encoded.canonical_json == b'{"a":1,"b":[2,3]}'
+    assert encoded.canonical_json == b'{"children":[{"type":"text","value":"hi"}],"type":"vstack"}'
+
+
+def test_encode_page_rejects_invalid_layout():
+    with pytest.raises(LayoutValidationError):
+        encode_page({"type": "text", "value": "hi"})
 
 
 def test_chunk_payload_exact_division():

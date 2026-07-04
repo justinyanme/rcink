@@ -109,14 +109,12 @@ def sparkline(
     *,
     color: ColorToken | None = None,
     height: int | None = None,
-    baseline: str | int | None = None,
 ) -> dict:
     return _node(
         "sparkline",
         values=list(values),
         color=color,
         height=height,
-        baseline=baseline,
     )
 
 

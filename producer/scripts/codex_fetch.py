@@ -18,6 +18,8 @@ app = typer.Typer(add_completion=False, help=__doc__)
 @app.command()
 def run() -> None:
     usage = fetch_codex_usage()
+    if usage.primary_pct is None or usage.secondary_pct is None:
+        raise ValueError("Codex usage missing required primary/secondary pct")
     logger.info(f"codex usage: primary={usage.primary_pct}% secondary={usage.secondary_pct}%")
 
     spark = sparkline_24h(metric_id="codex.usage", field="primary_pct")
@@ -27,8 +29,8 @@ def run() -> None:
     ingest_metric(
         id="codex.usage",
         fields={
-            "primary_pct": usage.primary_pct or 0,
-            "secondary_pct": usage.secondary_pct or 0,
+            "primary_pct": usage.primary_pct,
+            "secondary_pct": usage.secondary_pct,
         },
     )
 

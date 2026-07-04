@@ -115,7 +115,7 @@ def test_missing_required_window_raises(httpx_mock, tmp_path):
         fetch_claude_usage(p)
 
 
-def test_pct_out_of_range_raises(httpx_mock, tmp_path):
+def test_pct_over_100_clamps(httpx_mock, tmp_path):
     p = write_creds(tmp_path, FRESH)
     httpx_mock.add_response(
         url=USAGE_URL,
@@ -124,5 +124,45 @@ def test_pct_out_of_range_raises(httpx_mock, tmp_path):
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
         },
     )
+    usage = fetch_claude_usage(p)
+    assert usage.five_hour_pct == 100.0
+
+
+def test_negative_pct_raises(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": -1.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
     with pytest.raises(ValueError, match="out of range"):
+        fetch_claude_usage(p)
+
+
+def test_optional_model_windows_can_be_absent(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
+    usage = fetch_claude_usage(p)
+    assert usage.opus_pct is None
+    assert usage.sonnet_pct is None
+
+
+def test_bool_pct_raises(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": True, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
+    with pytest.raises(ValueError, match="invalid pct"):
         fetch_claude_usage(p)

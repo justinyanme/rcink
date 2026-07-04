@@ -1,4 +1,5 @@
 import pytest
+from rcink.devices_profile import C3_X4
 from rcink.layout import (
     divider,
     hbar,
@@ -161,3 +162,10 @@ def test_preview_uses_solid_e6_colors():
     assert "#0000FF" in html
     assert "#D92027" not in html
     assert "#0F4D92" not in html
+
+
+def test_preview_uses_device_profile_dimensions_and_palette():
+    html = to_html(text("X", color="red", bg="white"), prof=C3_X4)
+    assert "c3-x4 800×480" in html
+    assert "width: 800px; height: 480px;" in html
+    assert "#FF0000" not in html

@@ -27,6 +27,26 @@ async def test_transport_rejects_short_meta():
             await transport.read_meta()
 
 
+async def test_transport_closes_client_when_start_notify_fails():
+    class NotifyFailPeripheral(FakePeripheral):
+        exited = False
+
+        async def start_notify(self, uuid, callback):
+            raise RuntimeError("notify unavailable")
+
+        async def __aexit__(self, *args):
+            self.exited = True
+            return None
+
+    peripheral = NotifyFailPeripheral()
+
+    with pytest.raises(RuntimeError, match="notify unavailable"):
+        async with Transport(peripheral):
+            pass
+
+    assert peripheral.exited is True
+
+
 async def test_connect_transport_uses_scanned_device_before_address_lookup():
     peripheral = FakePeripheral()
     calls = []

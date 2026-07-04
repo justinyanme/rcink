@@ -27,6 +27,7 @@ class DeviceProfile:
     # Font registry: token → concrete pixel height. Mirrors each firmware's
     # font registry. Used by the reference renderer for text measurement.
     sizes: dict[str, int]
+    unsupported: frozenset[str] = frozenset()
 
 
 def _resolve_s3(token: str) -> str:
@@ -147,7 +148,14 @@ _T_AMOLED_SIZES: dict[str, int] = {
 
 S3 = DeviceProfile(name="s3", width=400, height=600, resolve_color=_resolve_s3, sizes=_S3_SIZES)
 C3_X4 = DeviceProfile(name="c3-x4", width=800, height=480, resolve_color=_resolve_c3_x4, sizes=_C3_X4_SIZES)
-TLSR = DeviceProfile(name="tlsr", width=250, height=128, resolve_color=_resolve_tlsr, sizes=_TLSR_SIZES)
+TLSR = DeviceProfile(
+    name="tlsr",
+    width=250,
+    height=128,
+    resolve_color=_resolve_tlsr,
+    sizes=_TLSR_SIZES,
+    unsupported=frozenset({"grid"}),
+)
 T_AMOLED = DeviceProfile(
     # Landscape: the 1.91" RM67162 bar is native 240x536, rotated to 536x240 in
     # firmware (lcd_setRotation(1)).

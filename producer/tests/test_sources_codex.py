@@ -96,8 +96,22 @@ def test_missing_required_window_raises(httpx_mock, tmp_path):
         fetch_codex_usage(p)
 
 
-def test_pct_out_of_range_raises(httpx_mock, tmp_path):
+def test_pct_over_100_clamps(httpx_mock, tmp_path):
     p = write_auth(tmp_path)
     httpx_mock.add_response(url=USAGE_URL, json=_usage_payload(primary_pct=101.0))
+    usage = fetch_codex_usage(p)
+    assert usage.primary_pct == 100.0
+
+
+def test_negative_pct_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    httpx_mock.add_response(url=USAGE_URL, json=_usage_payload(primary_pct=-1.0))
     with pytest.raises(ValueError, match="out of range"):
+        fetch_codex_usage(p)
+
+
+def test_bool_pct_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    httpx_mock.add_response(url=USAGE_URL, json=_usage_payload(primary_pct=True))
+    with pytest.raises(ValueError, match="invalid used_percent"):
         fetch_codex_usage(p)

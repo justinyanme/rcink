@@ -2,23 +2,20 @@
 
 The DSL is a JSON document describing one page of an e-ink dashboard. Producer emits it; firmware renders it.
 
-## Top-level page
+## Top-level layout
 
 ```json
 {
-  "version": 1,
-  "id": "overview",
-  "layout": { "type": "vstack", "children": [...] }
+  "type": "vstack",
+  "children": [...]
 }
 ```
 
-| Field     | Type    | Notes                                                          |
-|-----------|---------|----------------------------------------------------------------|
-| `version` | integer | major version. Devices reject unknown major. v1 = 1.           |
-| `id`      | string  | page id; latest-wins per device.                               |
-| `layout`  | object  | root node, must be a stack.                                    |
+The producer emits and validates a bare layout root. The root must be `vstack`.
+Page ids, ordering, timestamps, and transport metadata live outside the DSL
+payload.
 
-Unknown node types are skipped at render time — they don't bump version.
+Unknown node types or properties fail schema validation before ingest/transfer.
 
 ## Layout nodes
 
@@ -33,13 +30,26 @@ Unknown node types are skipped at render time — they don't bump version.
 
 | `type`      | Required props      | Optional props                                                                |
 |-------------|---------------------|-------------------------------------------------------------------------------|
-| `text`      | `value`             | `size`, `color`, `weight`, `align`, `bg`, `pad`, `dy`, `max_lines`            |
+| `text`      | `value`             | `size`, `color`, `weight`, `align`, `bg`, `pad`, `dy`                         |
 | `hbar`      | `pct` (0–100)       | `color`, `height`, `label_left`, `label_right`                                |
 | `icon`      | `name`              | `size`, `color`                                                               |
 | `image`     | (`name` or `url`)   | `width`, `height`, `format`                                                   |
-| `sparkline` | `values: number[]`  | `color`, `height`, `baseline` (`auto`/`0`)                                    |
+| `sparkline` | `values: number[]`  | `color`, `height`                                                             |
 | `marker`    | `pct`               | `color` — vertical tick on previous sibling hbar                              |
-| `grid`      | `cols`, `rows`, `values: number[]` | `gap`, `width`, `height`                                       |
+| `grid`      | `cols`, `rows`, `values: number[]` | `color` (accent token only; intensity ramp fixed), `gap`, `width`, `height` |
+
+## Limits
+
+Firmware-facing schema limits keep BLE payloads and small renderers predictable:
+
+| Field                   | Limit |
+|-------------------------|-------|
+| stack `children`        | ≤ 32 nodes |
+| `text.value`            | ≤ 128 chars |
+| `sparkline.values`      | ≤ 64 samples |
+| `grid.values`           | ≤ 256 cells |
+| `hbar` labels           | ≤ 24 chars each |
+| `icon.name`             | ≤ 16 chars |
 
 ## Tokens
 
@@ -61,28 +71,31 @@ Concrete tokens (`red`, `yellow`, `green`, `blue`) remain accepted; firmware map
 
 | Token  | Intent                  | s3 px | t-amoled px | c3-x4 px | tlsr px |
 |--------|-------------------------|-------|-------------|----------|---------|
-| `H1`   | big number / page title | 60    | 52          | 56       | 24      |
-| `H2`   | section header          | 32    | 26          | 28       | 16      |
-| `Body` | default body            | 20    | 16          | 18       | 12      |
-| `Sm`   | caption / status bar    | 14    | 8           | 12       | 10      |
+| `h1`   | big number / page title | 60    | 40          | 56       | 24      |
+| `h2`   | section header          | 32    | 30          | 28       | 16      |
+| `body` | default body            | 20    | 21          | 18       | 12      |
+| `sm`   | caption / status bar    | 14    | 8           | 12       | 10      |
 
 ### Weight, Align
 
 | Weight    | Align    |
 |-----------|----------|
-| `Regular` | `Start`  |
-| `Bold`    | `Center` |
-|           | `End`    |
+| `regular` | `start`  |
+| `bold`    | `center` |
+|           | `end`    |
 
 ## Wire format
 
-UTF-8 JSON, whitespace-stripped (`json.dumps(..., separators=(",", ":"))`).
+UTF-8 JSON. Axiom stores compact JSON
+(`json.dumps(..., ensure_ascii=False, separators=(",", ":"))`). BLE uses
+canonical compact JSON with sorted keys before zlib + xxhash32 data versioning.
 
 BLE transport adds zlib + chunking on top — see `producer/rcink/transport/ble_protocol.py`.
 
 ## Versioning
 
-`version` is an integer. Bump on breaking changes. Adding new primitives or props is additive and does not bump version — devices skip unknown nodes.
+`schema.json` is the source of truth for v1. Breaking changes update the schema
+and all producers/firmware together; no backward compatibility layer is kept.
 
 ## Golden testing
 
@@ -93,7 +106,7 @@ Each (device, page) pair has a checked-in PNG at `dsl/golden/<device>/<page>.png
 **Deliberate update** — when a producer change is supposed to alter visual output:
 
 ```bash
-cd producer && uv run rcink-goldens
+cd producer && uv run rcink-goldens regen
 ```
 
 Inspect the resulting PNGs (open `dsl/golden/s3/overview.png` etc.), then commit them alongside the producer change.

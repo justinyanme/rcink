@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from rcink.transport.ble_hash import canonical_json, data_ver
+from rcink.validate import validate_page
 
 MAX_CHUNKS = 256  # spec §6.1 cap
 
@@ -35,6 +36,7 @@ class EncodedPage:
 
 
 def encode_page(page: Any) -> EncodedPage:
+    validate_page(page)
     raw = canonical_json(page)
     compressed = zlib.compress(raw, level=9)
     return EncodedPage(

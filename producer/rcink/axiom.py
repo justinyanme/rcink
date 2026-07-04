@@ -4,21 +4,16 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from typing import Any
 
 import httpx
 
+from rcink.envutil import require_env
+from rcink.validate import validate_page
+
 
 class AxiomError(RuntimeError):
     pass
-
-
-def _env(key: str) -> str:
-    v = os.environ.get(key)
-    if not v:
-        raise RuntimeError(f"{key} not set in environment")
-    return v
 
 
 def _now_iso() -> str:
@@ -27,8 +22,8 @@ def _now_iso() -> str:
 
 def _post_events(events: list[dict[str, Any]]) -> None:
     """POST `events` to the Axiom ingest endpoint; raise on HTTP/ingest failure."""
-    token = _env("AXIOM_TOKEN")
-    dataset = _env("AXIOM_DATASET")
+    token = require_env("AXIOM_TOKEN")
+    dataset = require_env("AXIOM_DATASET")
     url = f"https://api.axiom.co/v1/datasets/{dataset}/ingest"
     r = httpx.post(
         url,
@@ -44,6 +39,7 @@ def _post_events(events: list[dict[str, Any]]) -> None:
 
 
 def ingest(*, id: str, layout: dict[str, Any], order: int | None = None) -> None:
+    validate_page(layout)
     now = dt.datetime.now(dt.timezone.utc)
     event: dict[str, Any] = {
         "_time": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
@@ -74,7 +70,7 @@ def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> lis
       paths into a single list of dicts so callers don't care which kind of
       query they ran.
     """
-    token = _env("AXIOM_TOKEN")
+    token = require_env("AXIOM_TOKEN")
     end = dt.datetime.now(dt.timezone.utc)
     start = end - lookback
     body = {
