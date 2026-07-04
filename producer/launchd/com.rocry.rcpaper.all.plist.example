@@ -21,6 +21,15 @@
     <string>xaat-CHANGE_ME</string>
     <key>AXIOM_DATASET</key>
     <string>rocry</string>
+    <!-- Optional: weather source for overview + KEYPOINT weather card.
+         Without both coordinates, overview renders weather as a dash. -->
+    <key>RCINK_LAT</key>
+    <string>CHANGE_ME</string>
+    <key>RCINK_LON</key>
+    <string>CHANGE_ME</string>
+    <!-- Optional: celsius (default) or fahrenheit. -->
+    <key>RCINK_WEATHER_TEMP_UNIT</key>
+    <string>celsius</string>
     <!-- Optional: the github source needs both of these. Without them the
          overview's github row renders as a dash and the standalone github
          page won't be pushed (the fetcher fails fast in fetch-all). -->

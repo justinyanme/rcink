@@ -1,6 +1,7 @@
-# Custom partition table for rcpapercolor — 8MB layout (no OTA).
+# Custom partition table for LilyGO T-Display-S3 AMOLED — 8MB layout (no OTA).
 #
-# The M5PaperColor (ESP32-S3-PICO-1) on hand has 8MB embedded flash. We drop
+# The LilyGO T-Display-S3 AMOLED board has 16MB flash, but this table keeps the
+# conservative 8MB app/data layout used by the other S3 display targets. We drop
 # the dual-app OTA scheme; a full re-flash over USB is always available and
 # simpler than maintaining two 3MB app slots that would overflow the current
 # ~3.4MB image anyway. `otadata` is kept (Arduino-ESP32 references it during

@@ -1,7 +1,7 @@
-# rcpaper — producer side
+# rcink — producer side
 
-Builds dashboard pages and pushes one event per run to the `rcpapercolor`
-Axiom dataset. The firmware reads them back at the next fetch interval.
+Builds dashboard pages and pushes one event per run to the configured Axiom
+dataset. The firmware reads them back at the next fetch interval.
 
 Sources:
 - **Claude / Codex** — usage via the OAuth credential those CLIs already maintain
@@ -15,8 +15,10 @@ Sources:
 - **Todo** — incomplete reminders from the default macOS Reminders list
   (EventKit, async fetch pumped synchronously via NSRunLoop).
 - **GitHub** — today's contribution count, current streak, visible repo detail,
-  and a 14-week daily contribution line chart via the GitHub GraphQL API. Needs
+  and a 14-week daily contribution grid via the GitHub GraphQL API. Needs
   `GITHUB_TOKEN` + `GITHUB_USERNAME` — see [docs/setup/github.md](docs/setup/github.md).
+- **Weather** — current conditions and today's high/low from Open-Meteo. Needs
+  `RCINK_LAT` + `RCINK_LON`; no API key.
 - **Quote** — one of a curated set, rotated by date ordinal; inlined in the
   overview header, no standalone page.
 - **Image** — one-off remote image URL pages pushed manually with `uv run image-fetch ...`.
@@ -34,7 +36,9 @@ Per-service setup notes live under [`docs/setup/`](docs/setup/):
 
    ```bash
    export AXIOM_TOKEN=xaat-...
-   export AXIOM_DATASET=rcpapercolor
+   export AXIOM_DATASET=rocry
+   export RCINK_LAT=22.3             # optional weather row/card
+   export RCINK_LON=114.2
    export GITHUB_TOKEN=ghp-...      # only needed for the github page
    export GITHUB_USERNAME=rocry     # who the github page reports on
    uv run fetch-all
@@ -43,7 +47,8 @@ Per-service setup notes live under [`docs/setup/`](docs/setup/):
 
    `fetch-all` runs every page fetcher in one process, logging one line per
    page; individual failures degrade that page only. Each invocation should
-   write 7 `type=rcpaper_page` events to the Axiom dataset.
+   write the configured `type=rcpaper_page` events to the Axiom dataset
+   (`overview`, `claude`, `codex`, `calendar`, `todo`, and `github` when configured).
 
 ## Schedule with launchd
 
@@ -69,8 +74,8 @@ entry in `scripts/fetch_all.py:FETCHERS`, or call the per-page script
 
 ## Adding a new dashboard
 
-1. Add a source under `rcpaper/sources/<name>.py` (returns a dataclass).
-2. Add a page builder under `rcpaper/pages/<name>.py` (takes the dataclass,
+1. Add a source under `rcink/sources/<name>.py` (returns a dataclass).
+2. Add a page builder under `rcink/pages/<name>.py` (takes the dataclass,
    returns a layout dict).
 3. Add an entry script in `scripts/<name>_fetch.py` that wires source → page →
    `ingest(id="<name>", layout=..., order=N)`.

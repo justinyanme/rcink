@@ -6,6 +6,7 @@ Forwards keystrokes to `dev/console.cpp::console_dispatch` (enabled by the
     uv run dev-cli send f        # refetch + render
     uv run dev-cli send r        # re-render current page
     uv run dev-cli send n        # next page
+    uv run dev-cli send d        # diagnostics page
     uv run dev-cli send mmm      # cycle EPD mode 3 times
     uv run dev-cli send s        # print state dump (read log via `dev-cli log`)
     uv run dev-cli send h        # show on-device help

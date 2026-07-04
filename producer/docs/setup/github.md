@@ -2,7 +2,7 @@
 
 Feeds two places:
 
-- **`github` page** — its own card in the rotation (header + KPI row + 14-week daily contribution line chart).
+- **`github` page** — its own card in the rotation (header + KPI row + 14-week daily contribution grid).
 - **Overview header row** — `[GITHUB] N today · N week · top repo · Md streak`. Renders as `—` when this source is unconfigured, so overview never breaks because of it.
 
 Uses one GraphQL query against `https://api.github.com/graphql`. No webhooks, no polling state.
@@ -75,7 +75,7 @@ After a successful fetch you should see something like:
 
 ```text
 github @rocry: today=<N> week=<N> streak=<N>d repos=<N> 14w=<N>
-fetch-all: 7 ok
+fetch-all: 6 ok
 ```
 
 Push to the device (or wait for the next 15-min tick):
@@ -83,7 +83,7 @@ Push to the device (or wait for the next 15-min tick):
 1. Power-cycle the M5PaperColor.
 2. Press `f` on the dev console (USB serial) — forces a refetch from Axiom.
 3. **Overview** now shows the `GITHUB` row (between `CODEX` and the divider).
-4. Next/Prev (`n` / `b`) until the `github` page appears: header `GITHUB · day-stamp`, `@<user>` line, three KPI cells, then the `CONTRIBS / DAY · 14W` line chart.
+4. Next/Prev (`n` / `b`) until the `github` page appears: header `GITHUB · day-stamp`, `@<user>` line, three KPI cells, then the `CONTRIBS / DAY · 14W` contribution grid.
 
 To inspect what got pushed:
 
@@ -101,7 +101,7 @@ uv run preview --axiom github   # pull the latest event out of Axiom and render 
 | `streak` | consecutive contribution-calendar days with `contributionCount > 0` (today=0 is allowed as a grace day) | Preserves the original GitHub calendar-day streak behavior |
 | `total_14w` | sum of `daily_counts[98]` | Last 14 weeks × 7 contribution-calendar buckets |
 | `total_year` | `contributionCalendar.totalContributions` | rolling 12 months, not calendar year |
-| `daily_counts[98]` | `contributionCalendar.weeks[].contributionDays[].contributionCount` by date | Rendered directly as the line chart |
+| `daily_counts[98]` | `contributionCalendar.weeks[].contributionDays[].contributionCount` by date | Rendered directly as the contribution grid |
 
 ## Troubleshooting
 

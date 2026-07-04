@@ -1,6 +1,6 @@
 # Axiom
 
-The transport layer between the Mac producer and the M5PaperColor device. Every page builder serialises its layout tree to JSON, the producer POSTs one `rcpaper_page` event per page to a single dataset, and the firmware queries `latest-per-id` on each fetch. Sparklines pull from `rcpaper_metric` events written by the same job.
+The transport layer between the Mac producer and the Wi-Fi firmware targets. Every page builder serialises its layout tree to JSON, the producer POSTs one `rcpaper_page` event per page to a single dataset, and the firmware queries `latest-per-id` on each fetch. Sparklines pull from `rcpaper_metric` events written by the same job.
 
 One token, one dataset — that's the whole config.
 
@@ -11,7 +11,7 @@ One token, one dataset — that's the whole config.
 | `AXIOM_TOKEN` | API token with **Ingest + Query** on the dataset |
 | `AXIOM_DATASET` | Dataset name (this repo uses `rocry`) |
 
-The firmware separately needs the same dataset + a token with **Query** in `src/config.h` (see top-level README "Firmware quickstart").
+The firmware separately needs the same dataset + a token with **Query** in `include/config.h` (see the target firmware README).
 
 ## Sign up + dataset
 
@@ -101,7 +101,7 @@ Each page event:
 }
 ```
 
-`layout_json` is **stringified**, not nested. Axiom otherwise flattens objects at ingest into `layout.children.0.type`-style columns, which (a) explodes the column count and (b) breaks the firmware's parse path. Keep it a string. See `rcpaper.axiom.ingest` for the source of truth.
+`layout_json` is **stringified**, not nested. Axiom otherwise flattens objects at ingest into `layout.children.0.type`-style columns, which (a) explodes the column count and (b) breaks the firmware's parse path. Keep it a string. See `rcink.axiom.ingest` for the source of truth.
 
 `data_ts` is the producer-side wallclock at build time, exposed as epoch seconds so the firmware can display both *data HH:MM* (this value) and *refresh HH:MM* (its own `last_fetch_s`) without re-parsing `_time`. The "skip render if content unchanged" check on the device hinges on `data_ts`, so don't drop it.
 
