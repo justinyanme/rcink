@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 
 import httpx
@@ -86,32 +87,46 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
     #   rate_limit: { primary_window: {...}, secondary_window: {...} }
     # Each window: used_percent (int), reset_after_seconds (int),
     # limit_window_seconds (int), reset_at (epoch).
-    rl = data.get("rate_limit") or {}
+    rl = data.get("rate_limit")
+    if not isinstance(rl, dict):
+        raise ValueError("Codex usage response missing/malformed rate_limit")
 
     def window_block(key: str) -> dict:
         v = rl.get(key)
-        return v if isinstance(v, dict) else {}
+        if not isinstance(v, dict):
+            raise ValueError(f"Codex usage response missing/malformed window: {key}")
+        return v
 
     def pct(block: dict) -> float | None:
         v = block.get("used_percent")
-        return float(v) if isinstance(v, (int, float)) else None
+        if isinstance(v, bool) or not isinstance(v, Real):
+            raise ValueError("Codex usage response has invalid used_percent")
+        value = float(v)
+        if not 0.0 <= value <= 100.0:
+            raise ValueError(f"Codex usage response used_percent out of range: {value}")
+        return value
 
     def reset(block: dict) -> str:
-        return _reset_from_seconds(block.get("reset_after_seconds"))
+        secs = block.get("reset_after_seconds")
+        if isinstance(secs, bool) or not isinstance(secs, Real):
+            raise ValueError("Codex usage response has invalid reset_after_seconds")
+        return _reset_from_seconds(secs)
 
     def reset_at(block: dict) -> int | None:
         # Prefer the absolute epoch the API gives; fall back to now + relative.
         epoch = block.get("reset_at")
-        if isinstance(epoch, (int, float)):
+        if isinstance(epoch, Real) and not isinstance(epoch, bool):
             return int(epoch)
         secs = block.get("reset_after_seconds")
-        if isinstance(secs, (int, float)):
+        if isinstance(secs, Real) and not isinstance(secs, bool):
             return int(dt.datetime.now(dt.timezone.utc).timestamp() + secs)
-        return None
+        raise ValueError("Codex usage response has invalid reset timing")
 
     def window_min(block: dict) -> int | None:
         secs = block.get("limit_window_seconds")
-        return int(secs) // 60 if isinstance(secs, (int, float)) else None
+        if isinstance(secs, bool) or not isinstance(secs, Real):
+            raise ValueError("Codex usage response has invalid limit_window_seconds")
+        return int(secs) // 60
 
     primary = window_block("primary_window")
     secondary = window_block("secondary_window")

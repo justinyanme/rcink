@@ -59,6 +59,7 @@ typedef struct {
     text_weight_t weight;
     align_t align;
     uint8_t pad;
+    int16_t dy;
 } text_node_t;
 
 typedef struct {

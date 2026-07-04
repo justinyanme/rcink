@@ -11,6 +11,9 @@ add_executable(host_test
     main.c
     host_canvas.c
     flash_stub.c
+    host_dsl_scenarios.c
+    host_storage_scenarios.c
+    host_xfer_scenarios.c
     measure_host.c
     fonts_host.c
     ${FW}/src/dsl/arena.c

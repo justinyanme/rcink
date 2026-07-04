@@ -7,6 +7,9 @@
 extern void flash_erase_sector(unsigned long addr);
 extern void (*flash_read_page)(unsigned long addr, unsigned long len, unsigned char *buf);
 extern void (*flash_write_page)(unsigned long addr, unsigned long len, unsigned char *buf);
+#ifdef TLSR_LAYOUT_HOST_BUILD
+extern uint8_t host_flash_fail_writes;
+#endif
 
 uint32_t slot_addr(slot_id_t slot)
 {
@@ -129,6 +132,11 @@ int slot_write_payload(slot_id_t slot, uint16_t offset, const uint8_t *data, uin
     if (addr == 0 || data == NULL || offset > SLOT_MAX_PAYLOAD || len > SLOT_MAX_PAYLOAD - offset) {
         return -1;
     }
+#ifdef TLSR_LAYOUT_HOST_BUILD
+    if (host_flash_fail_writes) {
+        return -1;
+    }
+#endif
     flash_write_page(addr + SLOT_HEADER_SIZE + offset, len, (uint8_t *)data);
     return 0;
 }

@@ -5,6 +5,7 @@
 
 static uint8_t HOST_FLASH[HOST_FLASH_SIZE];
 static int host_flash_initialised;
+uint8_t host_flash_fail_writes;
 
 static void host_flash_init(void)
 {
@@ -18,6 +19,7 @@ static void host_flash_init(void)
 void host_flash_reset(void)
 {
     memset(HOST_FLASH, 0xFF, sizeof(HOST_FLASH));
+    host_flash_fail_writes = 0;
     host_flash_initialised = 1;
 }
 

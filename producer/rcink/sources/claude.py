@@ -16,6 +16,7 @@ import json
 import platform
 import subprocess
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 
 import httpx
@@ -115,25 +116,45 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
     r.raise_for_status()
     data = r.json()
 
-    def pct(key: str) -> float | None:
+    def window(key: str, *, required: bool) -> dict | None:
         v = data.get(key)
-        return float(v["utilization"]) if isinstance(v, dict) else None
+        if v is None and not required:
+            return None
+        if not isinstance(v, dict):
+            raise ValueError(f"Claude usage response missing/malformed window: {key}")
+        return v
+
+    def checked_pct(key: str, *, required: bool = True) -> float | None:
+        block = window(key, required=required)
+        if block is None:
+            return None
+        value = block.get("utilization")
+        if isinstance(value, bool) or not isinstance(value, Real):
+            raise ValueError(f"Claude usage response has invalid pct for {key}")
+        pct = float(value)
+        if not 0.0 <= pct <= 100.0:
+            raise ValueError(f"Claude usage response pct out of range for {key}: {pct}")
+        return pct
 
     def reset(key: str) -> str:
-        v = data.get(key)
-        return _reset_text(v.get("resets_at")) if isinstance(v, dict) else ""
+        v = window(key, required=True)
+        iso = v.get("resets_at")
+        if not isinstance(iso, str) or not iso:
+            raise ValueError(f"Claude usage response missing reset for {key}")
+        return _reset_text(iso)
 
     def reset_at(key: str) -> int | None:
-        v = data.get(key)
-        if not isinstance(v, dict) or not v.get("resets_at"):
-            return None
-        return int(dt.datetime.fromisoformat(v["resets_at"].replace("Z", "+00:00")).timestamp())
+        v = window(key, required=True)
+        iso = v.get("resets_at")
+        if not isinstance(iso, str) or not iso:
+            raise ValueError(f"Claude usage response missing reset for {key}")
+        return int(dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
 
     return ClaudeUsage(
-        five_hour_pct=pct("five_hour"),
-        seven_day_pct=pct("seven_day"),
-        opus_pct=pct("seven_day_opus"),
-        sonnet_pct=pct("seven_day_sonnet"),
+        five_hour_pct=checked_pct("five_hour"),
+        seven_day_pct=checked_pct("seven_day"),
+        opus_pct=checked_pct("seven_day_opus", required=False),
+        sonnet_pct=checked_pct("seven_day_sonnet", required=False),
         five_hour_reset=reset("five_hour"),
         seven_day_reset=reset("seven_day"),
         five_hour_reset_at=reset_at("five_hour"),

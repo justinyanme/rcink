@@ -47,6 +47,9 @@ typedef struct {
 
 static xfer_ctx_t g_xfer;
 static uint8_t g_adv_flags;
+static uint8_t g_compressed[SLOT_MAX_PAYLOAD];
+static uint8_t g_inflate_buf[4096];
+static uint8_t g_arena_buf[4096];
 
 static uint16_t get_le16(const uint8_t *p)
 {
@@ -139,6 +142,10 @@ static const char *xfer_error_message(xfer_code_t code)
     case XFER_ERR_INFLATE: return "inflate failed";
     case XFER_ERR_PARSE: return "parse failed";
     case XFER_ERR_RENDER: return "render failed";
+    case XFER_ERR_TOO_BIG: return "payload too big";
+    case XFER_ERR_FORMAT: return "begin format invalid";
+    case XFER_ERR_OVERRUN: return "data overrun";
+    case XFER_ERR_FLASH: return "flash write failed";
     case XFER_ERR_LOW_BATT: return "battery low";
     case XFER_ERR_BUSY: return "busy";
     case XFER_OK_PROGRESS:
@@ -168,7 +175,13 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
 
     switch (frame[0]) {
     case XFER_CTL_BEGIN:
-        if (len < 14 || g_xfer.state != XFER_IDLE) {
+        if (len < 14) {
+            ringlog_append(XFER_ERR_FORMAT, 0, 0, xfer_error_message(XFER_ERR_FORMAT));
+            mark_xfer_error();
+            emit_ack(0, XFER_ERR_FORMAT);
+            return;
+        }
+        if (g_xfer.state != XFER_IDLE) {
             mark_xfer_error();
             emit_ack(0, XFER_ERR_BUSY);
             return;
@@ -184,10 +197,16 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
             emit_ack(0, XFER_ERR_LOW_BATT);
             return;
         }
-        if (g_xfer.total_len > SLOT_MAX_PAYLOAD || g_xfer.total_chunks > 256 ||
-            g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
+        if (g_xfer.total_len > SLOT_MAX_PAYLOAD) {
+            ringlog_append(XFER_ERR_TOO_BIG, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_TOO_BIG));
             mark_xfer_error();
-            emit_ack(0, XFER_ERR_BUSY);
+            emit_ack(0, XFER_ERR_TOO_BIG);
+            return;
+        }
+        if (g_xfer.total_chunks > 256 || g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
+            ringlog_append(XFER_ERR_FORMAT, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_FORMAT));
+            mark_xfer_error();
+            emit_ack(0, XFER_ERR_FORMAT);
             return;
         }
         g_xfer.staging = slot_staging();
@@ -208,6 +227,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         if (len < 5 || g_xfer.state != XFER_RECEIVING || get_le32(&frame[1]) != g_xfer.data_ver ||
             g_xfer.recv_offset != g_xfer.total_len) {
             mark_xfer_error();
+            g_xfer.state = XFER_IDLE;
             emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_BUSY);
             return;
         }
@@ -252,9 +272,17 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
         return;
     }
     if (payload_len > g_xfer.total_len - g_xfer.recv_offset) {
+        ringlog_append(XFER_ERR_OVERRUN, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_OVERRUN));
+        mark_xfer_error();
+        g_xfer.state = XFER_IDLE;
+        emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_OVERRUN);
         return;
     }
     if (slot_write_payload(g_xfer.staging, g_xfer.recv_offset, &frame[2], payload_len) != 0) {
+        ringlog_append(XFER_ERR_FLASH, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_FLASH));
+        mark_xfer_error();
+        g_xfer.state = XFER_IDLE;
+        emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_FLASH);
         return;
     }
     g_xfer.recv_offset = (uint16_t)(g_xfer.recv_offset + payload_len);
@@ -267,20 +295,17 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
 
 static xfer_code_t render_slot_payload(uint32_t addr, uint16_t compressed_len, uint16_t *out_uncompressed_len)
 {
-    uint8_t compressed[SLOT_MAX_PAYLOAD];
-    uint8_t inflate_buf[4096];
-    uint8_t arena_buf[4096];
-    if (slot_read_payload(addr, compressed, compressed_len) != 0) {
+    if (slot_read_payload(addr, g_compressed, compressed_len) != 0) {
         return XFER_ERR_RENDER;
     }
 
     epd_clear_buffer();
     pipeline_status_t status = pipeline_run(
-        compressed,
+        g_compressed,
         compressed_len,
-        sizeof(inflate_buf),
-        inflate_buf,
-        arena_buf,
+        sizeof(g_inflate_buf),
+        g_inflate_buf,
+        g_arena_buf,
         out_uncompressed_len
     );
     if (status == PIPE_ERR_INFLATE) {

@@ -16,11 +16,15 @@ from rcink.sources.codex import CodexUsage
 
 
 def _pct(value: float | None) -> str:
-    return f"{int(value or 0)}%"
+    if value is None:
+        raise ValueError("usage pct is required")
+    return f"{int(value)}%"
 
 
 def _usage_led_hint(*values: float | None) -> int:
-    peak = max((float(value or 0) for value in values), default=0.0)
+    if any(value is None for value in values):
+        raise ValueError("usage pct is required")
+    peak = max((float(value) for value in values), default=0.0)
     if peak >= 90.0:
         return LED_HINT_WARNING
     if peak >= 75.0:
@@ -38,23 +42,29 @@ def _window_label(minutes: int | None) -> str:
     return "?"
 
 
+def _bar(value: float | None) -> int:
+    if value is None:
+        raise ValueError("usage pct is required")
+    return int(value)
+
+
 def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
     rows: list[Row] = []
     if usage.five_hour_reset_at is not None:
         rows.append(Row("5H", until=usage.five_hour_reset_at))
     else:
         rows.append(Row("5H", _pct(usage.five_hour_pct)))
-    rows.append(Row(bar=int(usage.five_hour_pct or 0)))
+    rows.append(Row(bar=_bar(usage.five_hour_pct)))
     if usage.seven_day_reset_at is not None:
         rows.append(Row("7D", until=usage.seven_day_reset_at))
     else:
         rows.append(Row("7D", _pct(usage.seven_day_pct)))
-    rows.append(Row(bar=int(usage.seven_day_pct or 0)))
+    rows.append(Row(bar=_bar(usage.seven_day_pct)))
     return Card(
         id="claude",
         icon="CLAUDE",
         title="CLAUDE",
-        led_hint=_usage_led_hint(usage.five_hour_pct, usage.seven_day_pct, usage.opus_pct),
+        led_hint=_usage_led_hint(usage.five_hour_pct, usage.seven_day_pct),
         rows=rows,
         data_ts=int(now.timestamp()),
         show_timestamp=False,
@@ -69,12 +79,12 @@ def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
         rows.append(Row(primary_win, until=usage.primary_reset_at))
     else:
         rows.append(Row(primary_win, _pct(usage.primary_pct)))
-    rows.append(Row(bar=int(usage.primary_pct or 0)))
+    rows.append(Row(bar=_bar(usage.primary_pct)))
     if usage.secondary_reset_at is not None:
         rows.append(Row(secondary_win, until=usage.secondary_reset_at))
     else:
         rows.append(Row(secondary_win, _pct(usage.secondary_pct)))
-    rows.append(Row(bar=int(usage.secondary_pct or 0)))
+    rows.append(Row(bar=_bar(usage.secondary_pct)))
     return Card(
         id="codex",
         icon="CODEX",

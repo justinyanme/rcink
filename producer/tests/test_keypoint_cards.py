@@ -8,6 +8,7 @@ formatted string the page builders use.
 
 import datetime as dt
 
+import pytest
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
     claude_card,
@@ -59,14 +60,10 @@ def test_claude_card_renders():
     assert card.data_ts == NOW_TS
 
 
-def test_claude_card_handles_missing_pct_and_reset():
+def test_claude_card_rejects_missing_required_pct():
     usage = ClaudeUsage(None, None, None, None, "", "", five_hour_reset_at=None)
-    card = claude_card(usage, now=NOW)
-    fields = _renders(card)
-    assert fields[5] == "0"
-    assert fields[7] == "5H    0%"  # fallback: pct text when no reset_at
-    assert fields[8] == "[000]"  # bar at 0%
-    assert card.rows  # still renderable
+    with pytest.raises(ValueError, match="usage pct"):
+        claude_card(usage, now=NOW)
 
 
 def frame_text(fields: list[str]) -> str:

@@ -46,7 +46,7 @@ void draw_text(const laid_out_node_t *n)
     } else if (t->align == AL_END) {
         x = (int16_t)(n->rect.x + n->rect.w - text_w - t->pad);
     }
-    const int16_t y = (int16_t)(n->rect.y + t->pad);
+    const int16_t y = (int16_t)(n->rect.y + t->pad + t->dy);
     fonts_default.draw_text(x, y, t->size, t->weight, t->value, t->value_len, fg, bg);
 }
 

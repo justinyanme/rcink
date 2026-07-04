@@ -20,6 +20,10 @@ typedef enum {
     XFER_ERR_INFLATE = 0x12,
     XFER_ERR_PARSE = 0x13,
     XFER_ERR_RENDER = 0x14,
+    XFER_ERR_TOO_BIG = 0x15,
+    XFER_ERR_FORMAT = 0x16,
+    XFER_ERR_OVERRUN = 0x17,
+    XFER_ERR_FLASH = 0x18,
     XFER_ERR_LOW_BATT = 0x20,
     XFER_ERR_BUSY = 0x21,
 } xfer_code_t;

@@ -35,7 +35,7 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   int code = http.POST(body);
   Serial.printf("[axiom] POST -> %d\n", code);
   if (code != 200) {
-    if (code > 0) Serial.println(http.getString());
+    if (code > 0) Serial.println("[axiom] non-200 response body skipped");
     http.end();
     return false;
   }

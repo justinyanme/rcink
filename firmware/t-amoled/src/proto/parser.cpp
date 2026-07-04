@@ -102,6 +102,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
         n.as_text.has_bg = true;
       }
       n.as_text.pad       = v["pad"] | 0;
+      n.as_text.dy        = v["dy"] | 0;
       break;
     }
 

@@ -47,12 +47,7 @@ DeviceState nvs_load() {
   JsonArrayConst arr = doc.as<JsonArrayConst>();
   if (arr.isNull()) return s;
   for (JsonVariantConst v : arr) {
-    PageRecord rec;
-    rec.id          = (const char*)(v["id"] | "");
-    rec.order       = v["order"] | 0;
-    rec.data_ts     = (uint64_t)(v["data_ts"] | (uint64_t)0);
-    rec.layout_json = (const char*)(v["layout_json"] | "");
-    s.pages.push_back(std::move(rec));
+    nvs_append_cached_page(v, s.pages);
   }
   return s;
 }

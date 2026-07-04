@@ -35,9 +35,11 @@ class FakePeripheral:
     forced_crc_error: bool = False
     crc_errors_remaining: int = 0
     forced_inflate_error: bool = False
+    forced_begin_code: int | None = None
     drop_begin_ack: bool = False
     drop_chunks: list[int] = field(default_factory=list)
     stale_progress_before_commit: bool = False
+    abort_count: int = 0
 
     _staging: bytearray = field(default_factory=bytearray)
     _begin: dict[str, int] | None = None
@@ -94,6 +96,9 @@ class FakePeripheral:
     async def _handle_ctl(self, frame: bytes) -> None:
         cmd = frame[0]
         if cmd == XFER_BEGIN:
+            if self.forced_begin_code is not None:
+                self._ack(0, self.forced_begin_code)
+                return
             if self.forced_low_batt or self.battery_mV < 2400:
                 self._ack(0, ACK_ERR_LOW_BATT)
                 return
@@ -111,6 +116,7 @@ class FakePeripheral:
                 self._ack(0, ACK_OK_BEGIN)
             return
         if cmd == XFER_ABORT:
+            self.abort_count += 1
             self._begin = None
             self._staging = bytearray()
             self._expected_seq = 0

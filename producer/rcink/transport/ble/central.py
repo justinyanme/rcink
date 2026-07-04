@@ -6,8 +6,12 @@ import logging
 from ..ble_encode import EncodedPage, chunk_payload, encode_page
 from ..ble_protocol import (
     ACK_ERR_CRC,
+    ACK_ERR_FLASH,
+    ACK_ERR_FORMAT,
     ACK_ERR_GAP,
     ACK_ERR_LOW_BATT,
+    ACK_ERR_OVERRUN,
+    ACK_ERR_TOO_BIG,
     ACK_OK_BEGIN,
     ACK_OK_COMMIT,
     ACK_OK_PROGRESS,
@@ -66,12 +70,12 @@ async def push_page(
         )
         if ack.code == ACK_OK_COMMIT:
             return encoded
+        await transport.write_ctl(build_abort())
         if ack.code != ACK_ERR_CRC:
             raise _push_error_for_ack(ack, phase="COMMIT")
         if attempt >= crc_retries:
             raise PushError(ack.code, "CRC mismatch after retry")
         log.info("ERR_CRC, restarting transfer")
-        await transport.write_ctl(build_abort())
 
     raise AssertionError("unreachable")
 
@@ -98,6 +102,7 @@ async def _transfer_once(
     except TimeoutError as exc:
         raise PushError(-1, f"BEGIN ack timeout after {ack_timeout_s:g}s") from exc
     if ack.code != ACK_OK_BEGIN:
+        await transport.write_ctl(build_abort())
         raise _push_error_for_ack(ack, phase="BEGIN")
 
     index = 0
@@ -147,4 +152,12 @@ def _push_error_for_ack(ack: Ack, *, phase: str) -> PushError:
         return PushError(ack.code, "CRC mismatch")
     if ack.code == ACK_ERR_GAP:
         return PushError(ack.code, f"{phase} gap")
+    if ack.code == ACK_ERR_TOO_BIG:
+        return PushError(ack.code, "payload too big")
+    if ack.code == ACK_ERR_FORMAT:
+        return PushError(ack.code, "wire format rejected")
+    if ack.code == ACK_ERR_OVERRUN:
+        return PushError(ack.code, "payload overrun")
+    if ack.code == ACK_ERR_FLASH:
+        return PushError(ack.code, "flash write failed")
     return PushError(ack.code, f"unexpected {phase} response")

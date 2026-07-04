@@ -101,3 +101,28 @@ def test_usage_reset_text_formatting(httpx_mock, tmp_path):
     )
     usage = fetch_claude_usage(p)
     assert usage.five_hour_reset.startswith("2h")
+
+
+def test_missing_required_window_raises(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
+    with pytest.raises(ValueError, match="five_hour"):
+        fetch_claude_usage(p)
+
+
+def test_pct_out_of_range_raises(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 142.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
+    with pytest.raises(ValueError, match="out of range"):
+        fetch_claude_usage(p)

@@ -61,7 +61,7 @@ void draw_text(LovyanGFX& gfx, const TextNode& t, Rect r) {
   const std::string fitted = fit_utf8(gfx, t.value, inner_w);
 
   int16_t tx = r.x + t.pad;
-  int16_t ty = r.y + t.pad;
+  int16_t ty = r.y + t.pad + t.dy;
   int16_t text_w = gfx.textWidth(fitted.c_str());
 
   if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;

@@ -85,3 +85,19 @@ def test_rejected_token_raises_creds_error(httpx_mock, tmp_path):
     httpx_mock.add_response(url=USAGE_URL, status_code=401, json={"error": "unauthorized"})
     with pytest.raises(CodexCredsError):
         fetch_codex_usage(p)
+
+
+def test_missing_required_window_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    payload = _usage_payload()
+    del payload["rate_limit"]["secondary_window"]
+    httpx_mock.add_response(url=USAGE_URL, json=payload)
+    with pytest.raises(ValueError, match="secondary_window"):
+        fetch_codex_usage(p)
+
+
+def test_pct_out_of_range_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    httpx_mock.add_response(url=USAGE_URL, json=_usage_payload(primary_pct=101.0))
+    with pytest.raises(ValueError, match="out of range"):
+        fetch_codex_usage(p)

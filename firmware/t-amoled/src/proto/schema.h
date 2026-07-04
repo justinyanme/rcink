@@ -26,6 +26,7 @@ struct TextNode {
   Color    bg     = Color::White;
   bool     has_bg = false;
   int16_t  pad    = 0;
+  int16_t  dy     = 0;
 };
 
 struct StackNode {

@@ -343,6 +343,7 @@ static layout_node_t *parse_node(parser_t *p, int obj)
         n->data.text.weight = parse_weight(p, obj_find(p, obj, "weight"));
         n->data.text.align = parse_align(p, obj_find(p, obj, "align"));
         n->data.text.pad = token_u8_default(p, obj_find(p, obj, "pad"), 0);
+        n->data.text.dy = token_i16_default(p, obj_find(p, obj, "dy"), 0);
         if (p->result.status == PARSE_OK && parse_color(p, obj, "color", PAL_BLACK, &n->data.text.color)) {
             (void)parse_color(p, obj, "bg", PAL_UNSET, &n->data.text.bg);
         }

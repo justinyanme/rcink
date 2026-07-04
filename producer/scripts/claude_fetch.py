@@ -18,6 +18,8 @@ app = typer.Typer(add_completion=False, help=__doc__)
 @app.command()
 def run() -> None:
     usage = fetch_claude_usage()
+    if usage.five_hour_pct is None or usage.seven_day_pct is None:
+        raise ValueError("Claude usage missing required five_hour/seven_day pct")
     logger.info(f"claude usage: 5h={usage.five_hour_pct}% 7d={usage.seven_day_pct}%")
 
     spark = sparkline_24h(metric_id="claude.usage", field="five_hour_pct")
@@ -27,8 +29,8 @@ def run() -> None:
     ingest_metric(
         id="claude.usage",
         fields={
-            "five_hour_pct": usage.five_hour_pct or 0,
-            "seven_day_pct": usage.seven_day_pct or 0,
+            "five_hour_pct": usage.five_hour_pct,
+            "seven_day_pct": usage.seven_day_pct,
         },
     )
 
