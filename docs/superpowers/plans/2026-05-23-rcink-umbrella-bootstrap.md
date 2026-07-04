@@ -60,11 +60,11 @@ cmake -S . -B build -G Ninja \
   -DSDK_PREFIX="$HOME/w/telink_b85m_ble_single_connection_sdk/b85_ble_sdk"
 ```
 
-- [ ] **Step P.6: Verify producer pytest green at baseline (rcpaper)**
+- [ ] **Step P.6: Verify producer pytest green at baseline (rcink producer)**
 
 Run:
 ```bash
-cd ~/w/_hw/rcpapercolor/producer && uv run pytest 2>&1 | tail -10
+cd ~/w/_hw/rcink/producer && uv run pytest 2>&1 | tail -10
 ```
 Expected: all pass.
 
@@ -154,7 +154,7 @@ Umbrella repo for rc e-ink dashboard devices. One DSL, one producer, multiple fi
 
 ## Design
 
-See [`firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md) for the architecture.
+See [`docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md) for the architecture.
 
 ## Build
 
@@ -200,13 +200,10 @@ This is a umbrella repo for multi-device e-ink dashboards. Three firmware target
 - Firmwares: each in `firmware/<device>/` with its own build system. Do not unify.
 - Specs & plans: `docs/superpowers/{specs,plans}/`.
 
-## Per-firmware AGENTS files
+## Per-firmware references
 
-Each firmware subdir has its own AGENTS.md from before the merge:
-- `firmware/s3/AGENTS.md` — M5 PaperColor specifics
-- `firmware/tlsr/AGENTS.md` — TLSR8258 / TC32 specifics
-
-Read those when working on a specific device.
+Each firmware subdir should keep target-specific operator notes in its
+`README.md`; read the matching firmware README before changing that target.
 
 ## Color tokens
 
@@ -567,7 +564,8 @@ git commit -m "feat(producer): add device registry + transport router stub"
 - [ ] **Step 3.1.1: Write dsl/SPEC.md**
 
 Path: `~/w/_hw/rcink/dsl/SPEC.md`
-Content: copy/condense the "DSL spec" section of `firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`. Specifically:
+Content: copy/condense the "DSL spec" section of
+`docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`. Specifically:
 
 ```markdown
 # rcink DSL — v1
@@ -1008,11 +1006,13 @@ grep -E '"(accent|warning|success|info|muted)"' /tmp/rcink-overview.json && echo
 
 ### Task 4.2: Move design spec + plan into rcink
 
-The spec and this plan were authored in `~/w/_hw/rcpapercolor/docs/`. They are now under `firmware/s3/docs/` post-subtree. We want top-level `docs/superpowers/{specs,plans}/` for the umbrella, so move them up.
+The spec and this plan were authored in `~/w/_hw/rcpapercolor/docs/` and have
+since moved to top-level `docs/superpowers/{specs,plans}/` for the umbrella.
+Pre-merge source docs are archived; see `docs/superpowers/ARCHIVE.md`.
 
 **Files:**
-- Move: `firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md` → `docs/superpowers/specs/`
-- Move: `firmware/s3/docs/superpowers/plans/2026-05-23-rcink-umbrella-bootstrap.md` → `docs/superpowers/plans/`
+- Current: `docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`
+- Current: `docs/superpowers/plans/2026-05-23-rcink-umbrella-bootstrap.md`
 
 - [ ] **Step 4.2.1: Make target dirs**
 
@@ -1025,21 +1025,21 @@ mkdir -p docs/superpowers/specs docs/superpowers/plans
 
 ```bash
 cd ~/w/_hw/rcink
-git mv firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md docs/superpowers/specs/
+test -f docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md
 ```
 
 - [ ] **Step 4.2.3: Move this plan**
 
 ```bash
 cd ~/w/_hw/rcink
-git mv firmware/s3/docs/superpowers/plans/2026-05-23-rcink-umbrella-bootstrap.md docs/superpowers/plans/
+test -f docs/superpowers/plans/2026-05-23-rcink-umbrella-bootstrap.md
 ```
 
 - [ ] **Step 4.2.4: Update the README link**
 
 In `~/w/_hw/rcink/README.md`, the line that points at the spec:
 ```markdown
-See [`firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](firmware/s3/docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md)
+See [`docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md)
 ```
 Change to:
 ```markdown

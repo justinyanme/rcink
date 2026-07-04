@@ -28,7 +28,8 @@ Output: `build/src/TLSR-LAYOUT.bin` (currently ~102 KB).
 - [x] Phase 4 — BEGIN/DATA/COMMIT transfer FSM.
 - [x] Phase 5 — recovery + ring log.
 
-See `docs/superpowers/specs/2026-05-20-tlsr-layout-protocol-design.md`.
+See `../../../docs/tlsr-ble-protocol.md`. The pre-merge phase docs are archived
+in `../../../docs/superpowers/ARCHIVE.md`.
 
 ## Host shim
 

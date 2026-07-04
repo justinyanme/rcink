@@ -80,11 +80,10 @@ pio test -e native
 ```
 
 Covers: colour palette, JSON parser, layout engine. Rendering, WiFi, NVS, and
-sleep are device-bound and verified on hardware as part of the implementation
-plan (`docs/superpowers/plans/2026-05-17-rcpapercolor-firmware.md`).
+sleep are device-bound and verified on hardware. The pre-merge hardware plan is
+archived in [`../../docs/superpowers/ARCHIVE.md`](../../docs/superpowers/ARCHIVE.md).
 
 ## Design + plans
 
-- Spec: `docs/superpowers/specs/2026-05-17-rcpapercolor-design.md`
-- Producer plan: `docs/superpowers/plans/2026-05-17-rcpapercolor-producer.md`
-- Firmware plan: `docs/superpowers/plans/2026-05-17-rcpapercolor-firmware.md`
+- Current umbrella spec: [`../../docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](../../docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md)
+- Pre-merge rcpapercolor docs: [`../../docs/superpowers/ARCHIVE.md`](../../docs/superpowers/ARCHIVE.md)

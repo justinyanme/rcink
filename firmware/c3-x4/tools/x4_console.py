@@ -12,7 +12,7 @@ reads for a fixed window — safe to run from a non-interactive shell.
 
     uv run tools/x4_console.py --read 12             # just listen
     uv run tools/x4_console.py --send f --read 8     # fetch, then listen
-    uv run tools/x4_console.py --send P --capture /tmp/x4.pbm   # frame dump
+    uv run tools/x4_console.py --send P --read 14 | uv run tools/fb_to_png.py /tmp/x4.png
 """
 
 import argparse

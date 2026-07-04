@@ -11,7 +11,7 @@
     <string>/Users/CHANGE_ME/.local/bin/uv</string>
     <string>run</string>
     <string>--directory</string>
-    <string>/Users/CHANGE_ME/w/_hw/rcpapercolor/producer</string>
+    <string>/Users/CHANGE_ME/w/_hw/rcink/producer</string>
     <string>fetch-all</string>
   </array>
 

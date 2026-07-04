@@ -291,7 +291,8 @@ void console_dispatch(char c) {
 // a button pulls its rail down to a known band. We debounce, then dispatch a
 // console command on the rising edge (NONE -> button). Left/Up page back,
 // Right/Down page forward, Confirm refetches, Back re-renders. The power button
-// is read but unused for now (deep sleep is a later milestone).
+// is reserved for production deep-sleep wake; awake UI actions stay on the ADC
+// ladder buttons.
 enum X4Button : int8_t {
   X4_NONE = -1, X4_BACK = 0, X4_CONFIRM, X4_LEFT, X4_RIGHT, X4_UP, X4_DOWN
 };
