@@ -1,7 +1,6 @@
 // src/power/sleep.cpp
 #include "power/sleep.h"
 #include <M5Unified.h>
-#include <time.h>
 #include "status/led_status.h"
 
 // Pin mapping from the PaperColor obsidian note.
@@ -32,19 +31,7 @@ WakeReason current_wake_reason() {
   return wake_reason_from_esp(cause, mask);
 }
 
-void enter_deep_sleep_until(uint64_t epoch_seconds) {
-  time_t now;
-  time(&now);
-  int64_t delta_raw = (int64_t)epoch_seconds - (int64_t)now;
-  int64_t delta = delta_raw;
-  if (delta < 10) {
-    // Past-due target (corrupt RTC, stale last_fetch_s, or NTP skew).
-    // Log so the next wake at the 10-s floor is diagnosable from serial.
-    Serial.printf("[sleep] target past-due: target=%llu now=%lld delta=%lld, clamped to 10s\n",
-                  (unsigned long long)epoch_seconds, (long long)now, (long long)delta_raw);
-    delta = 10;
-  }
-
+[[noreturn]] void enter_deep_sleep_until(uint64_t epoch_seconds) {
   // Put EPD controller in deep-sleep mode (M5GFX facade, sends cmd 0x07/0xA5).
   // Then cut the EPD power rail: PM1 GPIO0 is the EPD power enable pin; drive it
   // low via M5.In_I2C (M5Unified I2C abstraction, not raw M5PM1.h). Both steps
@@ -54,13 +41,9 @@ void enter_deep_sleep_until(uint64_t epoch_seconds) {
   M5.Display.waitDisplay();
   M5.In_I2C.bitOff(0x6E, 0x11, 1 << 0, 100000);  // PM1 GPIO0 low = EPD power off
 
-  esp_sleep_enable_timer_wakeup((uint64_t)delta * 1000000ULL);
   esp_sleep_enable_ext1_wakeup(BTN_WAKE_MASK, ESP_EXT1_WAKEUP_ANY_LOW);
-
-  Serial.printf("[sleep] entering deep sleep for %lld s\n", (long long)delta);
   led_status_show(LedState::Off);
-  Serial.flush();
-  esp_deep_sleep_start();
+  deep_sleep_until(epoch_seconds);
 }
 
 }  // namespace rcpaper

@@ -14,6 +14,7 @@ enum class WakeReason : uint8_t {
 
 WakeReason wake_reason_from_esp(esp_sleep_wakeup_cause_t cause, uint64_t ext1_mask);
 WakeReason current_wake_reason();
-void enter_deep_sleep_until(uint64_t epoch_seconds);
+[[noreturn]] void deep_sleep_until(uint64_t epoch_seconds);
+[[noreturn]] void enter_deep_sleep_until(uint64_t epoch_seconds);
 
 }  // namespace rcpaper
