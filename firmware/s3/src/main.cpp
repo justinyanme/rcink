@@ -20,6 +20,7 @@
 #include "power/refresh_schedule.h"
 #include "power/sleep.h"
 #include "proto/parser.h"
+#include "render/diagnostics.h"
 #include "render/page.h"
 #include "sense/battery.h"
 #include "sense/env.h"
@@ -39,6 +40,8 @@ DeviceState g_state;
 // Transient — re-read every wake / refetch. Not persisted in NVS.
 static BatteryReading g_battery{};
 static EnvReading     g_env{};
+RTC_DATA_ATTR static uint32_t g_wake_count = 0;
+static const char* g_last_result = "boot";
 
 // ---- nav-press coalescing ------------------------------------------------
 //
@@ -107,6 +110,7 @@ static void install_button_isrs() {
 struct NavCoalesceResult {
   int  delta         = 0;
   bool force_refetch = false;
+  bool show_diagnostics = false;
 };
 
 static void flash_for_button(WakeReason r) {
@@ -127,6 +131,8 @@ static NavCoalesceResult run_coalesce_loop(int initial_delta,
                                             uint32_t seen_c) {
   NavCoalesceResult out;
   out.delta = initial_delta;
+  bool saw_a = initial_delta > 0;
+  bool saw_b = initial_delta < 0;
   const uint32_t start_ms = millis();
   uint32_t deadline_ms    = start_ms + kNavCoalesceWindowMs;
 
@@ -143,16 +149,24 @@ static NavCoalesceResult run_coalesce_loop(int initial_delta,
     uint32_t new_c = cur_c - seen_c;
 
     if (new_a > 0) {
+      saw_a = true;
       out.delta += (int)new_a;
       for (uint32_t i = 0; i < new_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
       seen_a = cur_a;
     }
     if (new_b > 0) {
+      saw_b = true;
       out.delta -= (int)new_b;
       for (uint32_t i = 0; i < new_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
       seen_b = cur_b;
+    }
+    if (saw_a && saw_b) {
+      out.delta = 0;
+      out.show_diagnostics = true;
+      Serial.println("[nav] A+B chord -> diagnostics");
+      break;
     }
     if (new_c > 0) {
       out.force_refetch = true;
@@ -162,8 +176,8 @@ static NavCoalesceResult run_coalesce_loop(int initial_delta,
     }
     delay(kNavPollIntervalMs);
   }
-  Serial.printf("[nav] coalesce done delta=%d force_refetch=%d window=%u ms\n",
-                out.delta, (int)out.force_refetch,
+  Serial.printf("[nav] coalesce done delta=%d force_refetch=%d diagnostics=%d window=%u ms\n",
+                out.delta, (int)out.force_refetch, (int)out.show_diagnostics,
                 (unsigned)(millis() - start_ms));
   return out;
 }
@@ -185,6 +199,14 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
   delta0 += (int)boot_a - (int)boot_b;
   for (uint32_t i = 0; i < boot_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
   for (uint32_t i = 0; i < boot_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
+  if ((initial == WakeReason::ButtonA && boot_b > 0) ||
+      (initial == WakeReason::ButtonB && boot_a > 0) ||
+      (boot_a > 0 && boot_b > 0)) {
+    NavCoalesceResult r;
+    r.show_diagnostics = true;
+    Serial.println("[nav] A+B chord -> diagnostics (boot)");
+    return r;
+  }
   if (boot_c > 0) {
     NavCoalesceResult r;
     r.delta = delta0;
@@ -270,6 +292,7 @@ bool refetch_now() {
   g_env     = read_sht40();
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
+    g_last_result = "wifi-failed";
     return false;
   }
   bool ntp_ok = sync_ntp_once();
@@ -292,11 +315,13 @@ bool refetch_now() {
       if (max_data_ts > g_state.last_fetch_s) g_state.last_fetch_s = max_data_ts;
     }
     nvs_save(g_state);
+    g_last_result = "fetch-ok";
     Serial.printf("[main] fetched %u pages, idx=%u (last_fetch updated=%d)\n",
                   (unsigned)g_state.pages.size(),
                   (unsigned)g_state.page_index, ntp_ok ? 1 : 0);
   } else {
     Serial.println("[main] fetch failed; keeping cache");
+    g_last_result = "fetch-failed";
     led_status_show(LedState::SyncFailed);
   }
   return ok;
@@ -304,6 +329,7 @@ bool refetch_now() {
 
 void render_current() {
   if (g_state.pages.empty()) {
+    g_last_result = "no-pages";
     led_status_show(LedState::Refreshing);
     render_error("no pages — check producer + Axiom dataset");
     return;
@@ -324,6 +350,7 @@ void render_current() {
 
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
+    g_last_result = "parse-failed";
     led_status_show(LedState::Refreshing);
     render_error("layout_json parse failed");
     return;
@@ -350,6 +377,31 @@ void render_current() {
   }
 }
 
+void render_diagnostics() {
+  g_battery = read_battery();
+  g_env = read_sht40();
+  DiagnosticsSnapshot snap;
+  snap.free_heap = ESP.getFreeHeap();
+  snap.free_psram = ESP.getFreePsram();
+  snap.battery_ok = g_battery.ok;
+  snap.battery_pct = g_battery.pct;
+  snap.battery_mv = g_battery.mv;
+  snap.wifi_connected = WiFi.status() == WL_CONNECTED;
+  snap.rssi_dbm = snap.wifi_connected ? WiFi.RSSI() : 0;
+  snap.last_fetch_s = g_state.last_fetch_s;
+  snap.data_fingerprint = g_state.last_fetch_fingerprint;
+  snap.unchanged_fetches = g_state.unchanged_fetches;
+  snap.wake_count = g_wake_count;
+  snap.last_result = g_last_result;
+  PageRecord rec;
+  rec.id = "diagnostics";
+  rec.order = -1;
+  rec.data_ts = (uint64_t)time(nullptr);
+  LayoutNode root = build_diagnostics_page(snap);
+  led_status_show(LedState::Refreshing);
+  render_page(rec, root, false, g_state, g_battery, g_env);
+}
+
 }  // namespace rcpaper
 
 using namespace rcpaper;
@@ -359,6 +411,7 @@ using namespace rcpaper;
 void setup() {
   Serial.begin(115200);
   delay(50);
+  g_wake_count++;
 
   // Arm raw-GPIO button ISRs as early as possible so taps that arrive during
   // M5.begin() (~200 ms) are captured. See the comment block above the ISR
@@ -411,16 +464,19 @@ void setup() {
   // must not advance the page; on a nav wake we coalesce rapid taps within a
   // sliding 500 ms window (cap 2 s) into a single net delta + one render.
   // BtnC pressed during coalescing cancels nav and forces a refetch.
+  bool diagnostics_requested = false;
   if (!g_state.pages.empty()) {
     uint8_t prev_page_index = g_state.page_index;
     if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 
     if (wr == WakeReason::ButtonA || wr == WakeReason::ButtonB) {
       NavCoalesceResult nav = coalesce_nav_presses(wr);
-      if (nav.force_refetch) {
+      if (nav.show_diagnostics) {
+        diagnostics_requested = true;
+      } else if (nav.force_refetch) {
         refetch_now();
       }
-      if (nav.delta != 0) {
+      if (!nav.show_diagnostics && nav.delta != 0) {
         g_state.page_index = apply_nav_delta(g_state.page_index, nav.delta,
                                              g_state.pages.size());
       }
@@ -430,7 +486,8 @@ void setup() {
     }
   }
 
-  render_current();
+  if (diagnostics_requested) render_diagnostics();
+  else render_current();
   if (WiFi.status() == WL_CONNECTED) {
     wifi_disconnect();
   } else {

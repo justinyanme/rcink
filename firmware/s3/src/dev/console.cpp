@@ -20,7 +20,8 @@ namespace rcpaper {
 extern DeviceState g_state;
 bool refetch_now();
 void render_current();
-struct NavCoalesceResult { int delta = 0; bool force_refetch = false; };
+void render_diagnostics();
+struct NavCoalesceResult { int delta = 0; bool force_refetch = false; bool show_diagnostics = false; };
 NavCoalesceResult coalesce_nav_from_poll(int initial_delta);
 }  // namespace rcpaper
 
@@ -30,6 +31,7 @@ void console_help() {
   Serial.println(F("[console] commands:"));
   Serial.println(F("  f  refetch from Axiom + persist + render"));
   Serial.println(F("  r  re-render current page from cache"));
+  Serial.println(F("  d  render diagnostics page"));
   Serial.println(F("  n  next page"));
   Serial.println(F("  b  previous page"));
   Serial.println(F("  c  clear screen (white)"));
@@ -77,6 +79,11 @@ void dev_buttons_init() {
 static void dev_handle_nav_button(int initial_delta) {
   if (g_state.pages.empty()) { Serial.println("[btn] no pages"); return; }
   NavCoalesceResult nav = coalesce_nav_from_poll(initial_delta);
+  if (nav.show_diagnostics) {
+    render_diagnostics();
+    led_status_show(LedState::IdleDisconnected);
+    return;
+  }
   if (nav.force_refetch) {
     if (refetch_now()) {}
   }
@@ -142,6 +149,11 @@ void console_dispatch(char c) {
     case 'r':
       Serial.println("[console] r → re-render current");
       render_current();
+      led_status_show(LedState::IdleDisconnected);
+      break;
+    case 'd':
+      Serial.println("[console] d → diagnostics");
+      render_diagnostics();
       led_status_show(LedState::IdleDisconnected);
       break;
     case 'f':

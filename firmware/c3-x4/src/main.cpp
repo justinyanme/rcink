@@ -13,6 +13,7 @@
 #include "power/refresh_schedule.h"
 #include "power/sleep.h"
 #include "proto/parser.h"
+#include "render/diagnostics.h"
 #include "render/page.h"
 #include "sense/battery.h"
 #include "store/nvs.h"
@@ -22,6 +23,8 @@ namespace rcpaper {
 DeviceState g_state;
 BatteryReading g_battery;
 static uint32_t g_next_auto_refresh_ms = 0;
+RTC_DATA_ATTR static uint32_t g_wake_count = 0;
+static const char* g_last_result = "boot";
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
 
@@ -103,6 +106,7 @@ void fetch_and_restart() {
   render_status("Connecting Wi-Fi...");
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
+    g_last_result = "wifi-failed";
     render_error("Wi-Fi failed");
     return;
   }
@@ -125,6 +129,7 @@ void fetch_and_restart() {
       if (max_data_ts > g_state.last_fetch_s) g_state.last_fetch_s = max_data_ts;
     }
     nvs_save(g_state);
+    g_last_result = "fetch-ok";
     if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
     Serial.printf("[main] fetched %u pages -> reboot to render\n",
                   (unsigned)g_state.pages.size());
@@ -137,6 +142,7 @@ void fetch_and_restart() {
   // nothing is cached). Deliberately no reboot — that would loop if Wi-Fi/Axiom
   // is down.
   Serial.println("[main] fetch failed; keeping cache");
+  g_last_result = "fetch-failed";
   if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
   display_acquire_canvas();
   if (g_state.pages.empty()) render_error("fetch failed - no cache");
@@ -146,6 +152,7 @@ void fetch_and_restart() {
 void render_current() {
   g_battery = read_battery();
   if (g_state.pages.empty()) {
+    g_last_result = "no-pages";
     render_error("no pages - fetch failed or producer empty");
     return;
   }
@@ -154,6 +161,7 @@ void render_current() {
 
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
+    g_last_result = "parse-failed";
     render_error("layout_json parse failed");
     return;
   }
@@ -165,6 +173,29 @@ void render_current() {
   g_state.last_rendered_id = rec.id;
   g_state.last_rendered_data_ts = rec.data_ts;
   nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+}
+
+void render_diagnostics() {
+  g_battery = read_battery();
+  DiagnosticsSnapshot snap;
+  snap.free_heap = ESP.getFreeHeap();
+  snap.free_psram = 0;
+  snap.battery_ok = g_battery.ok;
+  snap.battery_pct = g_battery.pct;
+  snap.battery_mv = g_battery.mv;
+  snap.wifi_connected = WiFi.status() == WL_CONNECTED;
+  snap.rssi_dbm = snap.wifi_connected ? WiFi.RSSI() : 0;
+  snap.last_fetch_s = g_state.last_fetch_s;
+  snap.data_fingerprint = g_state.last_fetch_fingerprint;
+  snap.unchanged_fetches = g_state.unchanged_fetches;
+  snap.wake_count = g_wake_count;
+  snap.last_result = g_last_result;
+  PageRecord rec;
+  rec.id = "diagnostics";
+  rec.order = -1;
+  rec.data_ts = (uint64_t)time(nullptr);
+  LayoutNode root = build_diagnostics_page(snap);
+  render_page(rec, root, false, g_state, g_battery);
 }
 
 void dump_state() {
@@ -231,7 +262,7 @@ void auto_refresh_poll() {
 }
 
 void console_help() {
-  Serial.println("[console] f fetch, r render, n next, b prev, s state, q layout, "
+  Serial.println("[console] f fetch, r render, d diagnostics, n next, b prev, s state, q layout, "
                  "P capture, c clear, R reboot, h help");
 }
 
@@ -248,6 +279,10 @@ void console_dispatch(char c) {
     case 'r':
       Serial.println("[console] render");
       render_current();
+      break;
+    case 'd':
+      Serial.println("[console] diagnostics");
+      render_diagnostics();
       break;
     case 'n':
       next_page();
@@ -338,7 +373,7 @@ static void on_button_press(int b) {
     case X4_RIGHT:
     case X4_DOWN:    Serial.println("[btn] next");    console_dispatch('n'); break;
     case X4_CONFIRM: Serial.println("[btn] refetch"); console_dispatch('f'); break;
-    case X4_BACK:    Serial.println("[btn] render");  console_dispatch('r'); break;
+    case X4_BACK:    Serial.println("[btn] diagnostics"); console_dispatch('d'); break;
     default: break;
   }
 }
@@ -368,6 +403,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n[boot] rcink c3-x4 (Xteink X4)");
+  g_wake_count++;
 
 #ifndef RCX4_DEV_CONSOLE
   release_battery_latch_hold();

@@ -12,6 +12,7 @@
 #include "power/refresh_schedule.h"
 #include "power/sleep.h"
 #include "proto/parser.h"
+#include "render/diagnostics.h"
 #include "render/page.h"
 #include "sense/battery.h"
 #include "store/nvs.h"
@@ -21,6 +22,8 @@ namespace rcpaper {
 DeviceState g_state;
 BatteryReading g_battery;
 static uint32_t g_next_auto_refresh_ms = 0;
+RTC_DATA_ATTR static uint32_t g_wake_count = 0;
+static const char* g_last_result = "boot";
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
 
@@ -50,6 +53,7 @@ bool refetch_now() {
   render_status("Connecting Wi-Fi...");
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
+    g_last_result = "wifi-failed";
     render_error("Wi-Fi failed");
     return false;
   }
@@ -61,6 +65,7 @@ bool refetch_now() {
   const bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (!ok) {
     Serial.println("[main] fetch failed; keeping cache");
+    g_last_result = "fetch-failed";
     render_error(g_state.pages.empty() ? "fetch failed - no cache" : "fetch failed - cache kept");
     return false;
   }
@@ -77,6 +82,7 @@ bool refetch_now() {
     if (max_data_ts > g_state.last_fetch_s) g_state.last_fetch_s = max_data_ts;
   }
   nvs_save(g_state);
+  g_last_result = "fetch-ok";
   Serial.printf("[main] fetched %u pages idx=%u\n",
                 (unsigned)g_state.pages.size(), (unsigned)g_state.page_index);
   return true;
@@ -85,6 +91,7 @@ bool refetch_now() {
 void render_current() {
   g_battery = read_battery();
   if (g_state.pages.empty()) {
+    g_last_result = "no-pages";
     render_error("no pages - fetch failed or producer empty");
     return;
   }
@@ -93,6 +100,7 @@ void render_current() {
 
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
+    g_last_result = "parse-failed";
     render_error("layout_json parse failed");
     return;
   }
@@ -104,6 +112,29 @@ void render_current() {
   g_state.last_rendered_id = rec.id;
   g_state.last_rendered_data_ts = rec.data_ts;
   nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+}
+
+void render_diagnostics() {
+  g_battery = read_battery();
+  DiagnosticsSnapshot snap;
+  snap.free_heap = ESP.getFreeHeap();
+  snap.free_psram = ESP.getFreePsram();
+  snap.battery_ok = g_battery.ok;
+  snap.battery_pct = g_battery.pct;
+  snap.battery_mv = g_battery.mv;
+  snap.wifi_connected = WiFi.status() == WL_CONNECTED;
+  snap.rssi_dbm = snap.wifi_connected ? WiFi.RSSI() : 0;
+  snap.last_fetch_s = g_state.last_fetch_s;
+  snap.data_fingerprint = g_state.last_fetch_fingerprint;
+  snap.unchanged_fetches = g_state.unchanged_fetches;
+  snap.wake_count = g_wake_count;
+  snap.last_result = g_last_result;
+  PageRecord rec;
+  rec.id = "diagnostics";
+  rec.order = -1;
+  rec.data_ts = (uint64_t)time(nullptr);
+  LayoutNode root = build_diagnostics_page(snap);
+  render_page(rec, root, false, g_state, g_battery);
 }
 
 void dump_state() {
@@ -170,7 +201,7 @@ void auto_refresh_poll() {
 }
 
 void console_help() {
-  Serial.println("[console] f fetch, r render, n next, b prev, s state, q layout, c clear, R reboot, h help");
+  Serial.println("[console] f fetch, r render, d diagnostics, n next, b prev, s state, q layout, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -186,6 +217,10 @@ void console_dispatch(char c) {
     case 'r':
       Serial.println("[console] render");
       render_current();
+      break;
+    case 'd':
+      Serial.println("[console] diagnostics");
+      render_diagnostics();
       break;
     case 'n':
       next_page();
@@ -292,6 +327,7 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n[boot] rcink t-amoled");
+  g_wake_count++;
 
   apply_local_tz(LOCAL_TZ);
   display_init();
