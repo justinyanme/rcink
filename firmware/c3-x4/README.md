@@ -66,6 +66,15 @@ pio test -e native
 ```
 
 The target uses the pioarduino ESP32-C3 platform pinned in `platformio.ini`.
+Keep it in a separate PlatformIO core dir from the stock ESP32-S3 targets; the
+repo-level `just build` does this automatically via `scripts/pio-run.sh`.
+Manual equivalent:
+
+```bash
+PLATFORMIO_CORE_DIR="$HOME/.platformio-rcink-c3" \
+"$HOME/.local/bin/pio311" run -e c3-x4-dev
+```
+
 Monitor without DTR/RTS toggling the USB-CDC boot state:
 
 ```bash

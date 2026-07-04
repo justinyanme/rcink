@@ -21,6 +21,20 @@ See [`docs/superpowers/specs/2026-05-23-rcink-umbrella-design.md`](docs/superpow
 ## Build
 
 Each firmware target keeps its own build. The umbrella does not unify them.
+For repo-level checks, prefer `just`:
+
+```bash
+PIO_BIN="$HOME/.local/bin/pio311" just test
+PIO_BIN="$HOME/.local/bin/pio311" just build
+```
+
+`just build` intentionally uses separate PlatformIO core dirs by default:
+`~/.platformio-rcink-official` for the stock ESP32-S3 targets and
+`~/.platformio-rcink-c3` for the pioarduino ESP32-C3 target. Those platform
+stacks publish different packages under the same `framework-arduinoespressif32`
+name, so a single core dir can mix one build with the other's framework.
+Override with `RCINK_PIO_OFFICIAL_CORE_DIR` and `RCINK_PIO_C3_CORE_DIR` when
+needed.
 
 ```bash
 # s3 (PlatformIO)

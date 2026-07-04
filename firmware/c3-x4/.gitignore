@@ -1,6 +1,7 @@
 # PlatformIO build/cache
 .pio/
 .vscode/
+src/idf_component.yml
 
 # Local config with secrets (config.h.example is committed)
 include/config.h
