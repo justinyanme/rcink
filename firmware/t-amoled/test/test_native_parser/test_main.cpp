@@ -100,12 +100,15 @@ void test_unknown_type_becomes_unknown() {
   TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
 }
 
-void test_invalid_color_becomes_unknown() {
+void test_invalid_color_uses_default() {
   auto n = parse_str(R"({"type":"text","value":"X","color":"magenta"})");
-  TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
+  TEST_ASSERT_EQUAL(NodeType::Text, n.type);
+  TEST_ASSERT_EQUAL(Color::Black, n.as_text.color);
 
   n = parse_str(R"({"type":"text","value":"X","bg":"gray"})");
-  TEST_ASSERT_EQUAL(NodeType::Unknown, n.type);
+  TEST_ASSERT_EQUAL(NodeType::Text, n.type);
+  TEST_ASSERT_TRUE(n.as_text.has_bg);
+  TEST_ASSERT_EQUAL(Color::White, n.as_text.bg);
 }
 
 int main() {
@@ -118,6 +121,6 @@ int main() {
   RUN_TEST(test_remote_image);
   RUN_TEST(test_sparkline_values);
   RUN_TEST(test_unknown_type_becomes_unknown);
-  RUN_TEST(test_invalid_color_becomes_unknown);
+  RUN_TEST(test_invalid_color_uses_default);
   return UNITY_END();
 }

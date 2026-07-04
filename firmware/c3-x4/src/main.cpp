@@ -1,12 +1,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <esp_sntp.h>
 #include <esp_system.h>
 #include <time.h>
 
 #include "config.h"
 #include "display/pins_config.h"
 #include "net/axiom.h"
+#include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
 #include "proto/parser.h"
@@ -21,43 +21,6 @@ BatteryReading g_battery;
 static uint32_t g_next_auto_refresh_ms = 0;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
-
-static void apply_local_tz() {
-  setenv("TZ", LOCAL_TZ, 1);
-  tzset();
-}
-
-static bool sync_ntp_once() {
-  configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
-  apply_local_tz();
-  const uint32_t start = millis();
-  bool ok = false;
-  while (millis() - start <= 10000) {
-    if (sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
-      ok = true;
-      break;
-    }
-    delay(100);
-  }
-  // Stop SNTP before returning. If it keeps polling its UDP socket while the
-  // Axiom DNS/TLS that follows runs, lwIP's TCPIP-core-lock check trips an
-  // assert (udp_new_ip_type "Required to lock TCPIP core functionality!") on
-  // IDF 5.x — reliably when this attempt timed out and SNTP is still retrying.
-  // Each refetch re-inits SNTP via configTime above, so stopping here is safe.
-  esp_sntp_stop();
-  if (!ok) {
-    Serial.println("[ntp] sync timeout");
-    return false;
-  }
-  time_t now;
-  struct tm ti;
-  time(&now);
-  localtime_r(&now, &ti);
-  Serial.printf("[ntp] %04d-%02d-%02d %02d:%02d:%02d tz=%s\n",
-                ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
-                ti.tm_hour, ti.tm_min, ti.tm_sec, LOCAL_TZ);
-  return true;
-}
 
 void render_current();  // defined below; fetch_and_restart re-renders on failure
 
@@ -79,7 +42,7 @@ void fetch_and_restart() {
     return;
   }
   render_status("Syncing time...");
-  const bool ntp_ok = sync_ntp_once();
+  const bool ntp_ok = ntp_sync_once(LOCAL_TZ);
 
   render_status("Fetching data...");
   display_release_canvas();  // free the sprite so getString's ~38KB body fits
@@ -335,7 +298,7 @@ void setup() {
   delay(200);
   Serial.println("\n[boot] rcink c3-x4 (Xteink X4)");
 
-  apply_local_tz();
+  apply_local_tz(LOCAL_TZ);
   display_init();
   buttons_init();
 

@@ -1,6 +1,10 @@
 #include "proto/parser.h"
 #include <cstring>
 
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
+
 namespace rcpaper {
 
 static TextSize parse_size(const char* s) {
@@ -41,19 +45,27 @@ static NodeType parse_type(const char* s) {
   return NodeType::Unknown;
 }
 
-static bool read_color(JsonVariantConst v, const char* key, Color fallback, Color& out) {
+static void read_color(JsonVariantConst v, const char* key, Color fallback, Color& out) {
   JsonObjectConst obj = v.as<JsonObjectConst>();
   JsonVariantConst value = obj[key];
   if (obj.isNull() || value.isNull()) {
     out = fallback;
-    return true;
+    return;
   }
-  if (!value.is<const char*>()) return false;
-  return color_from_token(value.as<const char*>(), &out);
-}
-
-static void reject_node(LayoutNode& n) {
-  n = LayoutNode{};
+  if (!value.is<const char*>()) {
+    out = fallback;
+#ifdef ARDUINO
+    Serial.printf("[dsl] invalid color field '%s'; using %s\n", key, color_to_token(fallback));
+#endif
+    return;
+  }
+  const char* token = value.as<const char*>();
+  if (color_from_token(token, &out)) return;
+  out = fallback;
+#ifdef ARDUINO
+  Serial.printf("[dsl] unknown color '%s' in field '%s'; using %s\n",
+                token ? token : "", key, color_to_token(fallback));
+#endif
 }
 
 static void fill_stack(StackNode& s, JsonVariantConst v) {
@@ -86,7 +98,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
       break;
 
     case NodeType::Divider:
-      if (!read_color(v, "color", Color::Black, n.as_divider.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Black, n.as_divider.color);
       n.as_divider.thickness = v["thickness"] | 1;
       break;
 
@@ -94,11 +106,11 @@ LayoutNode parse_layout(JsonVariantConst v) {
       const char* val = v["value"] | "";
       n.as_text.value     = val;
       n.as_text.size      = parse_size(v["size"]   | (const char*)nullptr);
-      if (!read_color(v, "color", Color::Black, n.as_text.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Black, n.as_text.color);
       n.as_text.weight    = parse_weight(v["weight"] | (const char*)nullptr);
       n.as_text.align     = parse_align(v["align"]  | (const char*)nullptr);
       if (!v["bg"].isNull()) {
-        if (!read_color(v, "bg", Color::White, n.as_text.bg)) { reject_node(n); break; }
+        read_color(v, "bg", Color::White, n.as_text.bg);
         n.as_text.has_bg = true;
       }
       n.as_text.pad       = v["pad"] | 0;
@@ -108,7 +120,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
 
     case NodeType::HBar:
       n.as_hbar.pct         = v["pct"]    | 0.0f;
-      if (!read_color(v, "color", Color::Black, n.as_hbar.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Black, n.as_hbar.color);
       n.as_hbar.height      = v["height"] | 12;
       n.as_hbar.label_left  = (const char*)(v["label_left"]  | "");
       n.as_hbar.label_right = (const char*)(v["label_right"] | "");
@@ -117,7 +129,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
     case NodeType::Icon:
       n.as_icon.name  = (const char*)(v["name"] | "");
       n.as_icon.size  = v["size"]  | 16;
-      if (!read_color(v, "color", Color::Black, n.as_icon.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Black, n.as_icon.color);
       break;
 
     case NodeType::Image:
@@ -129,7 +141,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
       break;
 
     case NodeType::Sparkline:
-      if (!read_color(v, "color", Color::Black, n.as_sparkline.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Black, n.as_sparkline.color);
       n.as_sparkline.height = v["height"] | 24;
       if (v["values"].is<JsonArrayConst>()) {
         for (JsonVariantConst x : v["values"].as<JsonArrayConst>()) {
@@ -140,7 +152,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
 
     case NodeType::Marker:
       n.as_marker.pct   = v["pct"] | 0.0f;
-      if (!read_color(v, "color", Color::Red, n.as_marker.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Red, n.as_marker.color);
       break;
 
     case NodeType::Grid:
@@ -149,7 +161,7 @@ LayoutNode parse_layout(JsonVariantConst v) {
       n.as_grid.gap    = v["gap"]    | 2;
       n.as_grid.width  = v["width"]  | 0;
       n.as_grid.height = v["height"] | 0;
-      if (!read_color(v, "color", Color::Green, n.as_grid.color)) { reject_node(n); break; }
+      read_color(v, "color", Color::Green, n.as_grid.color);
       if (v["values"].is<JsonArrayConst>()) {
         n.as_grid.values.reserve(v["values"].size());
         for (JsonVariantConst x : v["values"].as<JsonArrayConst>()) {

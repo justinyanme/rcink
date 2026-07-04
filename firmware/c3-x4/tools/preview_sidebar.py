@@ -32,7 +32,7 @@ SIDEBAR_W = 56
 X0 = W - SIDEBAR_W  # 480, divider x
 CX = X0 + 6  # 486, text inset
 
-# --- palette (src/render/palette.h), pre-swap (light) ----------------------
+# --- palette (render/palette.h), pre-swap (light) --------------------------
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (0xFF, 0x33, 0x33)

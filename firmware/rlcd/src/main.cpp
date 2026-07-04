@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <esp_sntp.h>
 #include <esp_system.h>
 #include <sys/time.h>
 #include <time.h>
@@ -10,6 +9,7 @@
 #include "display/st7305.h"
 #include "display/pins_config.h"
 #include "net/axiom.h"
+#include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
 #include "proto/parser.h"
@@ -38,32 +38,6 @@ static uint32_t g_next_dash_ms = 0;
 constexpr uint32_t kDashRefreshMs = 30000;  // re-read sensors + clock every 30 s
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
-
-static void apply_local_tz() {
-  setenv("TZ", LOCAL_TZ, 1);
-  tzset();
-}
-
-static bool sync_ntp_once() {
-  configTime(0, 0, "ntp.aliyun.com", "pool.ntp.org", "time.nist.gov");
-  apply_local_tz();
-  const uint32_t start = millis();
-  while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) {
-    if (millis() - start > 10000) {
-      Serial.println("[ntp] sync timeout");
-      return false;
-    }
-    delay(100);
-  }
-  time_t now;
-  struct tm ti;
-  time(&now);
-  localtime_r(&now, &ti);
-  Serial.printf("[ntp] %04d-%02d-%02d %02d:%02d:%02d tz=%s\n",
-                ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday,
-                ti.tm_hour, ti.tm_min, ti.tm_sec, LOCAL_TZ);
-  return true;
-}
 
 // Seed the system clock from the battery-backed RTC so the dashboard shows a
 // correct time immediately at boot, before (or without) any Wi-Fi/NTP.
@@ -118,7 +92,7 @@ bool refetch_now() {
     return false;
   }
   render_status("Syncing time...");
-  if (sync_ntp_once()) write_rtc_from_clock();
+  if (ntp_sync_once(LOCAL_TZ)) write_rtc_from_clock();
 
   render_status("Fetching data...");
   std::vector<PageRecord> fresh;
@@ -399,7 +373,7 @@ void setup() {
   delay(200);
   Serial.println("\n[boot] rcink rlcd (Waveshare ESP32-S3-RLCD-4.2)");
 
-  apply_local_tz();
+  apply_local_tz(LOCAL_TZ);
   Wire.begin(I2C_SDA, I2C_SCL, 400000);  // shared SHTC3 + PCF85063 bus
   display_init();
   buttons_init();

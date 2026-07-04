@@ -13,9 +13,3 @@
 // Behavior
 #define FETCH_INTERVAL_SEC   1800
 #define LOCAL_TZ             "UTC0"
-
-// TLS root CA for api.axiom.co.
-static const char AXIOM_ROOT_CA[] = R"(-----BEGIN CERTIFICATE-----
-...paste the PEM here...
------END CERTIFICATE-----
-)";

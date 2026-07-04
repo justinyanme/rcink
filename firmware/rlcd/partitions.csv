@@ -1,4 +1,4 @@
-# Custom partition table for rcpapercolor — 8MB layout (no OTA).
+# Custom partition table for rcink RLCD — 8MB layout (no OTA).
 #
 # The Waveshare board on hand reports ESP32-S3-PICO-1 with 8MB embedded flash. We drop
 # the dual-app OTA scheme; a full re-flash over USB is always available and

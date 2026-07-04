@@ -1,3 +1,5 @@
+#ifdef ARDUINO
+
 #include "net/wifi.h"
 
 #include <Arduino.h>
@@ -31,3 +33,5 @@ void wifi_disconnect() {
 }
 
 }  // namespace rcpaper
+
+#endif  // ARDUINO

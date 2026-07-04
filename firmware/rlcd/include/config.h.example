@@ -19,9 +19,3 @@
 // Behavior
 #define FETCH_INTERVAL_SEC   1800  // network refresh cadence (NTP + deck)
 #define LOCAL_TZ             "UTC0"  // POSIX TZ, e.g. "CST-8" for China
-
-// TLS root CA for api.axiom.co.
-static const char AXIOM_ROOT_CA[] = R"(-----BEGIN CERTIFICATE-----
-...paste the PEM here...
------END CERTIFICATE-----
-)";

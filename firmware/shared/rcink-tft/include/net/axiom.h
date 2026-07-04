@@ -1,4 +1,3 @@
-// src/net/axiom.h
 #pragma once
 #include <vector>
 #include "proto/envelope.h"  // PageRecord + envelope parsing (natively tested)

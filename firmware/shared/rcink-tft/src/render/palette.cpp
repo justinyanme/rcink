@@ -33,11 +33,20 @@ const char* color_to_token(Color c) {
   return "black";
 }
 
-// The X4 panel is 1-bit B&W: every ink except white renders as black. Collapsing
-// here (rather than in each primitive) means the whole compose buffer only ever
-// holds pure black or pure white, so the 1-bit pack in page.cpp is unambiguous.
 uint32_t color_to_rgb(Color c) {
+#ifdef RCINK_MONO_PALETTE
   return c == Color::White ? kRgbWhite : kRgbBlack;
+#else
+  switch (c) {
+    case Color::Black:  return kRgbBlack;
+    case Color::White:  return kRgbWhite;
+    case Color::Red:    return kRgbRed;
+    case Color::Yellow: return kRgbYellow;
+    case Color::Green:  return kRgbGreen;
+    case Color::Blue:   return kRgbBlue;
+  }
+  return kRgbBlack;
+#endif
 }
 
 uint16_t color_to_rgb565(Color c) {

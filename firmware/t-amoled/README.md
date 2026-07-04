@@ -14,7 +14,7 @@ It stays awake for the AMOLED panel and auto-refetches every
 PaperColor.
 
 CJK text renders via U8g2_for_TFT_eSPI + a baked WenQuanYi 16px GB2312 font
-(`src/render/fonts/wqy16_gb2312.h`); Latin text keeps TFT_eSPI's built-in fonts.
+(`firmware/shared/rcink-tft/include/render/fonts/wqy16_gb2312.h`); Latin text keeps TFT_eSPI's built-in fonts.
 Any string with a non-ASCII byte is drawn with the CJK font (see
 `render/fonts.cpp`), mirroring firmware/s3's efontCN swap.
 

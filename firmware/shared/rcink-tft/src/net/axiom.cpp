@@ -1,17 +1,21 @@
-// src/net/axiom.cpp
+#ifdef ARDUINO
+
 #include "net/axiom.h"
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <time.h>
+
 #include "config.h"
+#include "net/axiom_ca.h"
 
 namespace rcpaper {
 
 bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   WiFiClientSecure client;
-  client.setCACert(AXIOM_ROOT_CA);
+  client.setCACert(kAxiomRootCa);
 
   HTTPClient http;
   http.setTimeout(20000);
@@ -35,11 +39,18 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   int code = http.POST(body);
   Serial.printf("[axiom] POST -> %d\n", code);
   if (code != 200) {
+#ifdef BOARD_HAS_PSRAM
     if (code > 0) Serial.println(http.getString());
+#else
+    if (code > 0) Serial.println("[axiom] non-200 response body skipped");
+#endif
     http.end();
     return false;
   }
 
+#ifndef BOARD_HAS_PSRAM
+  body = String();  // free the request buffer before reading the response
+#endif
   String payload = http.getString();
   http.end();
 
@@ -48,6 +59,10 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
   // the nested object across columns).
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload);
+#ifndef BOARD_HAS_PSRAM
+  Serial.printf("[axiom] body=%uB parse=%s free_heap=%u\n",
+                (unsigned)payload.length(), err.c_str(), (unsigned)ESP.getFreeHeap());
+#endif
   if (err) {
     Serial.printf("[axiom] outer parse: %s\n", err.c_str());
     return false;
@@ -65,3 +80,5 @@ bool axiom_fetch_pages(std::vector<PageRecord>& out) {
 }
 
 }  // namespace rcpaper
+
+#endif  // ARDUINO
