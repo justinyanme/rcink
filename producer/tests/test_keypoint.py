@@ -207,11 +207,11 @@ def test_write_card_fails_fast_on_invalid_content(cache):
 
 
 def test_load_cards_orders_by_rotation(cache):
-    # "todo" is not in CARD_ORDER, so it sorts after the known ids (alphabetically).
+    # Known cards follow CARD_ORDER; unknown ids sort after them alphabetically.
     for id_ in ("todo", "claude", "github"):
         write_card(make_card(id=id_, icon="NONE"))
-    assert [c.id for c in load_cards()] == ["claude", "github", "todo"]
-    assert CARD_ORDER == ("claude", "codex")
+    assert [c.id for c in load_cards()] == ["claude", "todo", "github"]
+    assert CARD_ORDER == ("claude", "codex", "weather", "calendar", "todo")
 
 
 def test_load_cards_fails_fast_on_corrupt_file(cache):

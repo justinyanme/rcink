@@ -7,6 +7,7 @@ from rcink.sources.codex import CodexUsage
 from rcink.sources.github import GRID_CELLS, GitHubActivity, RepoWeek
 from rcink.sources.quotes import Quote
 from rcink.sources.reminders import Reminder, TodaysReminders
+from rcink.sources.weather import Weather
 
 
 def _all_text(node: dict) -> list[str]:
@@ -72,6 +73,19 @@ def _empty_gh() -> GitHubActivity:
         total_14w=0,
         total_year=0,
         daily_counts=[0] * GRID_CELLS,
+    )
+
+
+def _weather() -> Weather:
+    return Weather(
+        temp=28.4,
+        high=31.2,
+        low=24.6,
+        unit="C",
+        code=80,
+        precip_probability=67,
+        is_day=True,
+        observed_at=_NOW.replace(tzinfo=dt.timezone.utc),
     )
 
 
@@ -192,6 +206,7 @@ def test_overview_github_row_shows_week_and_top_repo():
         calendar=_empty_cal(),
         reminders=_empty_reminders(),
         github=gh,
+        weather=_weather(),
         quote=None,
         now=_NOW,
     )
@@ -202,6 +217,26 @@ def test_overview_github_row_shows_week_and_top_repo():
     assert any("5d" in t for t in texts)
     # PR counts must NOT be on the row anymore.
     assert not any("/" in t and "PR" in t for t in texts)
+
+
+def test_overview_weather_row_shows_temp_range_and_pop():
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        weather=_weather(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    texts = _all_text(page)
+    assert "WEATHER" in texts
+    assert "28C" in texts
+    assert "RAIN" in texts
+    assert "H31 L25" in texts
+    assert "POP 67%" in texts
 
 
 def test_overview_rows_have_no_letter_icon_markers_and_labels_are_sm():
@@ -225,6 +260,7 @@ def test_overview_rows_have_no_letter_icon_markers_and_labels_are_sm():
         "NEXT",
         "TODO",
         "GITHUB",
+        "WEATHER",
     }
     label_nodes = [n for n in _all_text_nodes(page) if n.get("value") in label_values]
     assert label_nodes

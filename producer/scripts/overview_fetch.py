@@ -14,6 +14,8 @@ from typing import TypeVar
 import typer
 from loguru import logger
 from rcink.axiom import ingest
+from rcink.keypoint import write_card
+from rcink.keypoint_cards import weather_card
 from rcink.pages.overview import build_overview_page
 from rcink.sources.calendar import fetch_todays_events
 from rcink.sources.claude import fetch_claude_usage
@@ -21,6 +23,7 @@ from rcink.sources.codex import fetch_codex_usage
 from rcink.sources.github import fetch_github_activity
 from rcink.sources.quotes import pick_quote
 from rcink.sources.reminders import fetch_todays_reminders
+from rcink.sources.weather import fetch_weather
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -44,6 +47,7 @@ def run() -> None:
     cal = _try("calendar", lambda: fetch_todays_events(now=now))
     rem = _try("reminders", lambda: fetch_todays_reminders(now=now))
     github = _try("github", fetch_github_activity)
+    weather = _try("weather", fetch_weather)
     # pick_quote is deterministic + offline; never expected to raise, so call
     # it directly. The header drops it gracefully if the joined string is too
     # long to share the row with the date stamp.
@@ -53,19 +57,23 @@ def run() -> None:
         f"codex={'ok' if codex else 'NA'} "
         f"calendar={len(cal.events) if cal else 'NA'} "
         f"reminders={rem.incomplete_total if rem else 'NA'} "
-        f"github={'ok' if github else 'NA'}"
+        f"github={'ok' if github else 'NA'} "
+        f"weather={'ok' if weather else 'NA'}"
     )
     page = build_overview_page(
         claude=claude,
         codex=codex,
         calendar=cal,
         reminders=rem,
+        weather=weather,
         github=github,
         quote=quote,
         now=now,
     )
     # order=5 → shown first, before claude (10) / codex (20) / calendar (30) / todo (40) / github (50).
     ingest(id="overview", layout=page, order=5)
+    if weather is not None:
+        write_card(weather_card(weather, now=now))
 
 
 if __name__ == "__main__":

@@ -11,11 +11,17 @@ import datetime as dt
 import pytest
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
+    calendar_card,
     claude_card,
     codex_card,
+    todo_card,
+    weather_card,
 )
+from rcink.sources.calendar import CalEvent, TodaysCalendar
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
+from rcink.sources.reminders import Reminder, TodaysReminders
+from rcink.sources.weather import Weather
 
 NOW = dt.datetime(2026, 6, 10, 12, 34, 0).astimezone()
 NOW_TS = int(NOW.timestamp())
@@ -106,3 +112,91 @@ def test_codex_card_warns_on_high_usage():
     usage.primary_pct = 94.0
     fields = _renders(codex_card(usage, now=NOW))
     assert fields[5] == "3"
+
+
+# --- weather ---
+
+
+def test_weather_card_renders():
+    weather = Weather(
+        temp=28.4,
+        high=31.2,
+        low=24.6,
+        unit="C",
+        code=80,
+        precip_probability=67,
+        is_day=True,
+        observed_at=NOW,
+    )
+
+    fields = _renders(weather_card(weather, now=NOW))
+
+    assert fields[4] == "RAIN"
+    assert fields[5] == "2"
+    assert fields[6] == "WEATHER "
+    assert fields[7] == "T    28C"
+    assert fields[9] == "H    31C"
+    assert fields[10] == "L    25C"
+    assert fields[11] == "POP  67%"
+
+
+# --- calendar ---
+
+
+def _event(start: dt.datetime, title: str, *, all_day: bool = False) -> CalEvent:
+    return CalEvent(
+        start=start,
+        end=start + dt.timedelta(hours=1),
+        title=title,
+        calendar="Work",
+        is_all_day=all_day,
+    )
+
+
+def test_calendar_card_uses_live_countdown():
+    event = _event(NOW + dt.timedelta(minutes=90), "Standup")
+    card = calendar_card(TodaysCalendar(today=NOW.date(), events=[event], upcoming=[]), now=NOW)
+    fields = _renders(card)
+
+    assert fields[4] == "TIME"
+    assert fields[5] == "1"
+    assert fields[6] == "CAL     "
+    assert fields[7] == "AT 14:04"
+    assert fields[9] == "IN 1h30m"
+    assert fields[10] == "EV Stand"
+
+
+def test_calendar_card_sanitizes_non_ascii_title():
+    event = _event(NOW + dt.timedelta(minutes=10), "会议|Sync")
+    fields = _renders(calendar_card(TodaysCalendar(today=NOW.date(), events=[event], upcoming=[]), now=NOW))
+    assert fields[10] == "EV ???Sy"
+
+
+# --- todo ---
+
+
+def test_todo_card_renders_top_item_and_due_countdown():
+    due = NOW + dt.timedelta(hours=2)
+    rem = TodaysReminders(
+        list_name="Inbox",
+        items=[Reminder(title="Ship phase 6", due=due, updated=NOW, priority=0)],
+        incomplete_total=8,
+    )
+
+    fields = _renders(todo_card(rem, now=NOW))
+
+    assert fields[4] == "WARN"
+    assert fields[5] == "2"
+    assert fields[6] == "TODO    "
+    assert fields[7] == "CNT    8"
+    assert fields[9] == "TOP Ship"
+    assert fields[10] == "D     2h"
+
+
+def test_todo_card_all_clear():
+    rem = TodaysReminders(list_name="Inbox", items=[], incomplete_total=0)
+    fields = _renders(todo_card(rem, now=NOW))
+    assert fields[4] == "NONE"
+    assert fields[5] == "0"
+    assert fields[7] == "CNT    0"
+    assert fields[9] == "OK   YES"

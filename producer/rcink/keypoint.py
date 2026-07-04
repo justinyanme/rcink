@@ -49,7 +49,7 @@ LED_HINT_ERROR = 4
 LED_HINT_IDS = frozenset({LED_HINT_NONE, LED_HINT_ACTIVE, LED_HINT_ATTENTION, LED_HINT_WARNING, LED_HINT_ERROR})
 
 # Rotation order on the keyboard; unknown card ids sort after these, alphabetically.
-CARD_ORDER = ("claude", "codex")
+CARD_ORDER = ("claude", "codex", "weather", "calendar", "todo")
 
 CACHE_ENV = "RCINK_KEYPOINT_CACHE"
 CACHE_DEFAULT = "~/.cache/rcink/keypoint"

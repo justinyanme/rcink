@@ -19,6 +19,7 @@ from rcink.sources.codex import CodexUsage
 from rcink.sources.github import GitHubActivity
 from rcink.sources.quotes import Quote
 from rcink.sources.reminders import TodaysReminders
+from rcink.sources.weather import Weather
 
 # Visual-cell budget for one wrapped quote line at h2-bold on a 540px panel.
 _QUOTE_LINE_LIMIT = 30
@@ -78,6 +79,47 @@ def _github_row(gh: GitHubActivity | None) -> dict:
         text(f"{gh.streak}d", size="sm", weight="bold", color=streak_color),
     ]
     return hstack(gap=8, align="center", children=children)
+
+
+def _weather_label(code: int) -> tuple[str, ColorToken]:
+    if code in {0, 1}:
+        return "SUN", "success"
+    if code in {2, 3, 45, 48}:
+        return "CLOUD", "info"
+    if 51 <= code <= 67 or 80 <= code <= 82:
+        return "RAIN", "warning"
+    if 71 <= code <= 77 or 85 <= code <= 86:
+        return "SNOW", "info"
+    if 95 <= code <= 99:
+        return "STORM", "accent"
+    return "WX", "black"
+
+
+def _weather_row(weather: Weather | None) -> dict:
+    if weather is None:
+        return hstack(
+            gap=8,
+            align="center",
+            children=[
+                text("WEATHER", size=_LABEL_SIZE, weight="bold", color="white", bg="info", pad=4),
+                text("—", size="sm", weight="bold"),
+                spacer(),
+            ],
+        )
+    label, color = _weather_label(weather.code)
+    pop = "—" if weather.precip_probability is None else f"{weather.precip_probability}%"
+    return hstack(
+        gap=8,
+        align="center",
+        children=[
+            text("WEATHER", size=_LABEL_SIZE, weight="bold", color="white", bg="info", pad=4),
+            text(f"{round(weather.temp)}{weather.unit}", size="sm", weight="bold", color=color),
+            text(label, size="sm", weight="bold", color=color),
+            text(f"H{round(weather.high)} L{round(weather.low)}", size="sm"),
+            spacer(),
+            text(f"POP {pop}", size="sm", weight="bold"),
+        ],
+    )
 
 
 def _pct_color(pct: float | None) -> ColorToken:
@@ -233,9 +275,10 @@ def build_overview_page(
     codex: CodexUsage | None,
     calendar: TodaysCalendar | None,
     reminders: TodaysReminders | None,
+    now: dt.datetime,
+    weather: Weather | None = None,
     github: GitHubActivity | None = None,
     quote: Quote | None = None,
-    now: dt.datetime,
 ) -> dict:
     date_label = text(now.strftime("%a · %b %d").upper(), size="sm", weight="bold")
     header = hstack(
@@ -263,6 +306,7 @@ def build_overview_page(
         secondary_label="7D",
     )
     github_row = _github_row(github)
+    weather_row = _weather_row(weather)
 
     page_children: list[dict] = [header]
     if quote_nodes:
@@ -274,6 +318,7 @@ def build_overview_page(
         claude_row,
         codex_row,
         github_row,
+        weather_row,
         spacer(size=4),
         divider(color="black", thickness=1),
         spacer(size=4),

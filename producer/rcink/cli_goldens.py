@@ -100,12 +100,23 @@ def _build_codex() -> dict:
 
 def _build_overview() -> dict:
     from rcink.pages.overview import build_overview_page
+    from rcink.sources.weather import Weather
 
     return build_overview_page(
         claude=None,
         codex=None,
         calendar=None,
         reminders=None,
+        weather=Weather(
+            temp=28.4,
+            high=31.2,
+            low=24.6,
+            unit="C",
+            code=80,
+            precip_probability=67,
+            is_day=True,
+            observed_at=_NOW,
+        ),
         github=None,
         quote=None,
         now=_NOW,
