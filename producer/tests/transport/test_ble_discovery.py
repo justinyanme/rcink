@@ -1,6 +1,7 @@
+import asyncio
 from unittest.mock import MagicMock, patch
 
-from rcink.transport.ble.discovery import scan
+from rcink.transport.ble.discovery import discover_tag, scan
 from rcink.transport.ble.uuids import MANUFACTURER_ID
 
 
@@ -31,3 +32,16 @@ async def test_scan_captures_one_tag():
     assert tag.rssi == -50
     assert tag.adv.data_ver == 0x00000001
     assert tag.adv.battery_mV == 0x0B80
+
+
+async def test_discover_tag_enforces_outer_timeout():
+    class FakeScanner:
+        @staticmethod
+        async def find_device_by_filter(_filter, timeout):
+            await asyncio.sleep(1)
+            return None
+
+    with patch("rcink.transport.ble.discovery.BleakScanner", FakeScanner):
+        result = await discover_tag(timeout_s=0.01)
+
+    assert result is None

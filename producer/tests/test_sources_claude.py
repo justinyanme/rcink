@@ -103,6 +103,21 @@ def test_usage_reset_text_formatting(httpx_mock, tmp_path):
     assert usage.five_hour_reset.startswith("2h")
 
 
+def test_missing_reset_degrades_to_empty_text_and_no_epoch(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 42.0},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+        },
+    )
+    usage = fetch_claude_usage(p)
+    assert usage.five_hour_pct == 42.0
+    assert usage.five_hour_reset == ""
+    assert usage.five_hour_reset_at is None
+
+
 def test_missing_required_window_raises(httpx_mock, tmp_path):
     p = write_creds(tmp_path, FRESH)
     httpx_mock.add_response(

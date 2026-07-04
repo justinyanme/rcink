@@ -40,7 +40,13 @@ async def discover_tag(*, timeout_s: float = 20.0, address: str | None = None) -
         box["rssi"] = adv.rssi or 0
         return True
 
-    device = await BleakScanner.find_device_by_filter(_filter, timeout=timeout_s)
+    try:
+        device = await asyncio.wait_for(
+            BleakScanner.find_device_by_filter(_filter, timeout=timeout_s),
+            timeout=timeout_s,
+        )
+    except TimeoutError:
+        return None
     if device is None:
         return None
     return DiscoveredTag(

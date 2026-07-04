@@ -129,27 +129,32 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
             return 100.0
         return pct
 
-    def reset(key: str) -> str:
+    def reset_iso(key: str) -> str | None:
         v = window(key, required=True)
         iso = v.get("resets_at")
         if not isinstance(iso, str) or not iso:
-            raise ValueError(f"Claude usage response missing reset for {key}")
-        return _reset_text(iso)
+            logger.warning(f"Claude usage response missing reset for {key}; hiding reset countdown")
+            return None
+        return iso
 
-    def reset_at(key: str) -> int | None:
-        v = window(key, required=True)
-        iso = v.get("resets_at")
-        if not isinstance(iso, str) or not iso:
-            raise ValueError(f"Claude usage response missing reset for {key}")
-        return int(dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
+    five_hour_reset_iso = reset_iso("five_hour")
+    seven_day_reset_iso = reset_iso("seven_day")
 
     return ClaudeUsage(
         five_hour_pct=checked_pct("five_hour"),
         seven_day_pct=checked_pct("seven_day"),
         opus_pct=checked_pct("seven_day_opus", required=False),
         sonnet_pct=checked_pct("seven_day_sonnet", required=False),
-        five_hour_reset=reset("five_hour"),
-        seven_day_reset=reset("seven_day"),
-        five_hour_reset_at=reset_at("five_hour"),
-        seven_day_reset_at=reset_at("seven_day"),
+        five_hour_reset=_reset_text(five_hour_reset_iso),
+        seven_day_reset=_reset_text(seven_day_reset_iso),
+        five_hour_reset_at=(
+            int(dt.datetime.fromisoformat(five_hour_reset_iso.replace("Z", "+00:00")).timestamp())
+            if five_hour_reset_iso is not None
+            else None
+        ),
+        seven_day_reset_at=(
+            int(dt.datetime.fromisoformat(seven_day_reset_iso.replace("Z", "+00:00")).timestamp())
+            if seven_day_reset_iso is not None
+            else None
+        ),
     )

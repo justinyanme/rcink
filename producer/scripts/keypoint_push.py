@@ -60,12 +60,23 @@ async def _resolve_connected_macos(name: str) -> BLEDevice | None:
 async def _resolve_device(name: str, address: str | None, scan_timeout: float) -> BLEDevice | str:
     if address:
         return address
-    if device := await _resolve_connected_macos(name):
+    try:
+        device = await asyncio.wait_for(_resolve_connected_macos(name), timeout=min(scan_timeout, 5.0))
+    except TimeoutError:
+        logger.warning("connected KEYPOINT lookup timed out; falling back to BLE scan")
+        device = None
+    if device:
         logger.info(f"using connected peripheral {device.address} ({device.name})")
         return device
     # Fallback: a fresh, connectable device from a live scanner (mirrors the
     # tlsr discovery path that avoids macOS stale-BLEDevice connect failures).
-    device = await BleakScanner.find_device_by_filter(lambda d, _adv: d.name == name, timeout=scan_timeout)
+    try:
+        device = await asyncio.wait_for(
+            BleakScanner.find_device_by_filter(lambda d, _adv: d.name == name, timeout=scan_timeout),
+            timeout=scan_timeout,
+        )
+    except TimeoutError as exc:
+        raise RuntimeError(f"BLE scan for {name!r} timed out after {scan_timeout:g}s") from exc
     if device is None:
         raise RuntimeError(f"no connected or advertising BLE device named {name!r}")
     return device
