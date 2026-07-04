@@ -1,5 +1,7 @@
 // src/store/nvs.cpp
 #include "store/nvs.h"
+
+#ifdef ARDUINO
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <vector>
@@ -106,3 +108,4 @@ void nvs_save_render_marker(const std::string& id, uint64_t data_ts) {
 }
 
 }  // namespace rcpaper
+#endif  // ARDUINO
