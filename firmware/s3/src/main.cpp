@@ -17,6 +17,7 @@
 #include "net/axiom.h"
 #include "net/wifi.h"
 #include "power/nav_delta.h"
+#include "power/refresh_schedule.h"
 #include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/page.h"
@@ -276,6 +277,7 @@ bool refetch_now() {
   std::vector<PageRecord> fresh;
   bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (ok) {
+    record_successful_fetch(g_state, fresh);
     g_state.pages = std::move(fresh);
     // Preserve g_state.page_index: scheduled refreshes update content without
     // changing pages. setup() clamps idx if the producer shrank the page list.
@@ -440,7 +442,9 @@ void setup() {
   led_status_show(LedState::IdleDisconnected);
   Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
 #else
-  enter_deep_sleep_until((uint64_t)time(nullptr) + FETCH_INTERVAL_SEC);
+  const uint32_t interval = adaptive_refresh_interval_sec(
+      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
+  enter_deep_sleep_until((uint64_t)time(nullptr) + interval);
 #endif
 }
 

@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "power/refresh_schedule.h"
 #include "render/icons_data.h"
 #include "render/palette.h"
 #include "render/warnings.h"
@@ -57,7 +58,8 @@ void paint_status_bar(M5Canvas& canvas,
                       const PageRecord& rec,
                       const BatteryReading& batt,
                       const EnvReading& env,
-                      uint64_t last_fetch_s) {
+                      uint64_t last_fetch_s,
+                      uint8_t unchanged_fetches) {
   const int16_t W = canvas.width();
   const int16_t y = 0;
   const int16_t kRightMargin = 6;
@@ -92,7 +94,10 @@ void paint_status_bar(M5Canvas& canvas,
   // last refresh (when this device last fetched)
   groups[4] = {"refresh", format_local_hhmm(last_fetch_s)};
   // next refresh (scheduled wake)
-  uint64_t next_s = last_fetch_s ? last_fetch_s + FETCH_INTERVAL_SEC : 0;
+  uint64_t next_s = last_fetch_s
+      ? last_fetch_s + adaptive_refresh_interval_sec(
+                           FETCH_INTERVAL_SEC, unchanged_fetches, batt.pct, batt.ok)
+      : 0;
   groups[5] = {"clock", format_local_hhmm(next_s)};
   const int n = (int)(sizeof(groups) / sizeof(groups[0]));
 

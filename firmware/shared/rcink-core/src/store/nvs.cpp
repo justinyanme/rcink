@@ -27,6 +27,8 @@ DeviceState nvs_load() {
   s.page_index            = p.getUChar("idx", 0);
   s.ui_mode               = p.getUChar("mode", 0);
   s.last_fetch_s          = p.getULong64("last", 0);
+  s.last_fetch_fingerprint = p.getUInt("fp", 0);
+  s.unchanged_fetches      = p.getUChar("unch", 0);
   s.last_rendered_id      = p.getString("rid", "").c_str();
   s.last_rendered_data_ts = p.getULong64("rts", 0);
   size_t blob_len = p.getBytesLength(K_PAGES);
@@ -37,9 +39,10 @@ DeviceState nvs_load() {
     blob = String(buf.data());
   }
   p.end();
-  Serial.printf("[nvs] load opened=%d idx=%u mode=%u last=%llu blob_len=%u rid=%s rts=%llu\n",
+  Serial.printf("[nvs] load opened=%d idx=%u mode=%u last=%llu fp=%08x unch=%u blob_len=%u rid=%s rts=%llu\n",
                 (int)opened, (unsigned)s.page_index, (unsigned)s.ui_mode,
                 (unsigned long long)s.last_fetch_s,
+                (unsigned)s.last_fetch_fingerprint, (unsigned)s.unchanged_fetches,
                 (unsigned)blob_len, s.last_rendered_id.c_str(),
                 (unsigned long long)s.last_rendered_data_ts);
 
@@ -78,6 +81,8 @@ void nvs_save(const DeviceState& s) {
   p.putUChar("idx", s.page_index);
   p.putUChar("mode", s.ui_mode);
   p.putULong64("last", s.last_fetch_s);
+  p.putUInt("fp", s.last_fetch_fingerprint);
+  p.putUChar("unch", s.unchanged_fetches);
   p.end();
   if (written != blob.length()) {
     Serial.printf("[nvs] FAILED to save pages blob=%u B written=%u (idx=%u still saved)\n",

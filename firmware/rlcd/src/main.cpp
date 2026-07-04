@@ -62,8 +62,10 @@ static bool wall_clock_is_valid() {
 
 static bool network_refresh_due() {
   const uint64_t now = (uint64_t)time(nullptr);
+  const uint32_t interval = adaptive_refresh_interval_sec(
+      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
   return g_state.pages.empty() || !wall_clock_is_valid() ||
-         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + FETCH_INTERVAL_SEC;
+         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + interval;
 }
 
 #ifndef RCRLCD_DEV_CONSOLE
@@ -144,6 +146,7 @@ bool refetch_now() {
     return false;
   }
 
+  record_successful_fetch(g_state, fresh);
   g_state.pages = std::move(fresh);
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
   g_state.last_fetch_s = (uint64_t)time(nullptr);
@@ -252,8 +255,12 @@ void apply_wake_key() {
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
-  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, FETCH_INTERVAL_SEC);
-  Serial.printf("[auto] next network refresh in %u s\n", (unsigned)FETCH_INTERVAL_SEC);
+  const uint32_t interval = adaptive_refresh_interval_sec(
+      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
+  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, interval);
+  Serial.printf("[auto] next network refresh in %u s (unchanged=%u batt=%u%%)\n",
+                (unsigned)interval, (unsigned)g_state.unchanged_fetches,
+                (unsigned)g_battery.pct);
 }
 
 void do_refresh() {

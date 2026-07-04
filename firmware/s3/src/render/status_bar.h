@@ -21,6 +21,7 @@ void paint_status_bar(M5Canvas& canvas,
                       const PageRecord& rec,
                       const BatteryReading& batt,
                       const EnvReading& env,
-                      uint64_t last_fetch_s);
+                      uint64_t last_fetch_s,
+                      uint8_t unchanged_fetches);
 }  // namespace rcpaper
 #endif

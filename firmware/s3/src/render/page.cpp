@@ -130,7 +130,7 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
   paint_layout(canvas, laid);
 
   // Overlay the status bar at the top and page-rotation indicator at the bottom.
-  paint_status_bar(canvas, rec, batt, env, state.last_fetch_s);
+  paint_status_bar(canvas, rec, batt, env, state.last_fetch_s, state.unchanged_fetches);
   paint_indicator(canvas, state.pages, state.page_index);
 
   // STALE pill (bottom-right) + WARN "!" badge (just left of STALE). The

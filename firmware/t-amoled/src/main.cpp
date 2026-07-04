@@ -37,7 +37,9 @@ static bool woke_from_next_button() {
   display_sleep();  // AMOLED panel must be dark between production wakes.
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
   esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
-  deep_sleep_until((uint64_t)time(nullptr) + FETCH_INTERVAL_SEC);
+  const uint32_t interval = adaptive_refresh_interval_sec(
+      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
+  deep_sleep_until((uint64_t)time(nullptr) + interval);
 }
 #endif
 
@@ -63,6 +65,7 @@ bool refetch_now() {
     return false;
   }
 
+  record_successful_fetch(g_state, fresh);
   g_state.pages = std::move(fresh);
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 
@@ -145,8 +148,12 @@ void prev_page() {
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
-  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, FETCH_INTERVAL_SEC);
-  Serial.printf("[auto] next refresh in %u s\n", (unsigned)FETCH_INTERVAL_SEC);
+  const uint32_t interval = adaptive_refresh_interval_sec(
+      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
+  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, interval);
+  Serial.printf("[auto] next refresh in %u s (unchanged=%u batt=%u%%)\n",
+                (unsigned)interval, (unsigned)g_state.unchanged_fetches,
+                (unsigned)g_battery.pct);
 }
 
 void do_refresh() {

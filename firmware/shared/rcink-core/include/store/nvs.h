@@ -14,6 +14,8 @@ struct DeviceState {
   uint8_t  page_index   = 0;
   uint8_t  ui_mode      = 0;   // target-local mode id; 0 means default mode
   uint64_t last_fetch_s = 0;   // epoch seconds; 0 = never
+  uint32_t last_fetch_fingerprint = 0;  // fingerprint of last successful page set
+  uint8_t  unchanged_fetches = 0;       // consecutive successful fetches with no content change
 
   // Render-dedup marker: id + data_ts of the most recent successful render.
   // Persisted so a wake-from-deep-sleep can compare without re-rendering.
