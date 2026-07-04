@@ -1,8 +1,9 @@
-"""Decode manufacturer-data payloads from tlsr-layout advertisements."""
+"""Decode TLSR manufacturer-data payloads per docs/tlsr-ble-protocol.md."""
 
 import struct
 from dataclasses import dataclass
 
+from ..ble_protocol import ADV_FLAG_DISPLAY_BUSY, ADV_FLAG_LOW_BATT, ADV_FLAG_SYNC_OPEN, ADV_FLAG_XFER_ERR
 from .uuids import ADV_PAYLOAD_TYPE_V2, MANUFACTURER_ID
 
 
@@ -19,7 +20,7 @@ class Advertisement:
 
 
 def parse(manufacturer_data: dict[int, bytes]) -> Advertisement | None:
-    """Parse spec §5.2 payload v2, returning None for non tlsr-layout ads."""
+    """Parse payload v2, returning None for non TLSR layout ads."""
 
     raw = manufacturer_data.get(MANUFACTURER_ID)
     if raw is None or len(raw) < 9:
@@ -34,8 +35,8 @@ def parse(manufacturer_data: dict[int, bytes]) -> Advertisement | None:
         battery_mV=battery_mV,
         temp_c=temp_c,
         flags=flags,
-        sync_window=bool(flags & 0x01),
-        low_batt=bool(flags & 0x02),
-        render_err=bool(flags & 0x04),
-        display_busy=bool(flags & 0x08),
+        sync_window=bool(flags & ADV_FLAG_SYNC_OPEN),
+        low_batt=bool(flags & ADV_FLAG_LOW_BATT),
+        render_err=bool(flags & ADV_FLAG_XFER_ERR),
+        display_busy=bool(flags & ADV_FLAG_DISPLAY_BUSY),
     )

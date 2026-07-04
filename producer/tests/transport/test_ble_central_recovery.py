@@ -1,7 +1,14 @@
 import pytest
 from rcink.transport.ble.central import PushError, push_page
 from rcink.transport.ble.transport import Transport
-from rcink.transport.ble_protocol import ACK_ERR_CRC, ACK_ERR_FORMAT, ACK_ERR_INFLATE, ACK_ERR_LOW_BATT
+from rcink.transport.ble_protocol import (
+    ACK_ERR_BUSY,
+    ACK_ERR_CRC,
+    ACK_ERR_FORMAT,
+    ACK_ERR_INFLATE,
+    ACK_ERR_LOW_BATT,
+    ACK_ERR_RENDER,
+)
 
 from tests.transport._example_page import example_page
 
@@ -77,4 +84,26 @@ async def test_push_aborts_on_commit_rejection():
             await push_page(transport, example_page())
 
     assert exc_info.value.code == ACK_ERR_INFLATE
+    assert peripheral.abort_count == 1
+
+
+async def test_push_maps_render_commit_rejection():
+    peripheral = FakePeripheral(forced_commit_code=ACK_ERR_RENDER)
+
+    async with Transport(peripheral) as transport:
+        with pytest.raises(PushError, match="render failed") as exc_info:
+            await push_page(transport, example_page())
+
+    assert exc_info.value.code == ACK_ERR_RENDER
+    assert peripheral.abort_count == 1
+
+
+async def test_push_maps_busy_commit_rejection():
+    peripheral = FakePeripheral(forced_commit_code=ACK_ERR_BUSY)
+
+    async with Transport(peripheral) as transport:
+        with pytest.raises(PushError, match="tag busy") as exc_info:
+            await push_page(transport, example_page())
+
+    assert exc_info.value.code == ACK_ERR_BUSY
     assert peripheral.abort_count == 1

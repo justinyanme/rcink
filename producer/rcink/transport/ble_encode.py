@@ -6,7 +6,7 @@ Pipeline:
         → zlib.compress (bytes)
         → chunk_payload (list of (seq, payload))
 
-Matches spec §6.1 (BEGIN frame fields) and §6.2 (XFER_DATA chunks).
+Matches docs/tlsr-ble-protocol.md BEGIN and XFER_DATA frames.
 """
 
 import zlib
@@ -16,7 +16,7 @@ from typing import Any
 from rcink.transport.ble_hash import canonical_json, data_ver
 from rcink.validate import validate_page
 
-MAX_CHUNKS = 256  # spec §6.1 cap
+MAX_CHUNKS = 256
 
 
 @dataclass(slots=True, frozen=True)

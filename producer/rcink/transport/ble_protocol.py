@@ -1,4 +1,4 @@
-"""Wire-format frame builders for spec §6.
+"""Wire-format frame builders for docs/tlsr-ble-protocol.md.
 
 All multi-byte fields are little-endian. Reserved fields are zero-filled.
 """
@@ -10,7 +10,30 @@ XFER_BEGIN = 0x01
 XFER_ABORT = 0x02
 XFER_COMMIT = 0x03
 
+XFER_FRAME_LEN = 20
+
+XFER_CTL_OFF_CMD = 0
+XFER_BEGIN_MIN_LEN = 14
+XFER_BEGIN_OFF_DATA_VER = 1
+XFER_BEGIN_OFF_TOTAL_LEN = 5
+XFER_BEGIN_OFF_TOTAL_CHUNKS = 7
+XFER_BEGIN_OFF_CRC32 = 9
+XFER_BEGIN_OFF_DSL_FORMAT = 13
+XFER_BEGIN_OFF_RESERVED = 14
+
+XFER_COMMIT_MIN_LEN = 5
+XFER_COMMIT_OFF_DATA_VER = 1
+
+XFER_DATA_OFF_SEQ = 0
+XFER_DATA_OFF_PAYLOAD = 2
+
 DSL_FORMAT_ZLIB_JSON_V1 = 0x01
+XFER_MIN_BATTERY_MV = 2400
+
+ADV_FLAG_SYNC_OPEN = 0x01
+ADV_FLAG_LOW_BATT = 0x02
+ADV_FLAG_XFER_ERR = 0x04
+ADV_FLAG_DISPLAY_BUSY = 0x08
 
 ACK_OK_PROGRESS = 0x00
 ACK_OK_BEGIN = 0x01
@@ -52,23 +75,36 @@ def build_begin(
     _check_u32("crc32", crc32)
     if not 0 <= dsl_format <= 0xFF:
         raise ValueError(f"dsl_format out of u8 range: {dsl_format}")
-    return (
-        bytes([XFER_BEGIN]) + struct.pack("<IHHIB", data_ver, total_len, total_chunks, crc32, dsl_format) + b"\x00" * 6
-    )
+    frame = bytearray(XFER_FRAME_LEN)
+    frame[XFER_CTL_OFF_CMD] = XFER_BEGIN
+    struct.pack_into("<I", frame, XFER_BEGIN_OFF_DATA_VER, data_ver)
+    struct.pack_into("<H", frame, XFER_BEGIN_OFF_TOTAL_LEN, total_len)
+    struct.pack_into("<H", frame, XFER_BEGIN_OFF_TOTAL_CHUNKS, total_chunks)
+    struct.pack_into("<I", frame, XFER_BEGIN_OFF_CRC32, crc32)
+    frame[XFER_BEGIN_OFF_DSL_FORMAT] = dsl_format
+    return bytes(frame)
 
 
 def build_abort() -> bytes:
-    return bytes([XFER_ABORT]) + b"\x00" * 19
+    frame = bytearray(XFER_FRAME_LEN)
+    frame[XFER_CTL_OFF_CMD] = XFER_ABORT
+    return bytes(frame)
 
 
 def build_commit(*, data_ver: int) -> bytes:
     _check_u32("data_ver", data_ver)
-    return bytes([XFER_COMMIT]) + struct.pack("<I", data_ver) + b"\x00" * 15
+    frame = bytearray(XFER_FRAME_LEN)
+    frame[XFER_CTL_OFF_CMD] = XFER_COMMIT
+    struct.pack_into("<I", frame, XFER_COMMIT_OFF_DATA_VER, data_ver)
+    return bytes(frame)
 
 
 def build_data_chunk(*, seq: int, payload: bytes) -> bytes:
     _check_u16("seq", seq)
-    return struct.pack("<H", seq) + payload
+    frame = bytearray(XFER_DATA_OFF_PAYLOAD + len(payload))
+    struct.pack_into("<H", frame, XFER_DATA_OFF_SEQ, seq)
+    frame[XFER_DATA_OFF_PAYLOAD:] = payload
+    return bytes(frame)
 
 
 @dataclass(slots=True, frozen=True)

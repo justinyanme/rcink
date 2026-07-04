@@ -3,9 +3,7 @@
 // NOTE: this could be generated from json to c and python code with cmake
 typedef enum {
     CMD_T_NONE = 0x00,
-    // Layout-DSL commands. Wire protocol is defined in
-    // docs/superpowers/specs/2026-05-20-tlsr-layout-protocol-design.md §6.1.
-    // Phase 2 stubs log and return success; the real FSM lands in Phase 4.
+    // Layout-DSL commands. Wire protocol is defined in docs/tlsr-ble-protocol.md.
     CMD_T_LAYOUT_BEGIN = 0x01,
     CMD_T_LAYOUT_ABORT = 0x02,
     CMD_T_LAYOUT_COMMIT = 0x03,

@@ -33,34 +33,34 @@ static void send_begin_with_format(
     uint8_t dsl_format
 )
 {
-    uint8_t frame[20] = {0};
-    frame[0] = 0x01;
-    put_le32(&frame[1], data_ver);
-    put_le16(&frame[5], total_len);
-    put_le16(&frame[7], total_chunks);
-    put_le32(&frame[9], crc);
-    frame[13] = dsl_format;
+    uint8_t frame[XFER_FRAME_LEN] = {0};
+    frame[XFER_CTL_OFF_CMD] = XFER_CTL_BEGIN;
+    put_le32(&frame[XFER_BEGIN_OFF_DATA_VER], data_ver);
+    put_le16(&frame[XFER_BEGIN_OFF_TOTAL_LEN], total_len);
+    put_le16(&frame[XFER_BEGIN_OFF_TOTAL_CHUNKS], total_chunks);
+    put_le32(&frame[XFER_BEGIN_OFF_CRC32], crc);
+    frame[XFER_BEGIN_OFF_DSL_FORMAT] = dsl_format;
     xfer_handle_ctl(frame, sizeof(frame));
 }
 
 static void send_begin(uint32_t data_ver, uint16_t total_len, uint16_t total_chunks, uint32_t crc)
 {
-    send_begin_with_format(data_ver, total_len, total_chunks, crc, 0x01);
+    send_begin_with_format(data_ver, total_len, total_chunks, crc, XFER_DSL_FORMAT_ZLIB_JSON_V1);
 }
 
 static void send_data(uint16_t seq, const uint8_t *payload, uint16_t len)
 {
     uint8_t frame[184];
-    put_le16(frame, seq);
-    memcpy(&frame[2], payload, len);
-    xfer_handle_data(frame, (uint16_t)(len + 2));
+    put_le16(&frame[XFER_DATA_OFF_SEQ], seq);
+    memcpy(&frame[XFER_DATA_OFF_PAYLOAD], payload, len);
+    xfer_handle_data(frame, (uint16_t)(len + XFER_DATA_OFF_PAYLOAD));
 }
 
 static void send_commit(uint32_t data_ver)
 {
-    uint8_t frame[20] = {0};
-    frame[0] = 0x03;
-    put_le32(&frame[1], data_ver);
+    uint8_t frame[XFER_FRAME_LEN] = {0};
+    frame[XFER_CTL_OFF_CMD] = XFER_CTL_COMMIT;
+    put_le32(&frame[XFER_COMMIT_OFF_DATA_VER], data_ver);
     xfer_handle_ctl(frame, sizeof(frame));
 }
 
@@ -280,7 +280,7 @@ int xfer_test(const char *scenario)
         xfer_run_pending_render();
         if (expect_last_ack(0, XFER_ERR_RENDER) != 0 ||
             expect_ringlog(XFER_ERR_RENDER, 0xC0DEC006u) != 0 || xfer_state() != XFER_IDLE ||
-            (xfer_adv_flags() & 0x04u) == 0) {
+            (xfer_adv_flags() & ADV_FLAG_XFER_ERR) == 0) {
             fprintf(stderr, "render-fail scenario failed\n");
             return 1;
         }
@@ -335,7 +335,7 @@ int xfer_test(const char *scenario)
         send_begin(0xC0DEC004u, 16, 1, 0);
         if (g_ack_count != 1 || expect_ack(0, 0, XFER_ERR_LOW_BATT) != 0 ||
             expect_ringlog(XFER_ERR_LOW_BATT, 0) != 0 || xfer_state() != XFER_IDLE ||
-            (xfer_adv_flags() & 0x04u) == 0) {
+            (xfer_adv_flags() & ADV_FLAG_XFER_ERR) == 0) {
             fprintf(stderr, "low-batt scenario failed\n");
             return 1;
         }

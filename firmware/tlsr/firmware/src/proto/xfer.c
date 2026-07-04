@@ -19,10 +19,6 @@ extern uint8_t layout_status_buf[16];
 extern uint16_t current_battery_mv;
 uint16_t battery_read_mv(void);
 
-#define XFER_CTL_BEGIN 0x01u
-#define XFER_CTL_ABORT 0x02u
-#define XFER_CTL_COMMIT 0x03u
-#define XFER_DSL_FORMAT_ZLIB_JSON_V1 0x01u
 #define XFER_NO_PROGRESS_TIMEOUT_MS 30000u
 
 extern uint8_t epd_buffer[XFER_EPD_BUFFER_SIZE];
@@ -35,7 +31,6 @@ typedef struct {
     slot_id_t staging;
     uint32_t data_ver;
     uint16_t total_len;
-    uint16_t total_chunks;
     uint32_t crc32;
     uint8_t dsl_format;
     uint16_t recv_offset;
@@ -83,13 +78,13 @@ uint8_t xfer_adv_flags(void)
 
 static void mark_xfer_error(void)
 {
-    g_adv_flags |= 0x04u;
+    g_adv_flags |= ADV_FLAG_XFER_ERR;
     layout_apply_adv_payload();
 }
 
 static void clear_xfer_error(void)
 {
-    g_adv_flags &= (uint8_t)~0x04u;
+    g_adv_flags &= (uint8_t)~ADV_FLAG_XFER_ERR;
 }
 
 void xfer_init(ack_emit_fn ack)
@@ -173,9 +168,9 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         return;
     }
 
-    switch (frame[0]) {
+    switch (frame[XFER_CTL_OFF_CMD]) {
     case XFER_CTL_BEGIN:
-        if (len < 14) {
+        if (len < XFER_BEGIN_MIN_LEN) {
             ringlog_append(XFER_ERR_FORMAT, 0, 0, xfer_error_message(XFER_ERR_FORMAT));
             mark_xfer_error();
             emit_ack(0, XFER_ERR_FORMAT);
@@ -186,11 +181,10 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
             emit_ack(0, XFER_ERR_BUSY);
             return;
         }
-        g_xfer.data_ver = get_le32(&frame[1]);
-        g_xfer.total_len = get_le16(&frame[5]);
-        g_xfer.total_chunks = get_le16(&frame[7]);
-        g_xfer.crc32 = get_le32(&frame[9]);
-        g_xfer.dsl_format = frame[13];
+        g_xfer.data_ver = get_le32(&frame[XFER_BEGIN_OFF_DATA_VER]);
+        g_xfer.total_len = get_le16(&frame[XFER_BEGIN_OFF_TOTAL_LEN]);
+        g_xfer.crc32 = get_le32(&frame[XFER_BEGIN_OFF_CRC32]);
+        g_xfer.dsl_format = frame[XFER_BEGIN_OFF_DSL_FORMAT];
         if (xfer_battery_mv() < XFER_MIN_BATTERY_MV) {
             ringlog_append(XFER_ERR_LOW_BATT, 0, 0, xfer_error_message(XFER_ERR_LOW_BATT));
             mark_xfer_error();
@@ -203,7 +197,7 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
             emit_ack(0, XFER_ERR_TOO_BIG);
             return;
         }
-        if (g_xfer.total_chunks > 256 || g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
+        if (g_xfer.dsl_format != XFER_DSL_FORMAT_ZLIB_JSON_V1) {
             ringlog_append(XFER_ERR_FORMAT, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_FORMAT));
             mark_xfer_error();
             emit_ack(0, XFER_ERR_FORMAT);
@@ -224,7 +218,8 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
         return;
 
     case XFER_CTL_COMMIT:
-        if (len < 5 || g_xfer.state != XFER_RECEIVING || get_le32(&frame[1]) != g_xfer.data_ver ||
+        if (len < XFER_COMMIT_MIN_LEN || g_xfer.state != XFER_RECEIVING ||
+            get_le32(&frame[XFER_COMMIT_OFF_DATA_VER]) != g_xfer.data_ver ||
             g_xfer.recv_offset != g_xfer.total_len) {
             mark_xfer_error();
             g_xfer.state = XFER_IDLE;
@@ -261,11 +256,11 @@ void xfer_handle_ctl(const uint8_t *frame, uint16_t len)
 
 void xfer_handle_data(const uint8_t *frame, uint16_t len)
 {
-    if (frame == NULL || len < 2 || g_xfer.state != XFER_RECEIVING) {
+    if (frame == NULL || len < XFER_DATA_OFF_PAYLOAD || g_xfer.state != XFER_RECEIVING) {
         return;
     }
-    const uint16_t seq = get_le16(frame);
-    const uint16_t payload_len = (uint16_t)(len - 2);
+    const uint16_t seq = get_le16(&frame[XFER_DATA_OFF_SEQ]);
+    const uint16_t payload_len = (uint16_t)(len - XFER_DATA_OFF_PAYLOAD);
     if (seq != g_xfer.expected_seq) {
         mark_xfer_error();
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_GAP);
@@ -278,7 +273,7 @@ void xfer_handle_data(const uint8_t *frame, uint16_t len)
         emit_ack(g_xfer.expected_seq == 0 ? 0 : (uint16_t)(g_xfer.expected_seq - 1), XFER_ERR_OVERRUN);
         return;
     }
-    if (slot_write_payload(g_xfer.staging, g_xfer.recv_offset, &frame[2], payload_len) != 0) {
+    if (slot_write_payload(g_xfer.staging, g_xfer.recv_offset, &frame[XFER_DATA_OFF_PAYLOAD], payload_len) != 0) {
         ringlog_append(XFER_ERR_FLASH, g_xfer.data_ver, 0, xfer_error_message(XFER_ERR_FLASH));
         mark_xfer_error();
         g_xfer.state = XFER_IDLE;

@@ -403,11 +403,75 @@ static int pipeline_e2e(int argc, char **argv)
     return 0;
 }
 
+static int wire_constants(void)
+{
+    printf("{");
+    printf("\"ctl\":{");
+    printf("\"begin\":%u,\"abort\":%u,\"commit\":%u",
+           (unsigned)XFER_CTL_BEGIN,
+           (unsigned)XFER_CTL_ABORT,
+           (unsigned)XFER_CTL_COMMIT);
+    printf("},");
+    printf("\"frame\":{");
+    printf("\"len\":%u,", (unsigned)XFER_FRAME_LEN);
+    printf("\"ctl_off_cmd\":%u,", (unsigned)XFER_CTL_OFF_CMD);
+    printf("\"begin_min_len\":%u,", (unsigned)XFER_BEGIN_MIN_LEN);
+    printf("\"begin_off_data_ver\":%u,", (unsigned)XFER_BEGIN_OFF_DATA_VER);
+    printf("\"begin_off_total_len\":%u,", (unsigned)XFER_BEGIN_OFF_TOTAL_LEN);
+    printf("\"begin_off_total_chunks\":%u,", (unsigned)XFER_BEGIN_OFF_TOTAL_CHUNKS);
+    printf("\"begin_off_crc32\":%u,", (unsigned)XFER_BEGIN_OFF_CRC32);
+    printf("\"begin_off_dsl_format\":%u,", (unsigned)XFER_BEGIN_OFF_DSL_FORMAT);
+    printf("\"begin_off_reserved\":%u,", (unsigned)XFER_BEGIN_OFF_RESERVED);
+    printf("\"commit_min_len\":%u,", (unsigned)XFER_COMMIT_MIN_LEN);
+    printf("\"commit_off_data_ver\":%u,", (unsigned)XFER_COMMIT_OFF_DATA_VER);
+    printf("\"data_off_seq\":%u,", (unsigned)XFER_DATA_OFF_SEQ);
+    printf("\"data_off_payload\":%u,", (unsigned)XFER_DATA_OFF_PAYLOAD);
+    printf("\"dsl_format_zlib_json_v1\":%u", (unsigned)XFER_DSL_FORMAT_ZLIB_JSON_V1);
+    printf("},");
+    printf("\"ack\":{");
+    printf("\"ok_progress\":%u,\"ok_begin\":%u,\"ok_commit\":%u,",
+           (unsigned)XFER_OK_PROGRESS,
+           (unsigned)XFER_OK_BEGIN,
+           (unsigned)XFER_OK_COMMIT);
+    printf("\"err_gap\":%u,\"err_crc\":%u,\"err_inflate\":%u,\"err_parse\":%u,",
+           (unsigned)XFER_ERR_GAP,
+           (unsigned)XFER_ERR_CRC,
+           (unsigned)XFER_ERR_INFLATE,
+           (unsigned)XFER_ERR_PARSE);
+    printf("\"err_render\":%u,\"err_too_big\":%u,\"err_format\":%u,\"err_overrun\":%u,",
+           (unsigned)XFER_ERR_RENDER,
+           (unsigned)XFER_ERR_TOO_BIG,
+           (unsigned)XFER_ERR_FORMAT,
+           (unsigned)XFER_ERR_OVERRUN);
+    printf("\"err_flash\":%u,\"err_low_batt\":%u,\"err_busy\":%u",
+           (unsigned)XFER_ERR_FLASH,
+           (unsigned)XFER_ERR_LOW_BATT,
+           (unsigned)XFER_ERR_BUSY);
+    printf("},");
+    printf("\"adv\":{");
+    printf("\"payload_type_v2\":%u,", (unsigned)ADV_PAYLOAD_TYPE_V2);
+    printf("\"sync_open\":%u,", (unsigned)ADV_FLAG_SYNC_OPEN);
+    printf("\"low_batt\":%u,", (unsigned)ADV_FLAG_LOW_BATT);
+    printf("\"xfer_err\":%u,", (unsigned)ADV_FLAG_XFER_ERR);
+    printf("\"display_busy\":%u", (unsigned)ADV_FLAG_DISPLAY_BUSY);
+    printf("},");
+    printf("\"limits\":{");
+    printf("\"min_battery_mv\":%u,", (unsigned)XFER_MIN_BATTERY_MV);
+    printf("\"slot_header_size\":%u,", (unsigned)SLOT_HEADER_SIZE);
+    printf("\"slot_max_payload\":%u", (unsigned)SLOT_MAX_PAYLOAD);
+    printf("}");
+    printf("}\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "version") == 0) {
         puts("tlsr-layout-host-test phase3");
         return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "wire-constants") == 0) {
+        return wire_constants();
     }
     if (argc >= 3 && strcmp(argv[1], "uzlib-test") == 0) {
         return uzlib_test(argv[2]);
@@ -431,7 +495,7 @@ int main(int argc, char **argv)
         return text_dy_test();
     }
     if (argc < 3) {
-        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | uzlib-test <in.zlib> | slot-test <scenario> | ringlog-test <scenario> | xfer-test <scenario> | float-pct-test | text-dy-test | pipeline-e2e --uncompressed-len n --png out.png\n");
+        fprintf(stderr, "usage: host_test layout <scenario.json> | render <scenario.json> --pgm out.pgm [--png out.png] | wire-constants | uzlib-test <in.zlib> | slot-test <scenario> | ringlog-test <scenario> | xfer-test <scenario> | float-pct-test | text-dy-test | pipeline-e2e --uncompressed-len n --png out.png\n");
         return 1;
     }
 

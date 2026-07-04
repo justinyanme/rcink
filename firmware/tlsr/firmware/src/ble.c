@@ -76,7 +76,7 @@ RAM u8 tbl_advData[] = {
     // CompleteLocalName: len=0x0C (1 type byte + 11 chars), not 0x0D — off-by-one in earlier rev
     0x0C, 0x09, 'T', 'L', 'a', 'y', '_', 'X', 'X', 'X', 'X', 'X', 'X',
     // Manufacturer data: type + company ID + v2 payload (12 bytes).
-    0x0C, 0xFF, 0xFF, 0xFF, 0x02,
+    0x0C, 0xFF, 0xFF, 0xFF, ADV_PAYLOAD_TYPE_V2,
     0x00, 0x00, 0x00, 0x00,  // data_ver
     0x00, 0x00,              // battery_mV
     0x00,                    // temp_c
@@ -355,15 +355,15 @@ void layout_refresh_adv_payload(void) {
 
     u8 flags = layout_status_buf[9];
     if (ble_sync_window_closed) {
-        flags &= ~0x01;
+        flags &= (u8)~ADV_FLAG_SYNC_OPEN;
     } else {
-        flags |= 0x01;
+        flags |= ADV_FLAG_SYNC_OPEN;
     }
-    flags = (flags & (u8)~0x04) | (xfer_adv_flags() & 0x04);
+    flags = (flags & (u8)~ADV_FLAG_XFER_ERR) | (xfer_adv_flags() & ADV_FLAG_XFER_ERR);
     if (epd_is_display_busy()) {
-        flags |= 0x08;
+        flags |= ADV_FLAG_DISPLAY_BUSY;
     } else {
-        flags &= (u8)~0x08;
+        flags &= (u8)~ADV_FLAG_DISPLAY_BUSY;
     }
     layout_status_buf[9] = flags;
     tbl_advData[28] = flags;
@@ -664,7 +664,12 @@ _attribute_ram_code_ void ble_notify_battery(u8 battery_level) {
 
 _attribute_ram_code_ void update_adv_data(s16 temp, u16 battery_mv) {
     const s8 temp_c = (s8)(temp / 10);
-    const u8 flags = layout_status_buf[9];
+    u8 flags = layout_status_buf[9];
+    if (battery_mv < XFER_MIN_BATTERY_MV) {
+        flags |= ADV_FLAG_LOW_BATT;
+    } else {
+        flags &= (u8)~ADV_FLAG_LOW_BATT;
+    }
     layout_att_refresh_status(battery_mv, temp_c, flags);
     layout_apply_adv_payload();
 

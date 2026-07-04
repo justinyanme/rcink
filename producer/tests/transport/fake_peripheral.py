@@ -14,15 +14,22 @@ from rcink.transport.ble.uuids import (
 )
 from rcink.transport.ble_protocol import (
     ACK_ERR_CRC,
+    ACK_ERR_FORMAT,
     ACK_ERR_GAP,
     ACK_ERR_INFLATE,
     ACK_ERR_LOW_BATT,
     ACK_OK_BEGIN,
     ACK_OK_COMMIT,
     ACK_OK_PROGRESS,
+    DSL_FORMAT_ZLIB_JSON_V1,
     XFER_ABORT,
     XFER_BEGIN,
+    XFER_BEGIN_OFF_DATA_VER,
     XFER_COMMIT,
+    XFER_CTL_OFF_CMD,
+    XFER_DATA_OFF_PAYLOAD,
+    XFER_DATA_OFF_SEQ,
+    XFER_MIN_BATTERY_MV,
 )
 
 
@@ -36,6 +43,7 @@ class FakePeripheral:
     crc_errors_remaining: int = 0
     forced_inflate_error: bool = False
     forced_begin_code: int | None = None
+    forced_commit_code: int | None = None
     drop_begin_ack: bool = False
     drop_chunks: list[int] = field(default_factory=list)
     stale_progress_before_commit: bool = False
@@ -94,15 +102,20 @@ class FakePeripheral:
             self._ack_cb(0, bytearray(struct.pack("<HBB", last_seq, code, flags)))
 
     async def _handle_ctl(self, frame: bytes) -> None:
-        cmd = frame[0]
+        cmd = frame[XFER_CTL_OFF_CMD]
         if cmd == XFER_BEGIN:
             if self.forced_begin_code is not None:
                 self._ack(0, self.forced_begin_code)
                 return
-            if self.forced_low_batt or self.battery_mV < 2400:
+            if self.forced_low_batt or self.battery_mV < XFER_MIN_BATTERY_MV:
                 self._ack(0, ACK_ERR_LOW_BATT)
                 return
-            data_ver, total_len, total_chunks, crc32, dsl_format = struct.unpack_from("<IHHIB", frame, 1)
+            data_ver, total_len, total_chunks, crc32, dsl_format = struct.unpack_from(
+                "<IHHIB", frame, XFER_BEGIN_OFF_DATA_VER
+            )
+            if dsl_format != DSL_FORMAT_ZLIB_JSON_V1:
+                self._ack(0, ACK_ERR_FORMAT)
+                return
             self._begin = {
                 "data_ver": data_ver,
                 "total_len": total_len,
@@ -122,6 +135,9 @@ class FakePeripheral:
             self._expected_seq = 0
             return
         if cmd == XFER_COMMIT:
+            if self.forced_commit_code is not None:
+                self._ack(0, self.forced_commit_code)
+                return
             if self._begin is None:
                 self._ack(0, ACK_ERR_GAP)
                 return
@@ -150,8 +166,8 @@ class FakePeripheral:
             self._ack(0, ACK_OK_COMMIT)
 
     async def _handle_data(self, frame: bytes) -> None:
-        seq = struct.unpack_from("<H", frame)[0]
-        payload = frame[2:]
+        seq = struct.unpack_from("<H", frame, XFER_DATA_OFF_SEQ)[0]
+        payload = frame[XFER_DATA_OFF_PAYLOAD:]
         if seq in self.drop_chunks:
             self.drop_chunks.remove(seq)
             return

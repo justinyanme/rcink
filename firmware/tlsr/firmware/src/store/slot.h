@@ -16,10 +16,9 @@ typedef struct {
     uint16_t uncompressed_len;
     uint16_t compressed_len;
     uint32_t crc32;
-    uint32_t render_ts;
     uint32_t seq;
     uint16_t flags;
-    uint8_t reserved[6];
+    uint8_t reserved[10];
 } slot_header_t;
 
 typedef char slot_header_t_must_be_32_bytes[(sizeof(slot_header_t) == 32) ? 1 : -1];

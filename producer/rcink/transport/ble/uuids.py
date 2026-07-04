@@ -1,7 +1,8 @@
-"""BLE UUIDs for the tlsr-layout service.
+"""BLE UUIDs for the TLSR layout service.
 
 Firmware stores UUID bytes LSB-first. These strings are the canonical UUIDs
-that correspond to firmware/src/app_att.c LAYOUT_CHAR_UUID(slot).
+that correspond to firmware/src/app_att.c LAYOUT_CHAR_UUID(slot). See
+docs/tlsr-ble-protocol.md.
 """
 
 SERVICE_UUID = "6f636172-1f20-44e0-9b6c-7a0000000020"

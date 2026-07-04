@@ -5,12 +5,16 @@ import logging
 
 from ..ble_encode import EncodedPage, chunk_payload, encode_page
 from ..ble_protocol import (
+    ACK_ERR_BUSY,
     ACK_ERR_CRC,
     ACK_ERR_FLASH,
     ACK_ERR_FORMAT,
     ACK_ERR_GAP,
+    ACK_ERR_INFLATE,
     ACK_ERR_LOW_BATT,
     ACK_ERR_OVERRUN,
+    ACK_ERR_PARSE,
+    ACK_ERR_RENDER,
     ACK_ERR_TOO_BIG,
     ACK_OK_BEGIN,
     ACK_OK_COMMIT,
@@ -160,4 +164,12 @@ def _push_error_for_ack(ack: Ack, *, phase: str) -> PushError:
         return PushError(ack.code, "payload overrun")
     if ack.code == ACK_ERR_FLASH:
         return PushError(ack.code, "flash write failed")
+    if ack.code == ACK_ERR_INFLATE:
+        return PushError(ack.code, "inflate failed")
+    if ack.code == ACK_ERR_PARSE:
+        return PushError(ack.code, "layout parse failed")
+    if ack.code == ACK_ERR_RENDER:
+        return PushError(ack.code, "render failed")
+    if ack.code == ACK_ERR_BUSY:
+        return PushError(ack.code, "tag busy")
     return PushError(ack.code, f"unexpected {phase} response")

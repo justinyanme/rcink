@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "wire.h"
+
 #define XFER_MIN_BATTERY_MV 2400u
 
 typedef enum {
