@@ -50,7 +50,7 @@ Use console `i` to toggle light/dark live and redraw the current screen.
 
 ## Build + Flash
 
-Create `src/config.h` from `src/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
+Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
 
 ```bash
 pio run -e waveshare-s3-rlcd-dev

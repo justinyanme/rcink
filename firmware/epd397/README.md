@@ -48,7 +48,7 @@ full 4-gray refresh (~3 s). Boot does a full white clear to wipe ghosting.
 
 ## Build + Flash
 
-Create `src/config.h` from `src/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
+Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
 
 ```bash
 pio run -e waveshare-s3-epd397-dev

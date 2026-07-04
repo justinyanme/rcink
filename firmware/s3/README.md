@@ -16,7 +16,7 @@ Two halves of one repo:
 
 ## Firmware quickstart
 
-1. Copy `src/config.h.example` to `src/config.h`. Fill in WiFi credentials,
+1. Copy `include/config.h.example` to `include/config.h`. Fill in WiFi credentials,
    Axiom token, and the Axiom Root CA PEM.
 2. Make sure the producer has written at least one event to the
    `rcpapercolor` Axiom dataset (run `cd producer && uv run claude-fetch`).

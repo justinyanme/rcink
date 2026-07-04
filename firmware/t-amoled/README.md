@@ -20,7 +20,7 @@ Any string with a non-ASCII byte is drawn with the CJK font (see
 
 ## Build + Flash
 
-Create `src/config.h` from `src/config.h.example` and fill Wi-Fi/Axiom values.
+Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom values.
 
 ```bash
 pio run -e lilygo-t-amoled-dev

@@ -1,8 +1,7 @@
-// src/config.h.example
-// Copy to src/config.h and fill in your values. config.h is gitignored.
+// Copy to include/config.h and fill in your values. config.h is gitignored.
 #pragma once
 
-// WiFi
+// Wi-Fi
 #define WIFI_SSID            "your-ssid"
 #define WIFI_PASS            "your-pass"
 
@@ -12,17 +11,10 @@
 #define AXIOM_APL_QUERY      "['rocry'] | where ['type'] == 'rcpaper_page' and _time > ago(1h) | summarize arg_max(_time, ['order'], ['layout_json'], ['data_ts']) by ['id'] | project ['id'], ['order'], ['layout_json'], ['data_ts']"
 
 // Behavior
-#define FETCH_INTERVAL_SEC   1800  // 30 min scheduled refresh
-
-// Local time zone, in POSIX TZ string format. The footer formats HH:MM in
-// this zone after NTP sync. Examples:
-//   "CST-8"                       — China Standard Time
-//   "PST8PDT,M3.2.0,M11.1.0"      — US Pacific with DST
-//   "GMT0BST,M3.5.0/1,M10.5.0"    — UK
+#define FETCH_INTERVAL_SEC   1800
 #define LOCAL_TZ             "UTC0"
 
-// TLS root CA for api.axiom.co (ISRG Root X1 — Let's Encrypt chain).
-// Paste the PEM here; mirrors the eInkClaude pattern.
+// TLS root CA for api.axiom.co.
 static const char AXIOM_ROOT_CA[] = R"(-----BEGIN CERTIFICATE-----
 ...paste the PEM here...
 -----END CERTIFICATE-----

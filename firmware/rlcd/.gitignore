@@ -3,7 +3,7 @@
 .vscode/
 
 # Local config with secrets (config.h.example is committed)
-src/config.h
+include/config.h
 
 # macOS
 .DS_Store
