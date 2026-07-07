@@ -95,7 +95,7 @@ static const u16 my_RxTxUUID = EPD_RXTX_UUID;
 static u8 my_RxTx_Data = 0x00;
 static u8 RxTxValueInCCC[2];
 
-// Layout service — see spec §5 for the UUID derivation.
+// Layout service — see docs/tlsr-ble-protocol.md § UUIDs for the derivation.
 // Base: 6F636172-1F20-44E0-9B6C-7A_xxxxxxxx_20.
 // Bytes in TLSR SDK are LSB-first.
 const u8 LAYOUT_SERVICE_UUID[16] = {

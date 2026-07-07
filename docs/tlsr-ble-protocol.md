@@ -91,3 +91,7 @@ ACK notification is 4 bytes: `last_seq` `u16`, `code` `u8`, `flags` `u8`.
 ## Limits
 
 Flash slot size is 4096 bytes. Header is 32 bytes. Maximum compressed payload is 4064 bytes. Firmware refuses BEGIN when cached or measured battery is below 2400 mV.
+
+## Dedup (`data_ver`)
+
+`data_ver` is xxhash32 over the *uncompressed* canonical JSON (`canonical_json`: UTF-8, `sort_keys`, compact separators — `producer/rcink/transport/ble_hash.py`). It is computed by the producer only; firmware stores the value from BEGIN verbatim and never recomputes it. On COMMIT, if `data_ver` matches the already-committed slot, firmware ACKs `OK_COMMIT` without re-rendering (content-addressed dedup). Integrity is guarded separately by CRC32 over the *compressed* bytes. Consequence: the producer's canonical serialization is part of the wire contract — it is pinned by `test_canonical_json_wire_stability_pin` in `producer/tests/transport/test_ble_hash.py`; changing it silently breaks dedup, not correctness.
