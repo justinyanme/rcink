@@ -2,6 +2,7 @@
 
 Configuration:
 - RCINK_LAT / RCINK_LON: WGS84 coordinates.
+- RCINK_WEATHER_LABEL: short display label, e.g. LONDON.
 - RCINK_WEATHER_TEMP_UNIT: celsius (default) or fahrenheit.
 """
 
@@ -24,6 +25,7 @@ class WeatherConfigError(ValueError):
 
 @dataclass(slots=True)
 class Weather:
+    location: str
     temp: float
     high: float
     low: float
@@ -49,6 +51,16 @@ def _temp_unit() -> tuple[str, str]:
     if unit not in TEMP_UNITS:
         raise WeatherConfigError(f"RCINK_WEATHER_TEMP_UNIT must be one of {sorted(TEMP_UNITS)}, got {unit!r}")
     return unit, TEMP_UNITS[unit]
+
+
+def _location_label() -> str:
+    raw = os.environ.get("RCINK_WEATHER_LABEL")
+    if not raw or not raw.strip():
+        raise WeatherConfigError("RCINK_WEATHER_LABEL not set in environment")
+    label = " ".join(raw.strip().upper().split())
+    if len(label) > 16:
+        raise WeatherConfigError(f"RCINK_WEATHER_LABEL must be 16 characters or fewer, got {label!r}")
+    return label
 
 
 def _number(obj: dict[str, Any], key: str) -> float:
@@ -105,6 +117,7 @@ def _observed_at(current: dict[str, Any], payload: dict[str, Any]) -> dt.datetim
 def fetch_weather() -> Weather:
     lat = _env_float("RCINK_LAT")
     lon = _env_float("RCINK_LON")
+    location = _location_label()
     temp_unit, unit_symbol = _temp_unit()
     response = httpx.get(
         FORECAST_URL,
@@ -128,6 +141,7 @@ def fetch_weather() -> Weather:
         raise ValueError("weather payload missing current/daily objects")
 
     return Weather(
+        location=location,
         temp=_number(current, "temperature_2m"),
         high=_daily_number(daily, "temperature_2m_max"),
         low=_daily_number(daily, "temperature_2m_min"),

@@ -22,10 +22,12 @@
     <key>AXIOM_DATASET</key>
     <string>rocry</string>
     <!-- Optional: weather source for overview + KEYPOINT weather card.
-         Without both coordinates, overview renders weather as a dash. -->
+         Without coordinates + label, overview renders a visible config error. -->
     <key>RCINK_LAT</key>
     <string>CHANGE_ME</string>
     <key>RCINK_LON</key>
+    <string>CHANGE_ME</string>
+    <key>RCINK_WEATHER_LABEL</key>
     <string>CHANGE_ME</string>
     <!-- Optional: celsius (default) or fahrenheit. -->
     <key>RCINK_WEATHER_TEMP_UNIT</key>

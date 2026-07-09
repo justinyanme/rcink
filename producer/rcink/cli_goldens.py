@@ -108,6 +108,7 @@ def _build_overview() -> dict:
         calendar=None,
         reminders=None,
         weather=Weather(
+            location="LONDON",
             temp=28.4,
             high=31.2,
             low=24.6,

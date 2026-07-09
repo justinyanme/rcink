@@ -33,6 +33,7 @@ _QUOTE_FITS: tuple[tuple[str, int, int], ...] = (
 )
 _LABEL_SIZE = "sm"
 _ROW_CONTENT_DY = 2
+_PRECIP_THRESHOLD = 20
 
 
 def _quote_block(q: Quote | None) -> list[dict]:
@@ -109,6 +110,14 @@ def _weather_label(code: int) -> tuple[str, ColorToken]:
     return "WX", "black"
 
 
+def _precip_label(code: int) -> str:
+    if 95 <= code <= 99:
+        return "STORM"
+    if 71 <= code <= 77 or 85 <= code <= 86:
+        return "SNOW"
+    return "RAIN"
+
+
 def _weather_row(weather: Weather | None, *, issue: WeatherIssue | None = None) -> dict:
     if weather is None:
         status, detail, color = {
@@ -128,18 +137,21 @@ def _weather_row(weather: Weather | None, *, issue: WeatherIssue | None = None) 
             ],
         )
     label, color = _weather_label(weather.code)
-    pop = "—" if weather.precip_probability is None else f"{weather.precip_probability}%"
+    children = [
+        text(weather.location, size=_LABEL_SIZE, weight="bold", color="white", bg="info", pad=4),
+        text(f"{round(weather.temp)}{weather.unit}", size="sm", weight="bold", color=color),
+        text(label, size="sm", weight="bold", color=color),
+        text(f"{round(weather.low)}~{round(weather.high)}{weather.unit}", size="sm"),
+        spacer(),
+    ]
+    if weather.precip_probability is not None and weather.precip_probability >= _PRECIP_THRESHOLD:
+        children.append(
+            text(f"{_precip_label(weather.code)} {weather.precip_probability}%", size="sm", weight="bold", color=color)
+        )
     return hstack(
         gap=8,
         align="center",
-        children=[
-            text("WEATHER", size=_LABEL_SIZE, weight="bold", color="white", bg="info", pad=4),
-            text(f"{round(weather.temp)}{weather.unit}", size="sm", weight="bold", color=color),
-            text(label, size="sm", weight="bold", color=color),
-            text(f"H{round(weather.high)} L{round(weather.low)}", size="sm"),
-            spacer(),
-            text(f"POP {pop}", size="sm", weight="bold"),
-        ],
+        children=children,
     )
 
 

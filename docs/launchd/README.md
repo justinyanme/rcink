@@ -12,7 +12,7 @@ Copy the example into `~/Library/LaunchAgents/`, then edit:
 - `/Users/CHANGE_ME/.local/bin/uv`
 - `/Users/CHANGE_ME/w/_hw/rcink/producer` -> this repo's `producer/` path
 - `AXIOM_TOKEN`
-- optional `RCINK_LAT` and `RCINK_LON` for weather
+- optional `RCINK_LAT`, `RCINK_LON`, and `RCINK_WEATHER_LABEL` for weather
 - optional `GITHUB_TOKEN` and `GITHUB_USERNAME`
 
 Install after editing:

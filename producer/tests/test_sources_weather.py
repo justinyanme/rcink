@@ -27,10 +27,12 @@ def _weather_payload():
 def test_fetch_weather_parses_open_meteo_response(monkeypatch, httpx_mock):
     monkeypatch.setenv("RCINK_LAT", "22.3")
     monkeypatch.setenv("RCINK_LON", "114.2")
+    monkeypatch.setenv("RCINK_WEATHER_LABEL", " Hong   Kong ")
     httpx_mock.add_response(method="GET", json=_weather_payload())
 
     weather = fetch_weather()
 
+    assert weather.location == "HONG KONG"
     assert weather.temp == 28.4
     assert weather.high == 31.2
     assert weather.low == 24.6
@@ -50,6 +52,7 @@ def test_fetch_weather_parses_open_meteo_response(monkeypatch, httpx_mock):
 def test_fetch_weather_honors_temperature_unit(monkeypatch, httpx_mock):
     monkeypatch.setenv("RCINK_LAT", "22.3")
     monkeypatch.setenv("RCINK_LON", "114.2")
+    monkeypatch.setenv("RCINK_WEATHER_LABEL", "HONG KONG")
     monkeypatch.setenv("RCINK_WEATHER_TEMP_UNIT", "fahrenheit")
     payload = _weather_payload()
     payload["current"]["temperature_2m"] = 82.0
@@ -67,14 +70,25 @@ def test_fetch_weather_honors_temperature_unit(monkeypatch, httpx_mock):
 def test_fetch_weather_requires_coordinates(monkeypatch):
     monkeypatch.delenv("RCINK_LAT", raising=False)
     monkeypatch.setenv("RCINK_LON", "114.2")
+    monkeypatch.setenv("RCINK_WEATHER_LABEL", "HONG KONG")
 
     with pytest.raises(WeatherConfigError, match="RCINK_LAT"):
+        fetch_weather()
+
+
+def test_fetch_weather_requires_location_label(monkeypatch):
+    monkeypatch.setenv("RCINK_LAT", "22.3")
+    monkeypatch.setenv("RCINK_LON", "114.2")
+    monkeypatch.delenv("RCINK_WEATHER_LABEL", raising=False)
+
+    with pytest.raises(WeatherConfigError, match="RCINK_WEATHER_LABEL"):
         fetch_weather()
 
 
 def test_fetch_weather_rejects_malformed_payload(monkeypatch, httpx_mock):
     monkeypatch.setenv("RCINK_LAT", "22.3")
     monkeypatch.setenv("RCINK_LON", "114.2")
+    monkeypatch.setenv("RCINK_WEATHER_LABEL", "HONG KONG")
     payload = _weather_payload()
     payload["current"]["temperature_2m"] = None
     httpx_mock.add_response(method="GET", json=payload)

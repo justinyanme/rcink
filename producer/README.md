@@ -39,6 +39,7 @@ Per-service setup notes live under [`docs/setup/`](docs/setup/):
    export AXIOM_DATASET=rocry
    export RCINK_LAT=22.3             # optional weather row/card
    export RCINK_LON=114.2
+   export RCINK_WEATHER_LABEL=HK     # short weather row label
    export GITHUB_TOKEN=ghp-...      # only needed for the github page
    export GITHUB_USERNAME=rocry     # who the github page reports on
    uv run fetch-all

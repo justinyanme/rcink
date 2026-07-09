@@ -119,6 +119,7 @@ def test_codex_card_warns_on_high_usage():
 
 def test_weather_card_renders():
     weather = Weather(
+        location="LONDON",
         temp=28.4,
         high=31.2,
         low=24.6,

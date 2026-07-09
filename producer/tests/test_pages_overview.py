@@ -95,6 +95,7 @@ def _empty_gh() -> GitHubActivity:
 
 def _weather() -> Weather:
     return Weather(
+        location="LONDON",
         temp=28.4,
         high=31.2,
         low=24.6,
@@ -267,11 +268,36 @@ def test_overview_weather_row_shows_temp_range_and_pop():
     )
 
     texts = _all_text(page)
-    assert "WEATHER" in texts
+    assert "LONDON" in texts
     assert "28C" in texts
     assert "RAIN" in texts
-    assert "H31 L25" in texts
-    assert "POP 67%" in texts
+    assert "25~31C" in texts
+    assert "RAIN 67%" in texts
+    assert "WEATHER" not in texts
+    assert "POP 67%" not in texts
+
+
+def test_overview_weather_row_hides_low_precipitation():
+    weather = _weather()
+    weather.code = 0
+    weather.precip_probability = 2
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        weather=weather,
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    row = _find_hstack_with_direct_text(page, "LONDON")
+    texts = [n["value"] for n in row["children"] if n.get("type") == "text"]
+    assert "LONDON" in texts
+    assert "SUN" in texts
+    assert "RAIN 2%" not in texts
+    assert not any(t.startswith("POP") for t in texts)
 
 
 def test_overview_weather_config_issue_is_visible():
