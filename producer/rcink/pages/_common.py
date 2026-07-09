@@ -112,6 +112,38 @@ def wrap_visual(body: str, *, line_limit: int, max_lines: int) -> list[str]:
     return lines
 
 
+def wrap_visual_all(body: str, *, line_limit: int) -> list[str]:
+    """Greedy word-wrap by visual cells without dropping trailing text."""
+    if line_limit <= 0:
+        raise ValueError(f"line_limit must be positive, got {line_limit}")
+    if visual_width(body) <= line_limit:
+        return [body] if body else []
+
+    lines: list[str] = []
+    remaining = body
+    while remaining:
+        if visual_width(remaining) <= line_limit:
+            lines.append(remaining)
+            break
+        width = 0
+        last_space = -1
+        hard_break = len(remaining)
+        for i, c in enumerate(remaining):
+            w = cell_width(c)
+            if width + w > line_limit:
+                if c.isspace():
+                    last_space = i
+                hard_break = max(1, i)
+                break
+            width += w
+            if c.isspace():
+                last_space = i
+        cut = last_space if last_space > 0 else hard_break
+        lines.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    return [line for line in lines if line]
+
+
 def relative_short(when: dt.datetime | None, *, now: dt.datetime) -> str:
     """Compact age label: '5m', '3h', '2d', '1w', '4mo'. Empty string for None."""
     if when is None:

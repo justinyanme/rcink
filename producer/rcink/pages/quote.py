@@ -9,11 +9,35 @@ from __future__ import annotations
 import datetime as dt
 
 from rcink.layout import divider, hstack, icon, spacer, text, vstack
+from rcink.pages._common import wrap_visual_all
 from rcink.palette import ColorToken
 from rcink.sources.quotes import Quote
 
 # Color cycle for body lines. Index = line position.
 _LINE_COLORS: tuple[ColorToken | None, ...] = (None, "info", None, "accent")
+_QUOTE_FITS: tuple[tuple[str, int, int], ...] = (
+    # size, visual cells per line, max body lines
+    ("h1", 22, 4),
+    ("h2", 30, 6),
+    ("body", 44, 8),
+    ("sm", 64, 10),
+)
+
+
+def _fit_quote_lines(quote: Quote) -> tuple[str, list[str]]:
+    source_lines = [line.strip() for line in quote.lines if line.strip()]
+    body = " ".join(source_lines)
+    if not body:
+        raise ValueError("quote must contain at least one non-empty line")
+    for size, line_limit, max_lines in _QUOTE_FITS:
+        if len(source_lines) <= max_lines and all(
+            len(wrap_visual_all(line, line_limit=line_limit)) == 1 for line in source_lines
+        ):
+            return size, source_lines
+        lines = wrap_visual_all(body, line_limit=line_limit)
+        if len(lines) <= max_lines:
+            return size, lines
+    raise ValueError(f"quote is too long to fit: {body!r}")
 
 
 def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
@@ -26,23 +50,12 @@ def build_quote_page(quote: Quote, *, now: dt.datetime) -> dict:
         ],
     )
 
-    # Pick the largest font size whose longest line still fits the viewport
-    # width (540 px - 2*24 pad = 492 px usable). Approximate avg-bold-char
-    # widths in M5GFX FreeSansBold: h1≈22, h2≈16, body≈11 px. The renderer
-    # also truncates with an ellipsis as a safety net, but downgrading the
-    # font keeps every word visible — far better for a poster page.
-    longest = max((len(line) for line in quote.lines[:4]), default=0)
-    if longest <= 22:
-        line_size = "h1"
-    elif longest <= 30:
-        line_size = "h2"
-    else:
-        line_size = "body"
+    line_size, lines = _fit_quote_lines(quote)
 
     body: list[dict] = [
         text('"', size=line_size, color="accent", weight="bold"),
     ]
-    for i, line in enumerate(quote.lines[:4]):
+    for i, line in enumerate(lines):
         body.append(
             text(line, size=line_size, weight="bold", color=_LINE_COLORS[i % len(_LINE_COLORS)]),
         )

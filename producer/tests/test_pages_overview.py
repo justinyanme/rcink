@@ -53,6 +53,23 @@ def _find_hstack_with_direct_text(node: dict, value: str) -> dict:
     raise AssertionError(f"hstack containing direct text {value!r} not found")
 
 
+def _overview_quote_nodes(page: dict) -> list[dict]:
+    children = page["children"]
+    if len(children) < 3 or children[1].get("type") != "spacer" or children[1].get("size") != 2:
+        return []
+    out: list[dict] = []
+    for child in children[2:]:
+        if child.get("type") == "divider":
+            break
+        if child.get("type") == "text":
+            out.append(child)
+    return out
+
+
+def _rendered_quote_text(nodes: list[dict]) -> str:
+    return " ".join(n["value"].strip('"') for n in nodes)
+
+
 _NOW = dt.datetime(2026, 5, 23, 9, 0)
 
 
@@ -105,7 +122,7 @@ def test_overview_short_quote_single_line_at_h2():
     assert all(n.get("size") == "h2" for n in quote_nodes)
 
 
-def test_overview_long_quote_wraps_up_to_three_lines():
+def test_overview_long_quote_resizes_and_keeps_all_text():
     long_q = (
         "the obstacle in the path becomes the path · never forget within every "
         "obstacle is an opportunity to improve our condition"
@@ -119,11 +136,29 @@ def test_overview_long_quote_wraps_up_to_three_lines():
         quote=Quote(lines=[long_q], attrib="Ryan Holiday"),
         now=_NOW,
     )
-    texts = _all_text(page)
-    # The quote should be split across 2-3 nodes at h2; total wrap ≤ 3 lines.
-    quote_lines = [t for t in texts if t and t not in ('"', "—")]
-    has_quote = any("obstacle" in t for t in quote_lines)
-    assert has_quote
+    quote_nodes = _overview_quote_nodes(page)
+    assert quote_nodes
+    assert {n.get("size") for n in quote_nodes} == {"body"}
+    assert _rendered_quote_text(quote_nodes) == long_q
+    assert not any("…" in n["value"] for n in quote_nodes)
+
+
+def test_overview_quote_too_long_fails_instead_of_truncating():
+    too_long = " ".join(["visibility"] * 60)
+    try:
+        build_overview_page(
+            claude=None,
+            codex=None,
+            calendar=_empty_cal(),
+            reminders=_empty_reminders(),
+            github=_empty_gh(),
+            quote=Quote(lines=[too_long], attrib="anon"),
+            now=_NOW,
+        )
+    except ValueError as exc:
+        assert "overview quote is too long to fit" in str(exc)
+    else:
+        raise AssertionError("long overview quote should fail rather than truncate")
 
 
 def test_overview_missing_quote_omits_quote_block():
@@ -237,6 +272,48 @@ def test_overview_weather_row_shows_temp_range_and_pop():
     assert "RAIN" in texts
     assert "H31 L25" in texts
     assert "POP 67%" in texts
+
+
+def test_overview_weather_config_issue_is_visible():
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        weather=None,
+        weather_issue="config",
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    row = _find_hstack_with_direct_text(page, "WEATHER")
+    texts = [n["value"] for n in row["children"] if n.get("type") == "text"]
+    assert "WEATHER" in texts
+    assert "CONFIG" in texts
+    assert "SET LAT LON" in texts
+    assert "—" not in texts
+
+
+def test_overview_weather_fetch_issue_is_visible():
+    page = build_overview_page(
+        claude=None,
+        codex=None,
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        weather=None,
+        weather_issue="fetch",
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    row = _find_hstack_with_direct_text(page, "WEATHER")
+    texts = [n["value"] for n in row["children"] if n.get("type") == "text"]
+    assert "WEATHER" in texts
+    assert "ERROR" in texts
+    assert "FETCH FAILED" in texts
+    assert "—" not in texts
 
 
 def test_overview_rows_have_no_letter_icon_markers_and_labels_are_sm():

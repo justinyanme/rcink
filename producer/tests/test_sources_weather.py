@@ -1,7 +1,7 @@
 import datetime as dt
 
 import pytest
-from rcink.sources.weather import fetch_weather
+from rcink.sources.weather import WeatherConfigError, fetch_weather
 
 
 def _weather_payload():
@@ -68,7 +68,7 @@ def test_fetch_weather_requires_coordinates(monkeypatch):
     monkeypatch.delenv("RCINK_LAT", raising=False)
     monkeypatch.setenv("RCINK_LON", "114.2")
 
-    with pytest.raises(RuntimeError, match="RCINK_LAT"):
+    with pytest.raises(WeatherConfigError, match="RCINK_LAT"):
         fetch_weather()
 
 

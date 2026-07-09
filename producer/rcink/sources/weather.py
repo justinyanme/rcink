@@ -14,10 +14,12 @@ from typing import Any
 
 import httpx
 
-from rcink.envutil import require_env
-
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 TEMP_UNITS = {"celsius": "C", "fahrenheit": "F"}
+
+
+class WeatherConfigError(ValueError):
+    """Weather source is not configured correctly."""
 
 
 @dataclass(slots=True)
@@ -33,17 +35,19 @@ class Weather:
 
 
 def _env_float(key: str) -> float:
-    raw = require_env(key)
+    raw = os.environ.get(key)
+    if not raw:
+        raise WeatherConfigError(f"{key} not set in environment")
     try:
         return float(raw)
     except ValueError as exc:
-        raise ValueError(f"{key} must be a floating-point coordinate, got {raw!r}") from exc
+        raise WeatherConfigError(f"{key} must be a floating-point coordinate, got {raw!r}") from exc
 
 
 def _temp_unit() -> tuple[str, str]:
     unit = os.environ.get("RCINK_WEATHER_TEMP_UNIT", "celsius").strip().lower()
     if unit not in TEMP_UNITS:
-        raise ValueError(f"RCINK_WEATHER_TEMP_UNIT must be one of {sorted(TEMP_UNITS)}, got {unit!r}")
+        raise WeatherConfigError(f"RCINK_WEATHER_TEMP_UNIT must be one of {sorted(TEMP_UNITS)}, got {unit!r}")
     return unit, TEMP_UNITS[unit]
 
 

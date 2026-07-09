@@ -16,14 +16,14 @@ from loguru import logger
 from rcink.axiom import ingest
 from rcink.keypoint import write_card
 from rcink.keypoint_cards import weather_card
-from rcink.pages.overview import build_overview_page
+from rcink.pages.overview import WeatherIssue, build_overview_page
 from rcink.sources.calendar import fetch_todays_events
 from rcink.sources.claude import fetch_claude_usage
 from rcink.sources.codex import fetch_codex_usage
 from rcink.sources.github import fetch_github_activity
 from rcink.sources.quotes import pick_quote
 from rcink.sources.reminders import fetch_todays_reminders
-from rcink.sources.weather import fetch_weather
+from rcink.sources.weather import Weather, WeatherConfigError, fetch_weather
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -39,6 +39,17 @@ def _try(name: str, fn: Callable[[], T]) -> T | None:
         return None
 
 
+def _try_weather() -> tuple[Weather | None, WeatherIssue | None]:
+    try:
+        return fetch_weather(), None
+    except WeatherConfigError as e:
+        logger.warning(f"overview: weather config failed: {e}")
+        return None, "config"
+    except Exception as e:  # noqa: BLE001 — log + degrade
+        logger.warning(f"overview: weather fetch failed: {e}")
+        return None, "fetch"
+
+
 @app.command()
 def run() -> None:
     now = dt.datetime.now().astimezone()
@@ -47,10 +58,9 @@ def run() -> None:
     cal = _try("calendar", lambda: fetch_todays_events(now=now))
     rem = _try("reminders", lambda: fetch_todays_reminders(now=now))
     github = _try("github", fetch_github_activity)
-    weather = _try("weather", fetch_weather)
-    # pick_quote is deterministic + offline; never expected to raise, so call
-    # it directly. The header drops it gracefully if the joined string is too
-    # long to share the row with the date stamp.
+    weather, weather_issue = _try_weather()
+    # pick_quote is deterministic + offline; quote layout is validated by page
+    # tests so oversized curated entries fail before deploy.
     quote = pick_quote(now.date())
     logger.info(
         f"overview: claude={'ok' if claude else 'NA'} "
@@ -66,6 +76,7 @@ def run() -> None:
         calendar=cal,
         reminders=rem,
         weather=weather,
+        weather_issue=weather_issue,
         github=github,
         quote=quote,
         now=now,

@@ -8,6 +8,12 @@ def _quote():
     return Quote(lines=("BUILD", "PROTOCOLS,", "NOT", "PRODUCTS."), attrib="— ALAN KAY")
 
 
+def _body_line_nodes(page: dict) -> list[dict]:
+    return [
+        c for c in page["children"] if c.get("type") == "text" and c.get("weight") == "bold" and c.get("value") != '"'
+    ]
+
+
 def test_root_is_vstack():
     page = build_quote_page(_quote(), now=dt.datetime(2026, 5, 18, 14, 32))
     assert page["type"] == "vstack"
@@ -64,10 +70,30 @@ def test_attribution_is_rendered_flush_right():
     assert last_child["value"] == "— ALAN KAY"
 
 
-def test_lines_beyond_four_are_truncated_not_overflowed():
-    # A defensive guard: if someone curates a 6-line quote, only 4 render.
+def test_lines_beyond_four_are_not_truncated():
     long = Quote(lines=("A", "B", "C", "D", "E", "F"), attrib="— ANON")
     page = build_quote_page(long, now=dt.datetime(2026, 5, 18))
-    body_lines = [c for c in page["children"] if c.get("type") == "text" and c.get("size") == "h1"]
-    # 1 opening glyph + 4 body lines (E, F dropped).
-    assert [n["value"] for n in body_lines] == ['"', "A", "B", "C", "D"]
+    assert " ".join(n["value"] for n in _body_line_nodes(page)) == "A B C D E F"
+
+
+def test_long_quote_wraps_at_sm_without_dropping_text():
+    body = (
+        "the obstacle in the path becomes the path never forget within every "
+        "obstacle is an opportunity to improve our condition"
+    )
+    page = build_quote_page(Quote(lines=(body,), attrib="— ANON"), now=dt.datetime(2026, 5, 18))
+    nodes = _body_line_nodes(page)
+    assert {n.get("size") for n in nodes} <= {"h2", "body", "sm"}
+    assert any(n.get("size") != "h1" for n in nodes)
+    assert " ".join(n["value"] for n in nodes) == body
+    assert not any("…" in n["value"] for n in nodes)
+
+
+def test_quote_too_long_fails_instead_of_truncating():
+    too_long = " ".join(["visibility"] * 100)
+    try:
+        build_quote_page(Quote(lines=(too_long,), attrib="— ANON"), now=dt.datetime(2026, 5, 18))
+    except ValueError as exc:
+        assert "quote is too long to fit" in str(exc)
+    else:
+        raise AssertionError("long quote should fail rather than truncate")

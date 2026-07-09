@@ -9,9 +9,10 @@ leave the right ~2/3 of the page empty — so we just stack everything.
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from rcink.layout import divider, hbar, hstack, spacer, text, vstack
-from rcink.pages._common import relative_short, trim, wrap_visual
+from rcink.pages._common import relative_short, trim, wrap_visual, wrap_visual_all
 from rcink.palette import ColorToken
 from rcink.sources.calendar import TodaysCalendar
 from rcink.sources.claude import ClaudeUsage
@@ -21,9 +22,15 @@ from rcink.sources.quotes import Quote
 from rcink.sources.reminders import TodaysReminders
 from rcink.sources.weather import Weather
 
-# Visual-cell budget for one wrapped quote line at h2-bold on a 540px panel.
-_QUOTE_LINE_LIMIT = 30
-_QUOTE_MAX_LINES = 3
+type WeatherIssue = Literal["config", "fetch", "unavailable"]
+
+
+_QUOTE_FITS: tuple[tuple[str, int, int], ...] = (
+    # size, visual cells per line, max lines in the overview header block
+    ("h2", 30, 3),
+    ("body", 44, 4),
+    ("sm", 64, 5),
+)
 _LABEL_SIZE = "sm"
 _ROW_CONTENT_DY = 2
 
@@ -38,12 +45,19 @@ def _quote_block(q: Quote | None) -> list[dict]:
     joined = " ".join(line.strip() for line in q.lines if line.strip())
     if not joined:
         return []
-    lines = wrap_visual(joined, line_limit=_QUOTE_LINE_LIMIT, max_lines=_QUOTE_MAX_LINES)
+    selected_size = "sm"
+    for candidate_size, line_limit, max_lines in _QUOTE_FITS:
+        lines = wrap_visual_all(joined, line_limit=line_limit)
+        if len(lines) <= max_lines:
+            selected_size = candidate_size
+            break
+    else:
+        raise ValueError(f"overview quote is too long to fit: {joined!r}")
     out: list[dict] = []
     for i, line in enumerate(lines):
         prefix = '"' if i == 0 else ""
         suffix = '"' if i == len(lines) - 1 else ""
-        out.append(text(f"{prefix}{line}{suffix}", size="h2", weight="bold"))
+        out.append(text(f"{prefix}{line}{suffix}", size=selected_size, weight="bold"))
     return out
 
 
@@ -95,15 +109,22 @@ def _weather_label(code: int) -> tuple[str, ColorToken]:
     return "WX", "black"
 
 
-def _weather_row(weather: Weather | None) -> dict:
+def _weather_row(weather: Weather | None, *, issue: WeatherIssue | None = None) -> dict:
     if weather is None:
+        status, detail, color = {
+            "config": ("CONFIG", "SET LAT LON", "warning"),
+            "fetch": ("ERROR", "FETCH FAILED", "accent"),
+            "unavailable": ("UNAVAILABLE", "CHECK LOG", "warning"),
+            None: ("UNAVAILABLE", "CHECK LOG", "warning"),
+        }[issue]
         return hstack(
             gap=8,
             align="center",
             children=[
                 text("WEATHER", size=_LABEL_SIZE, weight="bold", color="white", bg="info", pad=4),
-                text("—", size="sm", weight="bold"),
+                text(status, size="sm", weight="bold", color=color),
                 spacer(),
+                text(detail, size="sm", weight="bold", color=color),
             ],
         )
     label, color = _weather_label(weather.code)
@@ -277,6 +298,7 @@ def build_overview_page(
     reminders: TodaysReminders | None,
     now: dt.datetime,
     weather: Weather | None = None,
+    weather_issue: WeatherIssue | None = None,
     github: GitHubActivity | None = None,
     quote: Quote | None = None,
 ) -> dict:
@@ -306,7 +328,7 @@ def build_overview_page(
         secondary_label="7D",
     )
     github_row = _github_row(github)
-    weather_row = _weather_row(weather)
+    weather_row = _weather_row(weather, issue=weather_issue)
 
     page_children: list[dict] = [header]
     if quote_nodes:
