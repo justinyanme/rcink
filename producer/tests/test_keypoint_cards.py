@@ -114,6 +114,28 @@ def test_codex_card_warns_on_high_usage():
     assert fields[5] == "3"
 
 
+def test_codex_card_renders_single_weekly_window():
+    usage = CodexUsage(
+        primary_pct=12.0,
+        primary_reset="4d",
+        primary_window_min=10080,
+        secondary_pct=None,
+        secondary_reset="",
+        secondary_window_min=None,
+        credits_dollars=None,
+        primary_reset_at=RESET_AT_7D,
+        secondary_reset_at=None,
+        plan="Pro",
+    )
+
+    fields = _renders(codex_card(usage, now=NOW))
+
+    assert fields[7] == "7D    4d"
+    assert fields[8] == "[012]"
+    assert fields[9] == ""
+    assert fields[10] == ""
+
+
 # --- weather ---
 
 

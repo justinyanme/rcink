@@ -87,11 +87,55 @@ def test_rejected_token_raises_creds_error(httpx_mock, tmp_path):
         fetch_codex_usage(p)
 
 
-def test_missing_required_window_raises(httpx_mock, tmp_path):
+def test_null_secondary_window_is_optional(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    payload = _usage_payload()
+    payload["rate_limit"]["primary_window"] = {
+        "used_percent": 12,
+        "limit_window_seconds": 604800,
+        "reset_after_seconds": 412504,
+        "reset_at": 1784951410,
+    }
+    payload["rate_limit"]["secondary_window"] = None
+    httpx_mock.add_response(url=USAGE_URL, json=payload)
+
+    usage = fetch_codex_usage(p)
+
+    assert usage.primary_pct == 12.0
+    assert usage.primary_window_min == 10080
+    assert usage.primary_reset_at == 1784951410
+    assert usage.secondary_pct is None
+    assert usage.secondary_reset == ""
+    assert usage.secondary_window_min is None
+    assert usage.secondary_reset_at is None
+
+
+def test_missing_primary_window_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    payload = _usage_payload()
+    del payload["rate_limit"]["primary_window"]
+    httpx_mock.add_response(url=USAGE_URL, json=payload)
+
+    with pytest.raises(ValueError, match="primary_window"):
+        fetch_codex_usage(p)
+
+
+def test_missing_secondary_window_raises(httpx_mock, tmp_path):
     p = write_auth(tmp_path)
     payload = _usage_payload()
     del payload["rate_limit"]["secondary_window"]
     httpx_mock.add_response(url=USAGE_URL, json=payload)
+
+    with pytest.raises(ValueError, match="secondary_window"):
+        fetch_codex_usage(p)
+
+
+def test_malformed_secondary_window_raises(httpx_mock, tmp_path):
+    p = write_auth(tmp_path)
+    payload = _usage_payload()
+    payload["rate_limit"]["secondary_window"] = []
+    httpx_mock.add_response(url=USAGE_URL, json=payload)
+
     with pytest.raises(ValueError, match="secondary_window"):
         fetch_codex_usage(p)
 

@@ -169,6 +169,16 @@ def _compact_time(s: str) -> str:
     return s.replace(" ", "")
 
 
+def _short_window_label(minutes: int | None) -> str:
+    if minutes is None:
+        return "WINDOW"
+    if minutes % (24 * 60) == 0:
+        return f"{minutes // (24 * 60)}D"
+    if minutes % 60 == 0:
+        return f"{minutes // 60}H"
+    return f"{minutes}M"
+
+
 def _usage_row(
     brand: str,
     brand_color: ColorToken,
@@ -176,24 +186,23 @@ def _usage_row(
     primary_label: str,
     primary_reset: str,
     secondary_pct: float | None,
-    secondary_label: str,
+    secondary_label: str | None,
 ) -> dict:
-    """One full-width row: [BRAND chip] [primary % + flex hbar] [7D pct]."""
+    """One full-width row: brand, primary bar, optional secondary pct, reset."""
     pct_text = "—" if primary_pct is None else f"{int(primary_pct)}%"
-    secondary_text = f"{int(secondary_pct)}%" if secondary_pct is not None else "—"
-
-    return hstack(
-        gap=8,
-        align="center",
-        children=[
-            text(brand, size=_LABEL_SIZE, weight="bold", color="white", bg=brand_color, pad=4),
-            text(primary_label, size="body", weight="bold"),
-            text(pct_text, size="body", color=_pct_color(primary_pct), weight="bold"),
-            hbar(pct=primary_pct if primary_pct is not None else 0, color=brand_color, height=14),
-            text(f"{secondary_label} {secondary_text}", size="body", weight="bold", color=_pct_color(secondary_pct)),
-            text(_compact_time(primary_reset), size="body"),
-        ],
-    )
+    children = [
+        text(brand, size=_LABEL_SIZE, weight="bold", color="white", bg=brand_color, pad=4),
+        text(primary_label, size="body", weight="bold"),
+        text(pct_text, size="body", color=_pct_color(primary_pct), weight="bold"),
+        hbar(pct=primary_pct if primary_pct is not None else 0, color=brand_color, height=14),
+    ]
+    if secondary_label is not None:
+        secondary_text = f"{int(secondary_pct)}%" if secondary_pct is not None else "—"
+        children.append(
+            text(f"{secondary_label} {secondary_text}", size="body", weight="bold", color=_pct_color(secondary_pct))
+        )
+    children.append(text(_compact_time(primary_reset), size="body"))
+    return hstack(gap=8, align="center", children=children)
 
 
 def _next_event_row(cal: TodaysCalendar | None, now: dt.datetime) -> dict:
@@ -334,10 +343,12 @@ def build_overview_page(
         brand="CODEX",
         brand_color="success",
         primary_pct=codex.primary_pct if codex else None,
-        primary_label="5H",
+        primary_label=_short_window_label(codex.primary_window_min) if codex else "WINDOW",
         primary_reset=codex.primary_reset if codex else "",
         secondary_pct=codex.secondary_pct if codex else None,
-        secondary_label="7D",
+        secondary_label=(
+            _short_window_label(codex.secondary_window_min) if codex and codex.secondary_pct is not None else None
+        ),
     )
     github_row = _github_row(github)
     weather_row = _weather_row(weather, issue=weather_issue)

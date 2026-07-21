@@ -55,3 +55,21 @@ def test_credits_omitted_when_none():
     )
     page = build_codex_page(usage, sparkline=None)
     assert not any(c["type"] == "text" and c.get("bg") == "warning" for c in page["children"])
+
+
+def test_single_weekly_window_omits_secondary_kpi():
+    usage = CodexUsage(
+        primary_pct=12.0,
+        primary_reset="4d 18h",
+        primary_window_min=10080,
+        secondary_pct=None,
+        secondary_reset="",
+        secondary_window_min=None,
+        credits_dollars=None,
+    )
+
+    page = build_codex_page(usage, sparkline=None)
+    kpi_blocks = [child for child in page["children"] if child["type"] == "vstack"]
+
+    assert len(kpi_blocks) == 1
+    assert kpi_blocks[0]["children"][0]["children"][0]["value"] == "WEEKLY"

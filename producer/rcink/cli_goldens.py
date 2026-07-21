@@ -86,25 +86,35 @@ def _build_codex() -> dict:
     from rcink.sources.codex import CodexUsage
 
     usage = CodexUsage(
-        primary_pct=30.0,
-        primary_reset="4h 50m",
-        primary_window_min=300,
-        secondary_pct=18.0,
-        secondary_reset="6d 23h",
-        secondary_window_min=10080,
+        primary_pct=12.0,
+        primary_reset="4d 18h",
+        primary_window_min=10080,
+        secondary_pct=None,
+        secondary_reset="",
+        secondary_window_min=None,
         credits_dollars=12.34,
-        plan="Plus",
+        plan="Pro",
     )
     return build_codex_page(usage, sparkline=[8, 14, 11, 19, 22, 18, 25, 27])
 
 
 def _build_overview() -> dict:
     from rcink.pages.overview import build_overview_page
+    from rcink.sources.codex import CodexUsage
     from rcink.sources.weather import Weather
 
     return build_overview_page(
         claude=None,
-        codex=None,
+        codex=CodexUsage(
+            primary_pct=12.0,
+            primary_reset="4d 18h",
+            primary_window_min=10080,
+            secondary_pct=None,
+            secondary_reset="",
+            secondary_window_min=None,
+            credits_dollars=None,
+            plan="Pro",
+        ),
         calendar=None,
         reminders=None,
         weather=Weather(

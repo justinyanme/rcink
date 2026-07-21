@@ -73,8 +73,8 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
     r.raise_for_status()
     data = r.json()
 
-    # API schema (verified 2026-05-18):
-    #   rate_limit: { primary_window: {...}, secondary_window: {...} }
+    # API schema (verified 2026-07-20):
+    #   rate_limit: { primary_window: {...}, secondary_window: {...} | null }
     # Each window: used_percent (int), reset_after_seconds (int),
     # limit_window_seconds (int), reset_at (epoch).
     rl = data.get("rate_limit")
@@ -86,6 +86,11 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
         if not isinstance(v, dict):
             raise ValueError(f"Codex usage response missing/malformed window: {key}")
         return v
+
+    def optional_window_block(key: str) -> dict | None:
+        if key not in rl:
+            raise ValueError(f"Codex usage response missing window: {key}")
+        return None if rl[key] is None else window_block(key)
 
     def pct(block: dict) -> float | None:
         v = block.get("used_percent")
@@ -122,7 +127,7 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
         return int(secs) // 60
 
     primary = window_block("primary_window")
-    secondary = window_block("secondary_window")
+    secondary = optional_window_block("secondary_window")
 
     # credits.balance is a string ("0", "12.34", ...). Only surface it when
     # `has_credits` is true to avoid showing $0.00 on plans that don't use it.
@@ -142,11 +147,11 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
         primary_pct=pct(primary),
         primary_reset=reset(primary),
         primary_window_min=window_min(primary),
-        secondary_pct=pct(secondary),
-        secondary_reset=reset(secondary),
-        secondary_window_min=window_min(secondary),
+        secondary_pct=pct(secondary) if secondary is not None else None,
+        secondary_reset=reset(secondary) if secondary is not None else "",
+        secondary_window_min=window_min(secondary) if secondary is not None else None,
         credits_dollars=dollars,
         primary_reset_at=reset_at(primary),
-        secondary_reset_at=reset_at(secondary),
+        secondary_reset_at=reset_at(secondary) if secondary is not None else None,
         plan=plan,
     )

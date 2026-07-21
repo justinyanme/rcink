@@ -414,6 +414,32 @@ def test_overview_usage_reset_times_are_compact():
     assert "1h 0m" not in texts
 
 
+def test_overview_uses_actual_single_codex_window_label():
+    page = build_overview_page(
+        claude=None,
+        codex=CodexUsage(
+            primary_pct=12,
+            primary_reset="4d 18h",
+            primary_window_min=10080,
+            secondary_pct=None,
+            secondary_reset="",
+            secondary_window_min=None,
+            credits_dollars=None,
+        ),
+        calendar=_empty_cal(),
+        reminders=_empty_reminders(),
+        github=_empty_gh(),
+        quote=None,
+        now=_NOW,
+    )
+
+    row = _find_hstack_with_direct_text(page, "CODEX")
+    texts = [node["value"] for node in row["children"] if node.get("type") == "text"]
+    assert "7D" in texts
+    assert "5H" not in texts
+    assert texts.count("7D") == 1
+
+
 def test_overview_github_row_uses_smaller_font():
     gh = GitHubActivity(
         user="rocry",
