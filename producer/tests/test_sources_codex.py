@@ -2,6 +2,7 @@ import datetime as dt
 import json
 
 import pytest
+
 from rcink.sources.codex import USAGE_URL, CodexCredsError, CodexUsage, fetch_codex_usage
 
 
@@ -15,7 +16,7 @@ def write_auth(tmp_path, access_token: str = "old-access"):
                     "refresh_token": "rrr",
                     "id_token": "iii",
                 },
-                "last_refresh": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "last_refresh": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
         )
     )
@@ -62,7 +63,7 @@ def test_token_used_read_only(httpx_mock, tmp_path):
     assert usage.secondary_window_min == 10080
     # Relative reset_after_seconds (7200) folded into an absolute epoch ~2h out.
     assert usage.primary_reset_at is not None
-    assert 7100 <= usage.primary_reset_at - int(dt.datetime.now(dt.timezone.utc).timestamp()) <= 7200
+    assert 7100 <= usage.primary_reset_at - int(dt.datetime.now(dt.UTC).timestamp()) <= 7200
     # Exactly one request (no refresh round-trip), with the token verbatim.
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer old-access"

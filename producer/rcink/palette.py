@@ -20,11 +20,11 @@ preview hex mapping used by the browser preview tool.
 
 from __future__ import annotations
 
-from typing import Final, Literal, TypeAlias, cast
+from typing import Final, Literal, cast
 
-ConcreteColorToken: TypeAlias = Literal["black", "white", "red", "yellow", "green", "blue"]
-SemanticColorToken: TypeAlias = Literal["accent", "warning", "success", "info", "muted"]
-ColorToken: TypeAlias = ConcreteColorToken | SemanticColorToken
+type ConcreteColorToken = Literal["black", "white", "red", "yellow", "green", "blue"]
+type SemanticColorToken = Literal["accent", "warning", "success", "info", "muted"]
+type ColorToken = ConcreteColorToken | SemanticColorToken
 
 E6_COLOR_TOKENS: Final[tuple[ConcreteColorToken, ...]] = (
     "black",

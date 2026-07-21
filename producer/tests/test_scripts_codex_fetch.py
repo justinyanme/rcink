@@ -13,7 +13,7 @@ def test_run_publishes_single_window_usage(monkeypatch):
         secondary_reset="",
         secondary_window_min=None,
         credits_dollars=None,
-        primary_reset_at=int(dt.datetime(2026, 7, 25, tzinfo=dt.timezone.utc).timestamp()),
+        primary_reset_at=int(dt.datetime(2026, 7, 25, tzinfo=dt.UTC).timestamp()),
         secondary_reset_at=None,
         plan="Pro",
     )

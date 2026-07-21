@@ -9,6 +9,7 @@ formatted string the page builders use.
 import datetime as dt
 
 import pytest
+
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
     calendar_card,

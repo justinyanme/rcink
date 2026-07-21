@@ -23,6 +23,7 @@ from typing import Any
 
 import typer
 from loguru import logger
+
 from rcink.devices_profile import get_profile
 from rcink.preview import to_html
 

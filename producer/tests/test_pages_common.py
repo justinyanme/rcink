@@ -49,20 +49,20 @@ def test_trim_counts_cjk_as_two_cells():
 
 
 def test_relative_short_minutes():
-    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.UTC)
     assert relative_short(now - dt.timedelta(minutes=5), now=now) == "5m"
 
 
 def test_relative_short_hours():
-    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.UTC)
     assert relative_short(now - dt.timedelta(hours=3), now=now) == "3h"
 
 
 def test_relative_short_none():
-    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.UTC)
     assert relative_short(None, now=now) == ""
 
 
 def test_relative_short_now():
-    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 23, 12, 0, tzinfo=dt.UTC)
     assert relative_short(now, now=now) == "now"

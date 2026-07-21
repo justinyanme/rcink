@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 from rcink.transport.ble.uuids import ADV_PAYLOAD_TYPE_V2
 from rcink.transport.ble_protocol import (
     ACK_ERR_BUSY,

@@ -1,6 +1,7 @@
 import datetime as dt
 
 import pytest
+
 from rcink.axiom import AxiomError, ingest, query_apl
 from rcink.layout import text, vstack
 from rcink.validate import LayoutValidationError

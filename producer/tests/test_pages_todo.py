@@ -5,7 +5,7 @@ from rcink.sources.reminders import Reminder, TodaysReminders
 
 
 def _reminder(title: str, *, updated_min_ago: int, priority: int = 0) -> Reminder:
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     return Reminder(
         title=title,
         due=None,
@@ -22,7 +22,7 @@ def _is_todo_row(node: dict) -> bool:
 
 
 def test_todo_page_shows_recent_items_with_relative_time():
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     page = build_todo_page(
         TodaysReminders(
             list_name="Inbox",
@@ -38,7 +38,7 @@ def test_todo_page_shows_recent_items_with_relative_time():
 
 
 def test_todo_count_chip_is_visible_on_mono_profiles():
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     page = build_todo_page(
         TodaysReminders(
             list_name="Inbox",
@@ -54,7 +54,7 @@ def test_todo_count_chip_is_visible_on_mono_profiles():
 
 
 def test_todo_page_caps_visible_rows():
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     items = [_reminder(f"task {i}", updated_min_ago=i) for i in range(VISIBLE_ITEMS + 3)]
     page = build_todo_page(
         TodaysReminders(
@@ -69,7 +69,7 @@ def test_todo_page_caps_visible_rows():
 
 
 def test_todo_page_wraps_long_title_to_two_lines():
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     long_title = "rewrite the producer pipeline to support multi-list reminders"
     page = build_todo_page(
         TodaysReminders(
@@ -89,7 +89,7 @@ def test_todo_page_wraps_long_title_to_two_lines():
 def test_todo_page_wraps_long_cjk_title_to_two_lines():
     """CJK chars render ~2x wider than Latin; the wrapper must count cells,
     not Python chars, or long Chinese titles silently overflow."""
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     title = "确认是否可通过用户ID获取自选股和持仓并出具持仓报告"
     page = build_todo_page(
         TodaysReminders(
@@ -108,7 +108,7 @@ def test_todo_page_wraps_long_cjk_title_to_two_lines():
 def test_todo_page_url_residual_avoids_em_dash():
     """VT323 has no `—` glyph, so the inline residual must use an ASCII
     separator (or wrap to a second line)."""
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     page = build_todo_page(
         TodaysReminders(
             list_name="Inbox",
@@ -130,7 +130,7 @@ def test_todo_page_url_residual_avoids_em_dash():
 
 
 def test_todo_page_keeps_short_title_on_one_line():
-    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 5, 18, 12, 0, tzinfo=dt.UTC)
     page = build_todo_page(
         TodaysReminders(
             list_name="Inbox",

@@ -117,7 +117,7 @@ def fetch_codex_usage(path: Path = AUTH_DEFAULT) -> CodexUsage:
             return int(epoch)
         secs = block.get("reset_after_seconds")
         if isinstance(secs, Real) and not isinstance(secs, bool):
-            return int(dt.datetime.now(dt.timezone.utc).timestamp() + secs)
+            return int(dt.datetime.now(dt.UTC).timestamp() + secs)
         raise ValueError("Codex usage response has invalid reset timing")
 
     def window_min(block: dict) -> int | None:

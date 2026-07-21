@@ -76,13 +76,13 @@ def _reset_text(iso: str | None) -> str:
     if not iso:
         return ""
     when = dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    delta = (when - dt.datetime.now(dt.timezone.utc)).total_seconds()
+    delta = (when - dt.datetime.now(dt.UTC)).total_seconds()
     return format_countdown(int(delta))
 
 
 def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
     creds = load_creds(path)
-    now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
+    now_ms = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
     if creds["expiresAt"] <= now_ms:
         raise ClaudeCredsError(
             "Claude access token has expired. The producer never refreshes it "

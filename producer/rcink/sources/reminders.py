@@ -43,13 +43,13 @@ def _due_to_dt(components) -> dt.datetime | None:
     date = cal.dateFromComponents_(components)
     if date is None:
         return None
-    return dt.datetime.fromtimestamp(date.timeIntervalSince1970(), tz=dt.timezone.utc).astimezone()
+    return dt.datetime.fromtimestamp(date.timeIntervalSince1970(), tz=dt.UTC).astimezone()
 
 
 def _nsdate_to_dt(value: Any) -> dt.datetime | None:
     if value is None:
         return None
-    return dt.datetime.fromtimestamp(value.timeIntervalSince1970(), tz=dt.timezone.utc).astimezone()
+    return dt.datetime.fromtimestamp(value.timeIntervalSince1970(), tz=dt.UTC).astimezone()
 
 
 def _fetch_sync(store: ek.EKEventStore, predicate) -> list:

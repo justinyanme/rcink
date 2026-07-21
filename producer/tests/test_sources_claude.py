@@ -3,6 +3,7 @@ import json
 import time
 
 import pytest
+
 from rcink.sources import claude as claude_mod
 from rcink.sources.claude import (
     USAGE_URL,
@@ -65,7 +66,7 @@ def test_fresh_token_used_read_only(httpx_mock, tmp_path):
     assert usage.opus_pct == 18.0
     assert usage.sonnet_pct == 24.0
     # Absolute reset epoch parsed for the keypoint live countdown.
-    assert usage.five_hour_reset_at == int(dt.datetime(2026, 5, 17, 20, 0, tzinfo=dt.timezone.utc).timestamp())
+    assert usage.five_hour_reset_at == int(dt.datetime(2026, 5, 17, 20, 0, tzinfo=dt.UTC).timestamp())
     # Exactly one request (no refresh round-trip), with the token verbatim.
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer sk-ant-oat01-fresh"
@@ -91,7 +92,7 @@ def test_usage_reset_text_formatting(httpx_mock, tmp_path):
     p = write_creds(tmp_path, FRESH)
     # ~2h 14m into the future from now
     future = int(time.time()) + 2 * 3600 + 14 * 60
-    iso = dt.datetime.fromtimestamp(future, tz=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    iso = dt.datetime.fromtimestamp(future, tz=dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     httpx_mock.add_response(
         url=USAGE_URL,
         json={

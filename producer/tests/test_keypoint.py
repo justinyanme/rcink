@@ -10,6 +10,7 @@ import datetime as dt
 import json
 
 import pytest
+
 from rcink.keypoint import (
     CARD_ORDER,
     LINE_MAX,

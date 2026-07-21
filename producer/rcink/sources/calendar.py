@@ -37,7 +37,7 @@ class TodaysCalendar:
 def _nsdate_to_dt(d: F.NSDate) -> dt.datetime:
     # NSDate.timeIntervalSince1970 is a UTC epoch in seconds. Convert to a
     # local-time-aware datetime so the page can format hh:mm in the user's tz.
-    return dt.datetime.fromtimestamp(d.timeIntervalSince1970(), tz=dt.timezone.utc).astimezone()
+    return dt.datetime.fromtimestamp(d.timeIntervalSince1970(), tz=dt.UTC).astimezone()
 
 
 def fetch_todays_events(now: dt.datetime | None = None) -> TodaysCalendar:

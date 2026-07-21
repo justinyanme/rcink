@@ -1,6 +1,7 @@
 import zlib
 
 import pytest
+
 from rcink.layout import text, vstack
 from rcink.transport.ble_encode import EncodedPage, chunk_payload, encode_page
 from rcink.validate import LayoutValidationError

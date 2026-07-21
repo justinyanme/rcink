@@ -104,7 +104,7 @@ def _compute_streak_counts(counts: list[int]) -> int:
 
 
 def _iso_utc(value: dt.datetime) -> str:
-    return value.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return value.astimezone(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _local_day_windows(now: dt.datetime, *, days: int) -> list[tuple[dt.datetime, dt.datetime]]:
@@ -192,7 +192,7 @@ def fetch_github_activity(
 ) -> GitHubActivity:
     user = user or require_env("GITHUB_USERNAME")
     token = token or require_env("GITHUB_TOKEN")
-    now = now or dt.datetime.now(tz=dt.timezone.utc)
+    now = now or dt.datetime.now(tz=dt.UTC)
     windows = _local_day_windows(now, days=7)
     week_from = _iso_utc(windows[-7][0])
     week_to = _iso_utc(now)

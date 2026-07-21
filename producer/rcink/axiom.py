@@ -17,7 +17,7 @@ class AxiomError(RuntimeError):
 
 
 def _now_iso() -> str:
-    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def _post_events(events: list[dict[str, Any]]) -> None:
@@ -40,7 +40,7 @@ def _post_events(events: list[dict[str, Any]]) -> None:
 
 def ingest(*, id: str, layout: dict[str, Any], order: int | None = None) -> None:
     validate_page(layout)
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     event: dict[str, Any] = {
         "_time": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         # Producer-side wallclock at build time, exposed as epoch seconds so the
@@ -71,7 +71,7 @@ def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> lis
       query they ran.
     """
     token = require_env("AXIOM_TOKEN")
-    end = dt.datetime.now(dt.timezone.utc)
+    end = dt.datetime.now(dt.UTC)
     start = end - lookback
     body = {
         "apl": apl,

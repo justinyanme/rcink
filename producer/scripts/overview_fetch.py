@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Callable
-from typing import TypeVar
 
 import typer
 from loguru import logger
+
 from rcink.axiom import ingest
 from rcink.keypoint import write_card
 from rcink.keypoint_cards import weather_card
@@ -27,10 +27,8 @@ from rcink.sources.weather import Weather, WeatherConfigError, fetch_weather
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
-T = TypeVar("T")
 
-
-def _try(name: str, fn: Callable[[], T]) -> T | None:
+def _try[T](name: str, fn: Callable[[], T]) -> T | None:
     """Run a source fetcher; log+degrade if it raises."""
     try:
         return fn()

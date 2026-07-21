@@ -1,6 +1,7 @@
 import datetime as dt
 
 import pytest
+
 from rcink.cli_goldens import _BUILDERS, _layout_of
 from rcink.layout import hbar, icon, sparkline, text, vstack
 from rcink.pages.calendar import build_calendar_page
@@ -13,7 +14,7 @@ from rcink.sources.github import GRID_CELLS, GitHubActivity
 from rcink.sources.reminders import Reminder, TodaysReminders
 from rcink.validate import LayoutValidationError, validate_page
 
-NOW = dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 1, 1, 12, 0, tzinfo=dt.UTC)
 
 
 def _claude_usage() -> ClaudeUsage:

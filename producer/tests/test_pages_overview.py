@@ -103,7 +103,7 @@ def _weather() -> Weather:
         code=80,
         precip_probability=67,
         is_day=True,
-        observed_at=_NOW.replace(tzinfo=dt.timezone.utc),
+        observed_at=_NOW.replace(tzinfo=dt.UTC),
     )
 
 

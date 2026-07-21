@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+
 from rcink.transport.ble.transport import Transport, connect_transport
 
 from .fake_peripheral import FakePeripheral

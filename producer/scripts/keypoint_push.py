@@ -27,6 +27,7 @@ from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 from loguru import logger
+
 from rcink.keypoint import CHAR_UUID, SERVICE_UUID, frames_to_push
 
 app = typer.Typer(add_completion=False, help=__doc__)

@@ -1,4 +1,5 @@
 import pytest
+
 from rcink.devices_profile import C3_X4
 from rcink.layout import (
     divider,

@@ -53,3 +53,16 @@ packages = ["rcink", "scripts"]
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle: keep whitespace + line rules predictable
+    "F",   # Pyflakes: catch name errors + dead code early
+    "UP",  # pyupgrade: auto-modernize syntax for >=3.13
+    "B",   # flake8-bugbear: fail fast on common foot-guns
+    "SIM", # flake8-simplify: trim complex branches for clarity
+    "I",   # isort: ensure deterministic import ordering
+]
