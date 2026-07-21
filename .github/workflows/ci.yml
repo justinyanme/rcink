@@ -32,11 +32,19 @@ jobs:
       matrix:
         target: [s3, t-amoled, c3-x4, rlcd, epd397]
     steps:
+      # clean: false keeps gitignored .pio/ between runs (warm incremental
+      # builds); checkout still resets all tracked files.
       - uses: actions/checkout@v4
+        with:
+          clean: false
       # config.h is gitignored (secrets); the example carries every macro the
       # build needs with placeholder values.
       - run: cp firmware/${{ matrix.target }}/include/config.h.example firmware/${{ matrix.target }}/include/config.h
-      - run: pio run -d firmware/${{ matrix.target }}
+      # Retry once: pioarduino's first build in a fresh .pio registers its
+      # file:// tool packages mid-run and can fail with FRAMEWORK_DIR=None
+      # (pathlib TypeError); the second run always resolves them. Real
+      # compile errors still fail — they just fail twice.
+      - run: pio run -d firmware/${{ matrix.target }} || pio run -d firmware/${{ matrix.target }}
       - run: pio test -d firmware/${{ matrix.target }} -e native
 
   tlsr-host:
