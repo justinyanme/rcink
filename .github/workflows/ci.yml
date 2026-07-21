@@ -8,12 +8,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Runs on the studio Mac self-hosted runner: uv, pio, and cmake come from the
-# host (brew / ~/.local/bin via the runner's .env PATH); ~/.platformio persists
-# between runs so no package cache step is needed.
+# Runs on the org self-hosted Mac runners (rmbp / rocry-studio): uv, pio, and
+# cmake come from the host (brew / ~/.local/bin via the runner plist PATH);
+# ~/.platformio persists between runs so no package cache step is needed.
 jobs:
   producer:
-    runs-on: [self-hosted, studio]
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: uv sync --all-extras
@@ -26,7 +26,7 @@ jobs:
         working-directory: producer
 
   firmware:
-    runs-on: [self-hosted, studio]
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +48,7 @@ jobs:
       - run: pio test -d firmware/${{ matrix.target }} -e native
 
   tlsr-host:
-    runs-on: [self-hosted, studio]
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - run: cmake -S firmware/tlsr/firmware/host_test -B firmware/tlsr/firmware/host_test/build
