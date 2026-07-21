@@ -198,4 +198,4 @@ const GFXglyph DSEG14_Classic_Mini_Regular_40Glyphs[] = {
 	  {  8135,  11,  26,  16,    1,  -26 } // '}'
 };
 const GFXfont DSEG14_Classic_Mini_Regular_40 = {
-(uint8_t  *)DSEG14_Classic_Mini_Regular_40Bitmaps,(GFXglyph *)DSEG14_Classic_Mini_Regular_40Glyphs,0x20, 0x7E, 44};
+(uint8_t  *)DSEG14_Classic_Mini_Regular_40Bitmaps,(GFXglyph *)DSEG14_Classic_Mini_Regular_40Glyphs,0x20, 0x7E, 44, 0, 0};

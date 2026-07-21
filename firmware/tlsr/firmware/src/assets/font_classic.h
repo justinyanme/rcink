@@ -155,7 +155,8 @@ const GFXfont Classic6x8 PROGMEM = {
   (uint8_t  *)Classic6x8Bitmaps,
   (GFXglyph *)Classic6x8Glyphs,
   0x20, 0x7E,
-  8
+  8,
+  0, 0
 };
 
 const uint8_t Classic12x16Bitmaps[] PROGMEM = {
@@ -453,7 +454,8 @@ const GFXfont Classic12x16 PROGMEM = {
   (uint8_t  *)Classic12x16Bitmaps,
   (GFXglyph *)Classic12x16Glyphs,
   0x20, 0x7E,
-  16
+  16,
+  0, 0
 };
 
 const uint8_t Classic8x8Bitmaps[] PROGMEM = {
@@ -625,7 +627,8 @@ const GFXfont Classic8x8 PROGMEM = {
   (uint8_t  *)Classic8x8Bitmaps,
   (GFXglyph *)Classic8x8Glyphs,
   0x20, 0x7E,
-  8
+  8,
+  0, 0
 };
 
 const uint8_t Classic16x16Bitmaps[] PROGMEM = {
@@ -987,5 +990,6 @@ const GFXfont Classic16x16 PROGMEM = {
   (uint8_t  *)Classic16x16Bitmaps,
   (GFXglyph *)Classic16x16Glyphs,
   0x20, 0x7E,
-  16
+  16,
+  0, 0
 };

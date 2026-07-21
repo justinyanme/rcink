@@ -248,4 +248,4 @@ const GFXglyph Dialog_plain_16Glyphs[] PROGMEM = {
       {  1094,   4,   4,   4,    0,  -12 }    // 0xB0 '°'
 };
 const GFXfont Dialog_plain_16 PROGMEM = {
-(uint8_t  *)Dialog_plain_16Bitmaps,(GFXglyph *)Dialog_plain_16Glyphs,0x20, 0xB1, 19};
+(uint8_t  *)Dialog_plain_16Bitmaps,(GFXglyph *)Dialog_plain_16Glyphs,0x20, 0xB1, 19, 0, 0};

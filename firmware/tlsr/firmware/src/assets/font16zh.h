@@ -172,4 +172,4 @@ const GFXglyph Dialog_plain_16_zh_Glyphs[] PROGMEM = {
 	  {  1280,   16,  16, 18, 16, -16 },   // 'H'            /* 0xCBAE [水]   [40]*/
 };
 const GFXfont Dialog_plain_16_zh PROGMEM = {
-(uint8_t  *)Dialog_plain_16_zh_Bitmaps,(GFXglyph *)Dialog_plain_16_zh_Glyphs, 0x20, 0x7E, 19};
+(uint8_t  *)Dialog_plain_16_zh_Bitmaps,(GFXglyph *)Dialog_plain_16_zh_Glyphs, 0x20, 0x7E, 19, 0, 0};
