@@ -4,18 +4,18 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Runs on the studio Mac self-hosted runner: uv, pio, and cmake come from the
+# host (brew / ~/.local/bin via the runner's .env PATH); ~/.platformio persists
+# between runs so no package cache step is needed.
 jobs:
   producer:
-    runs-on: macos-latest
+    runs-on: [self-hosted, studio]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: producer/uv.lock
       - run: uv sync --all-extras
         working-directory: producer
       - run: uv run ruff format --check .
@@ -26,38 +26,23 @@ jobs:
         working-directory: producer
 
   firmware:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, studio]
     strategy:
       fail-fast: false
       matrix:
         target: [s3, t-amoled, c3-x4, rlcd, epd397]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: ${{ runner.os }}-platformio-${{ matrix.target }}-${{ hashFiles('firmware/**/platformio.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-platformio-${{ matrix.target }}-
-            ${{ runner.os }}-platformio-
-      - run: python -m pip install --upgrade platformio "cryptography~=45.0.3" "ecdsa~=0.19.1" "bitstring~=4.3.1" "reedsolo~=1.7.0" "intelhex~=2.3.0"
+      # config.h is gitignored (secrets); the example carries every macro the
+      # build needs with placeholder values.
+      - run: cp firmware/${{ matrix.target }}/include/config.h.example firmware/${{ matrix.target }}/include/config.h
       - run: pio run -d firmware/${{ matrix.target }}
       - run: pio test -d firmware/${{ matrix.target }} -e native
 
   tlsr-host:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, studio]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-          cache-dependency-glob: firmware/tlsr/firmware/host_test/uv.lock
       - run: cmake -S firmware/tlsr/firmware/host_test -B firmware/tlsr/firmware/host_test/build
       - run: cmake --build firmware/tlsr/firmware/host_test/build --target host_test
       - run: uv run --directory firmware/tlsr/firmware/host_test pytest
