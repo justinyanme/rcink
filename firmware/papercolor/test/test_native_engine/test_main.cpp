@@ -84,6 +84,17 @@ void test_align_center_in_hstack() {
   TEST_ASSERT_EQUAL(10, layout.children[1].rect.y);
 }
 
+void test_text_dy_shifts_computed_origin() {
+  const Rect bounds{10, 20, 100, 30};
+
+  const auto baseline = text_origin(bounds, Align::Start, 40, 3, 0);
+  const auto shifted = text_origin(bounds, Align::Start, 40, 3, 7);
+
+  TEST_ASSERT_EQUAL(23, baseline.y);
+  TEST_ASSERT_EQUAL(30, shifted.y);
+  TEST_ASSERT_EQUAL(baseline.x, shifted.x);
+}
+
 // Regression: divider inside an hstack must flex along the main axis like
 // hbar / sparkline. Without that treatment, natural_size returns parent_cross
 // (== 0x7FFF during the outer vstack's probe), max_cross blows up to int16
@@ -192,6 +203,7 @@ int main() {
   RUN_TEST(test_vstack_basic_layout);
   RUN_TEST(test_flex_spacer_eats_remaining_space);
   RUN_TEST(test_align_center_in_hstack);
+  RUN_TEST(test_text_dy_shifts_computed_origin);
   RUN_TEST(test_divider_in_hstack_does_not_blow_up_outer_vstack);
   RUN_TEST(test_nested_flex_two_column_overview_shape);
   return UNITY_END();

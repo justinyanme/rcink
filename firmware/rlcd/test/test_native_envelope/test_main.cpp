@@ -2,6 +2,7 @@
 #include <unity.h>
 
 #include "proto/envelope.h"
+#include "store/nvs.h"
 
 using namespace rcpaper;
 
@@ -67,6 +68,22 @@ void test_empty_matches_is_ok_with_zero_pages() {
   TEST_ASSERT_EQUAL(0, out.size());
 }
 
+void test_nvs_load_helper_skips_invalid_cached_rows() {
+  JsonDocument cache_doc;
+  deserializeJson(cache_doc, R"([
+    {"id":"","order":1,"data_ts":1780000000,"layout_json":"{\"type\":\"vstack\"}"},
+    {"id":"ghost","order":2,"data_ts":1780000000,"layout_json":""},
+    {"id":"real","order":3,"data_ts":1780000000,"layout_json":"{\"type\":\"text\",\"value\":\"R\"}"}
+  ])");
+  std::vector<PageRecord> pages;
+  for (JsonVariantConst v : cache_doc.as<JsonArrayConst>()) {
+    nvs_append_cached_page(v, pages);
+  }
+  TEST_ASSERT_EQUAL(1, pages.size());
+  TEST_ASSERT_EQUAL_STRING("real", pages[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("{\"type\":\"text\",\"value\":\"R\"}", pages[0].layout_json.c_str());
+}
+
 void test_missing_envelope_fails() {
   std::vector<PageRecord> out;
   bool ok = parse_str(R"({"format": "legacy"})", out);
@@ -79,6 +96,7 @@ int main() {
   RUN_TEST(test_normal_rows);
   RUN_TEST(test_argmax_bucket_groups_parse_and_sort_by_order);
   RUN_TEST(test_empty_matches_is_ok_with_zero_pages);
+  RUN_TEST(test_nvs_load_helper_skips_invalid_cached_rows);
   RUN_TEST(test_missing_envelope_fails);
   return UNITY_END();
 }

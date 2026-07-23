@@ -3,6 +3,17 @@
 
 namespace rcpaper {
 
+TextOrigin text_origin(Rect bounds, Align align, int16_t text_width,
+                       int16_t pad, int16_t dy) {
+  int16_t x = (int16_t)(bounds.x + pad);
+  if (align == Align::Center) {
+    x = (int16_t)(bounds.x + (bounds.w - text_width) / 2);
+  } else if (align == Align::End) {
+    x = (int16_t)(bounds.x + bounds.w - text_width - pad);
+  }
+  return TextOrigin{x, (int16_t)(bounds.y + pad + dy)};
+}
+
 // Forward declarations
 static LaidOutNode layout_node(const LayoutNode& n, Rect viewport, const Measurer& m, float scale);
 static LaidOutNode layout_stack(const LayoutNode& root, Rect viewport, const Measurer& m, float scale);

@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-23
 **Status:** draft, pending review
-**Supersedes scope of:** [rcpapercolor](2026-05-17-rcpapercolor-design.md) (will be folded in), `tlsr-layout` (separate repo, will be folded in)
+**Supersedes scope of:** rcpapercolor's 2026-05-17 design (will be folded in), `tlsr-layout` (separate repo, will be folded in)
 
 ## Goal
 

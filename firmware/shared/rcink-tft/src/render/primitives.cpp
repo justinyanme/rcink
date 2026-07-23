@@ -53,12 +53,10 @@ void draw_text(TFT_eSprite& canvas, const TextNode& t, Rect r) {
   const std::string fitted = fit_text(canvas, t.size, t.weight, t.value, inner_w);
   const int16_t text_w = measured_width(canvas, t.size, t.weight, fitted);
 
-  int16_t tx = r.x + pad;
-  if (t.align == Align::Center) tx = r.x + (r.w - text_w) / 2;
-  if (t.align == Align::End) tx = r.x + r.w - text_w - pad;
-  const int16_t ty = (int16_t)(r.y + pad + scale_px(t.dy));
+  const TextOrigin origin = text_origin(r, t.align, text_w, pad, scale_px(t.dy));
   const uint16_t bg = t.has_bg ? c565(t.bg) : rgb565(kRgbWhite);
-  draw_utf8(canvas, tx, ty, t.size, t.weight, c565(t.color), t.has_bg, bg, fitted);
+  draw_utf8(canvas, origin.x, origin.y, t.size, t.weight,
+            c565(t.color), t.has_bg, bg, fitted);
 }
 
 void draw_divider(TFT_eSprite& canvas, const DividerNode& d, Rect r) {
