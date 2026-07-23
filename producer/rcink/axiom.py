@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from rcink.envutil import require_env
 from rcink.validate import validate_page
+
+PAGE_STATE_CACHE_ENV = "RCINK_PAGE_STATE_CACHE"
+PAGE_STATE_CACHE_DEFAULT = "~/.cache/rcink/pages"
 
 
 class AxiomError(RuntimeError):
@@ -38,15 +45,52 @@ def _post_events(events: list[dict[str, Any]]) -> None:
         raise AxiomError(f"ingest failed: {body.get('failures')}")
 
 
+def _page_state_path(id: str) -> Path:
+    directory = Path(os.environ.get(PAGE_STATE_CACHE_ENV, PAGE_STATE_CACHE_DEFAULT)).expanduser()
+    return directory / f"{id}.json"
+
+
+def _layout_hash(layout: dict[str, Any]) -> str:
+    canonical = json.dumps(layout, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _cached_data_ts(path: Path, *, layout_hash: str, fresh_data_ts: int) -> int:
+    try:
+        state = json.loads(path.read_text())
+        cached_hash = state["layout_hash"]
+        cached_data_ts = state["data_ts"]
+        if not isinstance(cached_hash, str) or len(cached_hash) != 64:
+            raise ValueError("layout_hash must be a 64-character string")
+        if type(cached_data_ts) is not int or cached_data_ts < 0:
+            raise ValueError("data_ts must be a non-negative integer")
+    except FileNotFoundError:
+        return fresh_data_ts
+    except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError, ValueError) as exc:
+        logger.warning(f"discarding corrupt page state {path}: {exc}")
+        return fresh_data_ts
+    return cached_data_ts if cached_hash == layout_hash else fresh_data_ts
+
+
+def _write_page_state(path: Path, *, layout_hash: str, data_ts: int) -> None:
+    state = json.dumps({"layout_hash": layout_hash, "data_ts": data_ts}, ensure_ascii=False, separators=(",", ":"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(state)
+    temporary.replace(path)
+
+
 def ingest(*, id: str, layout: dict[str, Any], order: int | None = None) -> None:
     validate_page(layout)
     now = dt.datetime.now(dt.UTC)
+    layout_hash = _layout_hash(layout)
+    state_path = _page_state_path(id)
+    data_ts = _cached_data_ts(state_path, layout_hash=layout_hash, fresh_data_ts=int(now.timestamp()))
     event: dict[str, Any] = {
         "_time": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
-        # Producer-side wallclock at build time, exposed as epoch seconds so the
-        # firmware can format both "data HH:MM" (this value) and
-        # "refresh HH:MM" (its own last_fetch_s) without re-parsing _time.
-        "data_ts": int(now.timestamp()),
+        # Time this page's content last changed. Unchanged layouts carry the
+        # previous value so firmware can skip pixel-identical renders.
+        "data_ts": data_ts,
         "type": "rcpaper_page",
         "id": id,
         # Stringify the layout tree so Axiom stores it as one opaque field
@@ -57,6 +101,7 @@ def ingest(*, id: str, layout: dict[str, Any], order: int | None = None) -> None
     if order is not None:
         event["order"] = order
     _post_events([event])
+    _write_page_state(state_path, layout_hash=layout_hash, data_ts=data_ts)
 
 
 def query_apl(apl: str, *, lookback: dt.timedelta = dt.timedelta(days=7)) -> list[dict[str, Any]]:
