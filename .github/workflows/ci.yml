@@ -12,6 +12,7 @@ concurrency:
 env:
   GIT_CONFIG_GLOBAL: /dev/null
   UV_NO_CONFIG: "true"
+  XDG_CONFIG_HOME: /private/tmp/rcink-ci-xdg
 
 # Runs on the org self-hosted Mac runners (rmbp / rocry-studio): uv, pio, and
 # cmake come from the host (brew / ~/.local/bin via the runner plist PATH);
