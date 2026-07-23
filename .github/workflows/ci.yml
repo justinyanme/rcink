@@ -24,9 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: uv sync --all-extras
         working-directory: producer
-      - run: uv run ruff format --check .
+      - run: uv run ruff format --check --config pyproject.toml .
         working-directory: producer
-      - run: uv run ruff check .
+      - run: uv run ruff check --config pyproject.toml .
         working-directory: producer
       - run: uv run pytest
         working-directory: producer
