@@ -50,22 +50,29 @@ Use console `i` to toggle light/dark live and redraw the current screen.
 The default `waveshare-s3-rlcd-dev` environment stays awake for console work.
 The production `waveshare-s3-rlcd` environment renders once, puts the ST7305 in
 sleep mode, wakes every 30 seconds, and also wakes from GPIO18/KEY. Default
-remains dev until hardware-in-loop timer wake and battery-current checks pass.
+remains dev until timer wake, retained-panel, and button HIL checks pass.
 
 ## Build + Flash
 
-Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
+Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom +
+`LOCAL_TZ`. USB port suffixes drift and another ESP32-S3 may be attached: map
+the call-out device to the board-in-hand's USB serial/MAC before every flash.
+Never reuse a port copied from an older session. Commands below assume:
+
+```bash
+RCLCD_PORT=/dev/cu.usbmodemNNNNN  # replace only after verifying board identity
+```
 
 ```bash
 pio run -e waveshare-s3-rlcd-dev
-pio run -e waveshare-s3-rlcd-dev -t upload --upload-port /dev/cu.usbmodem83401
+pio run -e waveshare-s3-rlcd-dev -t upload --upload-port "$RCLCD_PORT"
 ```
 
 Use `waveshare-s3-rlcd` only for production sleep testing:
 
 ```bash
 pio run -e waveshare-s3-rlcd
-pio run -e waveshare-s3-rlcd -t upload --upload-port /dev/cu.usbmodem83401
+pio run -e waveshare-s3-rlcd -t upload --upload-port "$RCLCD_PORT"
 ```
 
 Native logic tests (palette, parser, layout engine, ST7305 1 bpp packing):
@@ -77,8 +84,12 @@ pio test -e native
 Monitor without DTR/RTS toggling the S3 into download mode:
 
 ```bash
-pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
+uv run tools/serial_probe.py --port "$RCLCD_PORT" --seconds 20
 ```
+
+The probe uses a raw call-out-device open because pyserial resets this S3 even
+when configured with DTR/RTS false. In production, USB disappearance and the
+probe's clean disconnect message are expected at deep-sleep entry.
 
 ## Buttons
 
@@ -120,7 +131,7 @@ device. It drives the firmware console, captures the current ST7305 1 bpp
 framebuffer with `p`, decodes the panel-native byte layout, and writes PNGs:
 
 ```bash
-uv run tools/capture_frames.py --port /dev/cu.usbmodem31301 --open
+uv run tools/capture_frames.py --port "$RCLCD_PORT" --open
 ```
 
 Output:
@@ -133,7 +144,7 @@ By default the script sends `f` first to refresh Axiom data. To capture the
 current cached deck without network refresh:
 
 ```bash
-uv run tools/capture_frames.py --port /dev/cu.usbmodem31301 --no-refresh --open
+uv run tools/capture_frames.py --port "$RCLCD_PORT" --no-refresh --open
 ```
 
 ## Layout oracle

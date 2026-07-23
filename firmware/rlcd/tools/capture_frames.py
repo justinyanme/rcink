@@ -15,7 +15,6 @@ PNG files, so screenshots match the real firmware renderer and font stack.
 from __future__ import annotations
 
 import datetime as dt
-import glob
 import re
 import subprocess
 import time
@@ -79,15 +78,6 @@ def unpack_st7305_frame(data: bytes, *, width: int = SCREEN_W, height: int = SCR
             if (data[idx] & (1 << bit)) == 0:
                 px[x, y] = (0, 0, 0)
     return img
-
-
-def _default_port() -> str:
-    ports: list[str] = []
-    for pat in ("/dev/cu.usbmodem*", "/dev/cu.wchusbserial*", "/dev/cu.usbserial*"):
-        ports.extend(glob.glob(pat))
-    if not ports:
-        raise typer.BadParameter("no USB serial port found; pass --port")
-    return sorted(ports)[0]
 
 
 def _line(ser: serial.Serial, *, timeout_s: float) -> str | None:
@@ -261,9 +251,12 @@ def _contact_sheet(paths: list[Path], out: Path) -> Path:
 @app.command()
 def main(
     port: Annotated[
-        str | None,
-        typer.Option("--port", help="USB-CDC serial port. Default: first /dev/cu.usb* match."),
-    ] = None,
+        str,
+        typer.Option(
+            "--port",
+            help="Verified rlcd USB-CDC port; required because port suffixes drift across devices.",
+        ),
+    ],
     baud: Annotated[int, typer.Option("--baud")] = 115200,
     out: Annotated[
         Path | None,
@@ -275,7 +268,6 @@ def main(
     ] = True,
     open_contact: Annotated[bool, typer.Option("--open", help="Open contact-sheet.png after capture.")] = False,
 ) -> None:
-    port = port or _default_port()
     out = out or Path("/tmp") / ("rlcd-capture-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
     out.mkdir(parents=True, exist_ok=True)
 
