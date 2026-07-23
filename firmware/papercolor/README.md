@@ -39,9 +39,25 @@ Two halves of one repo:
 4. Device boot sequence (first time): WiFi → NTP → Axiom query → render →
    deep sleep. Subsequent wakes are timer- or button-driven.
 
-If serial stays silent after upload, avoid repeated default monitor opens.
-ESP32-S3 USB-CDC can be left in DOWNLOAD mode by DTR/RTS toggles. Power-cycle
-PaperColor with double-tap PWR, then single-tap PWR.
+## USB wedge protocol
+
+USB-Serial/JTAG tools that touch DTR/RTS can park the ESP32-S3 in ROM download
+mode. A wedged PaperColor is silent, never sleeps, draws about 15–20 mA, and
+stays wedged after USB unplug because the battery still powers it. This drains
+the 1250 mAh battery in roughly three days; it caused the 2026-07-23 drain,
+while the firmware sleep path was healthy.
+
+For every serial or flash session:
+
+1. Attach serial once. If the port disappears or changes during a wake cycle,
+   stop; never retry or race USB enumeration.
+2. Pass `--after watchdog-reset` to every esptool operation so it exits through
+   a watchdog reset.
+3. Before unplugging for battery use, close host tools, wait for the wake cycle
+   to finish, and confirm PaperColor's `/dev/cu.usbmodem…` node is absent. An
+   enumerated but idle PaperColor port means the chip is wedged, not asleep.
+   Power-cycle with double-tap PWR, then single-tap PWR; repeat the check and do
+   not unplug until that port is absent.
 
 ## LED states
 
