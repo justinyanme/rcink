@@ -8,6 +8,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Self-hosted jobs must not depend on each runner user's Git configuration.
+env:
+  GIT_CONFIG_GLOBAL: /dev/null
+
 # Runs on the org self-hosted Mac runners (rmbp / rocry-studio): uv, pio, and
 # cmake come from the host (brew / ~/.local/bin via the runner plist PATH);
 # ~/.platformio persists between runs so no package cache step is needed.
