@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from rcink.axiom import AxiomError, ingest, query_apl
+from rcink.axiom import AxiomError, _cached_data_ts, ingest, query_apl
 from rcink.layout import text, vstack
 from rcink.validate import LayoutValidationError
 
@@ -72,6 +72,15 @@ def test_ingest_changed_page_refreshes_data_timestamp(httpx_mock, env):
     assert changed_event["data_ts"] != 123
     assert changed_state["data_ts"] == changed_event["data_ts"]
     assert changed_state["layout_hash"] != old_state["layout_hash"]
+
+
+def test_changed_page_advances_timestamp_when_fresh_stamp_matches_cached_second(tmp_path):
+    state_path = tmp_path / "claude.json"
+    state_path.write_text(json.dumps({"layout_hash": "a" * 64, "data_ts": 123}))
+
+    data_ts = _cached_data_ts(state_path, layout_hash="b" * 64, fresh_data_ts=123)
+
+    assert data_ts == 124
 
 
 def test_ingest_unchanged_page_carries_data_timestamp_forward(httpx_mock, env):
@@ -156,6 +165,13 @@ def test_query_apl_returns_rows(httpx_mock, env):
 def test_missing_env_raises():
     with pytest.raises(RuntimeError, match="AXIOM_TOKEN"):
         ingest(id="x", layout=vstack(children=[]))
+
+
+@pytest.mark.parametrize("page_id", ["../escape", "/tmp/escape", "nested/page"])
+def test_ingest_rejects_page_ids_that_escape_state_cache(httpx_mock, env, page_id):
+    with pytest.raises(ValueError, match="page id"):
+        ingest(id=page_id, layout=vstack(children=[]))
+    assert httpx_mock.get_request() is None
 
 
 def test_ingest_rejects_invalid_layout_before_http(httpx_mock, env):

@@ -6,6 +6,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from rcink.validate import validate_page
 
 PAGE_STATE_CACHE_ENV = "RCINK_PAGE_STATE_CACHE"
 PAGE_STATE_CACHE_DEFAULT = "~/.cache/rcink/pages"
+PAGE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 class AxiomError(RuntimeError):
@@ -46,6 +48,8 @@ def _post_events(events: list[dict[str, Any]]) -> None:
 
 
 def _page_state_path(id: str) -> Path:
+    if PAGE_ID_PATTERN.fullmatch(id) is None:
+        raise ValueError(f"page id must be an ASCII slug, got {id!r}")
     directory = Path(os.environ.get(PAGE_STATE_CACHE_ENV, PAGE_STATE_CACHE_DEFAULT)).expanduser()
     return directory / f"{id}.json"
 
@@ -69,7 +73,9 @@ def _cached_data_ts(path: Path, *, layout_hash: str, fresh_data_ts: int) -> int:
     except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError, ValueError) as exc:
         logger.warning(f"discarding corrupt page state {path}: {exc}")
         return fresh_data_ts
-    return cached_data_ts if cached_hash == layout_hash else fresh_data_ts
+    if cached_hash == layout_hash:
+        return cached_data_ts
+    return max(fresh_data_ts, cached_data_ts + 1)
 
 
 def _write_page_state(path: Path, *, layout_hash: str, data_ts: int) -> None:
