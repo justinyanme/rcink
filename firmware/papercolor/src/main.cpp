@@ -60,10 +60,6 @@ static const char* g_last_result = "boot";
 // chose raw GPIO, and with `board = esp32s3box` in platformio.ini we cannot
 // rely on M5Unified auto-detecting M5PaperColor's button map.
 
-#define BTN_A_GPIO 9
-#define BTN_B_GPIO 10
-#define BTN_C_GPIO 1
-
 constexpr uint16_t kNavCoalesceWindowMs = 500;
 constexpr uint16_t kNavCoalesceMaxMs    = 2000;
 constexpr uint16_t kNavPollIntervalMs   = 10;
@@ -99,12 +95,12 @@ void IRAM_ATTR isr_btn_c() {
 }
 
 static void install_button_isrs() {
-  pinMode(BTN_A_GPIO, INPUT_PULLUP);
-  pinMode(BTN_B_GPIO, INPUT_PULLUP);
-  pinMode(BTN_C_GPIO, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(BTN_A_GPIO), isr_btn_a, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BTN_B_GPIO), isr_btn_b, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BTN_C_GPIO), isr_btn_c, FALLING);
+  pinMode(kButtonAGpio, INPUT_PULLUP);
+  pinMode(kButtonBGpio, INPUT_PULLUP);
+  pinMode(kButtonCGpio, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(kButtonAGpio), isr_btn_a, FALLING);
+  attachInterrupt(digitalPinToInterrupt(kButtonBGpio), isr_btn_b, FALLING);
+  attachInterrupt(digitalPinToInterrupt(kButtonCGpio), isr_btn_c, FALLING);
 }
 
 struct NavCoalesceResult {
@@ -426,7 +422,10 @@ void setup() {
   // the prior image. With clear_display=true a skipped wake left the panel
   // stranded on the M5.begin white-out.
   cfg.clear_display = false;
-  cfg.output_power  = true;
+  cfg.output_power  = false;
+  cfg.internal_imu  = false;
+  cfg.internal_spk  = false;
+  cfg.internal_mic  = false;
   M5.begin(cfg);
   led_status_init();
   // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
@@ -464,7 +463,7 @@ void setup() {
   // must not advance the page; on a nav wake we coalesce rapid taps within a
   // sliding 500 ms window (cap 2 s) into a single net delta + one render.
   // BtnC pressed during coalescing cancels nav and forces a refetch.
-  bool diagnostics_requested = false;
+  bool diagnostics_requested = wr == WakeReason::ButtonAB;
   if (!g_state.pages.empty()) {
     uint8_t prev_page_index = g_state.page_index;
     if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;

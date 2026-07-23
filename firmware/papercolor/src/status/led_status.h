@@ -22,6 +22,10 @@ void led_status_show(LedState state);
 void led_status_tick();
 const char* led_state_name(LedState state);
 
+// Synchronously write black, stop the RMT worker, release the peripheral, and
+// tristate GPIO21 before the PM1 RGB rail is cut.
+void led_status_prepare_sleep();
+
 // Briefly override the current pattern with a solid color on both LEDs for
 // `duration_ms`. The overlay does NOT alter the active LedState — the
 // heartbeat pattern resumes automatically when the overlay window expires.

@@ -25,6 +25,7 @@ struct Pattern {
 bool g_ready = false;
 bool g_task_started = false;
 bool g_warned_unavailable = false;
+TaskHandle_t g_task_handle = nullptr;
 LedState g_state = LedState::Off;
 uint32_t g_state_start_ms = 0;
 Rgb      g_overlay_rgb{0, 0, 0};
@@ -186,9 +187,16 @@ void led_status_init() {
   }
   if (g_ready) {
     Serial.printf("[led] ready pin=%d count=%u\n", kRgbLedPin, (unsigned)kRgbLedCount);
-    g_task_started = xTaskCreatePinnedToCore(led_task, "led_status", 2048, nullptr, 1,
-                                             nullptr, APP_CPU_NUM) == pdPASS;
+    g_task_started = xTaskCreatePinnedToCore(
+                         led_task,
+                         "led_status",
+                         2048,
+                         nullptr,
+                         1,
+                         &g_task_handle,
+                         APP_CPU_NUM) == pdPASS;
     if (!g_task_started) {
+      g_task_handle = nullptr;
       Serial.println("[led] task start failed");
       write_pattern(pattern_for(LedState::Off), false);
     }
@@ -214,6 +222,28 @@ void led_status_show(LedState state) {
 }
 
 void led_status_tick() {}
+
+void led_status_prepare_sleep() {
+  portENTER_CRITICAL(&g_lock);
+  g_state = LedState::Off;
+  g_overlay_until_ms = 0;
+  portEXIT_CRITICAL(&g_lock);
+
+  if (g_task_handle != nullptr) {
+    vTaskSuspend(g_task_handle);
+    g_task_handle = nullptr;
+    g_task_started = false;
+  }
+  write_pattern(pattern_for(LedState::Off), false);
+
+  if (g_rmt != nullptr && !rmtDeinit(g_rmt)) {
+    Serial.println("[led] rmtDeinit failed");
+    abort();
+  }
+  g_rmt = nullptr;
+  g_ready = false;
+  pinMode(kRgbLedPin, INPUT);
+}
 
 void led_status_pulse(uint8_t r, uint8_t g, uint8_t b, uint16_t duration_ms) {
   if (duration_ms == 0) return;
