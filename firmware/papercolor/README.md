@@ -21,7 +21,8 @@ Two halves of one repo:
 2. Make sure the producer has written at least one event to the
    `rcpapercolor` Axiom dataset (run `cd producer && uv run claude-fetch`).
 3. Build + flash the production (deep-sleep) firmware — this is the default
-   env, the one to run on battery:
+   env, the one to run on battery. The shared PlatformIO config makes this
+   upload exit with `--after watchdog-reset`:
 
    ```bash
    pio run -e m5stack-papercolor -t upload
