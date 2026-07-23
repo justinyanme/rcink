@@ -31,8 +31,8 @@ float g_text_scale = 1.0f;
 
 // One baked CJK face serves every text size; u8g2 GB2312 bitmaps top out near
 // 16px, so larger headers render Chinese at 16px inside their taller row (the
-// same fixed-size compromise firmware/s3 makes with efontCN). The 16px floor
-// is also the smallest CJK can scale to.
+// same fixed-size compromise firmware/papercolor makes with efontCN). The 16px
+// floor is also the smallest CJK can scale to.
 const uint8_t* cjk_font_for(TextSize /*size*/, Weight /*weight*/) {
   return u8g2_font_wqy16_t_gb2312;
 }

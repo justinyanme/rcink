@@ -13,8 +13,8 @@ lint:
 producer-test:
     cd producer && uv run pytest
 
-native-s3:
-    {{ pio }} test -d firmware/s3 -e native
+native-papercolor:
+    {{ pio }} test -d firmware/papercolor -e native
 
 native-t-amoled:
     {{ pio }} test -d firmware/t-amoled -e native
@@ -33,10 +33,10 @@ tlsr-host-test:
     cmake --build firmware/tlsr/firmware/host_test/build --target host_test
     uv run --directory firmware/tlsr/firmware/host_test pytest
 
-test: producer-test native-s3 native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
+test: producer-test native-papercolor native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
 
-build-s3:
-    {{ pio-run }} s3 run -d firmware/s3
+build-papercolor:
+    {{ pio-run }} papercolor run -d firmware/papercolor
 
 build-t-amoled:
     {{ pio-run }} t-amoled run -d firmware/t-amoled
@@ -50,7 +50,7 @@ build-rlcd:
 build-epd397:
     {{ pio-run }} epd397 run -d firmware/epd397
 
-build: build-s3 build-t-amoled build-c3-x4 build-rlcd build-epd397
+build: build-papercolor build-t-amoled build-c3-x4 build-rlcd build-epd397
 
 goldens:
     cd producer && uv run rcink-goldens regen

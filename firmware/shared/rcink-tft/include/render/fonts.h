@@ -21,7 +21,7 @@ int16_t min_latin_font_height();
 // Latin text uses TFT_eSPI's built-in vector fonts (crisp, scalable). Any
 // string containing a non-ASCII byte is routed through U8g2_for_TFT_eSPI with a
 // baked WenQuanYi 16px GB2312 bitmap font — TFT_eSPI ships no CJK glyphs. This
-// mirrors firmware/s3's efontCN swap (see render/fonts_icons.cpp there).
+// mirrors firmware/papercolor's efontCN swap (see render/fonts_icons.cpp there).
 
 // Reserved row height for CJK glyphs (the baked font is 16px tall).
 static constexpr int16_t kCjkLineH = 16;

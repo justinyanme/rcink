@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [s3, t-amoled, c3-x4, rlcd, epd397]
+        target: [papercolor, t-amoled, c3-x4, rlcd, epd397]
     steps:
       # clean: false keeps gitignored .pio/ between runs (warm incremental
       # builds); checkout still resets all tracked files.

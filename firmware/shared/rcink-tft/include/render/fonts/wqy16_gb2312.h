@@ -3,8 +3,9 @@
 // Extracted verbatim from olikraus/u8g2 (csrc/u8g2_fonts.c) — the byte data is
 // unchanged; only the declaration was localized (static, no U8G2_FONT_SECTION).
 // License: GPL-2.0 with font-embedding exception (WenQuanYi). Baked into the
-// repo like firmware/s3/render/fonts/vt323_*.h so the t-amoled target needs no
-// extra font dependency and the glyph data is versioned with the firmware.
+// repo like firmware/papercolor/render/fonts/vt323_*.h so the t-amoled target
+// needs no extra font dependency and the glyph data is versioned with the
+// firmware.
 //
 // Rendered by U8g2_for_TFT_eSPI (setFont/drawUTF8). Covers GB2312 Level-1 +
 // punctuation; rare chars outside the set fall back to the ASCII path.

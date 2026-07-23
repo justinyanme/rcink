@@ -6,7 +6,7 @@ Umbrella repo for rc e-ink dashboard devices. One DSL, one producer, multiple fi
 
 - `dsl/` — DSL spec (JSON schema + cross-device golden render fixtures).
 - `producer/` — shared Python producer (pages, sources, transports, CLI).
-- `firmware/s3/` — M5Stack PaperColor (ESP32-S3, 400×600, 6-color). Wi-Fi/Axiom.
+- `firmware/papercolor/` — M5Stack PaperColor (ESP32-S3, 400×600, 6-color). Wi-Fi/Axiom.
 - `firmware/t-amoled/` — LILYGO T-Display-S3 AMOLED (ESP32-S3, 240×536, RGB). Wi-Fi/Axiom.
 - `firmware/c3-x4/` — Xteink X4 (ESP32-C3, 800×480, B&W e-ink / SSD1677). Wi-Fi/Axiom.
 - `firmware/rlcd/` — Waveshare ESP32-S3-RLCD-4.2 (400×300, mono reflective LCD). Wi-Fi/Axiom.
@@ -37,8 +37,8 @@ Override with `RCINK_PIO_OFFICIAL_CORE_DIR` and `RCINK_PIO_C3_CORE_DIR` when
 needed.
 
 ```bash
-# s3 (PlatformIO)
-cd firmware/s3 && pio run -e m5stack-papercolor
+# papercolor (PlatformIO)
+cd firmware/papercolor && pio run -e m5stack-papercolor
 
 # t-amoled (PlatformIO)
 cd firmware/t-amoled && pio run -e lilygo-t-amoled-dev
