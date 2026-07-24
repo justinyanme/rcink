@@ -20,13 +20,21 @@ Two halves of one repo:
    Axiom token, and the Axiom Root CA PEM.
 2. Make sure the producer has written at least one event to the
    `rcpapercolor` Axiom dataset (run `cd producer && uv run claude-fetch`).
-3. Build + flash the production (deep-sleep) firmware — this is the default
+3. Identify the exact target before flashing. USB suffixes drift and another
+   ESP32-S3 may be attached; the PaperColor unit in hand has MAC
+   `44:1B:F6:C1:31:90`. Set the port only after `esptool read_mac` matches:
+
+   ```bash
+   RCPAPER_PORT=/dev/cu.usbmodemNNNNN
+   ```
+
+   Build + flash the production (deep-sleep) firmware — this is the default
    env, the one to run on battery. The shared PlatformIO config makes this
    upload exit with `--after watchdog-reset`:
 
    ```bash
-   pio run -e m5stack-papercolor -t upload
-   pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
+   pio run -e m5stack-papercolor -t upload --upload-port "$RCPAPER_PORT"
+   pio device monitor -p "$RCPAPER_PORT" -b 115200 --rts 0 --dtr 0
    ```
 
    For cable-driven iteration use the dev env instead — it adds the USB-CDC
@@ -34,7 +42,7 @@ Two halves of one repo:
    on the timer, drains the battery — never leave this on battery):
 
    ```bash
-   pio run -e m5stack-papercolor-dev -t upload
+   pio run -e m5stack-papercolor-dev -t upload --upload-port "$RCPAPER_PORT"
    ```
 
 4. Device boot sequence (first time): WiFi → NTP → Axiom query → render →
@@ -50,8 +58,8 @@ while the firmware sleep path was healthy.
 
 For every serial or flash session:
 
-1. Attach serial once. If the port disappears or changes during a wake cycle,
-   stop; never retry or race USB enumeration.
+1. Verify the port's MAC before attaching serial. If the port disappears or
+   changes during a wake cycle, stop; never retry or race USB enumeration.
 2. Pass `--after watchdog-reset` to every esptool operation so it exits through
    a watchdog reset.
 3. Before unplugging for battery use, close host tools, wait for the wake cycle
