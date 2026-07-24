@@ -268,6 +268,7 @@ void display_init() {
 
 void display_sleep() {
   lcd_sleep();
+  Serial.println("[display] sleep");
 }
 
 void clear_screen() {

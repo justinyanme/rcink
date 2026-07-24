@@ -10,9 +10,8 @@ settings — avoids toggling the S3 into download mode), optionally injects a
 sequence of console keys with per-key delays, and streams output for a fixed
 window. Lets an agent exercise the device console hands-free.
 
-    uv run tools/serial_probe.py --seconds 8
-    uv run tools/serial_probe.py --send "sq" --seconds 6   # state + layout dump
-    uv run tools/serial_probe.py --send "n,n,b,f" --seconds 25  # nav + refetch
+    uv run tools/serial_probe.py --port /dev/cu.usbmodemNNNNN --seconds 8
+    uv run tools/serial_probe.py --port /dev/cu.usbmodemNNNNN --send "sq" --seconds 6
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ import serial
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="/dev/cu.usbmodem83401")
+    ap.add_argument("--port", required=True)
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--seconds", type=float, default=10.0)
     ap.add_argument(

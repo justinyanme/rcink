@@ -10,9 +10,8 @@ device raw via os.open + termios (exactly like `cat`), never touching the modem
 control lines, so the running app is never knocked into download. It can still
 inject console keys (plain data writes don't toggle DTR/RTS).
 
-    uv run tools/console.py --seconds 10
-    uv run tools/console.py --send "t,m,s" --seconds 20
-    uv run tools/console.py --send "p" --seconds 30 > /tmp/frame.txt   # frame dump
+    uv run tools/console.py --port /dev/cu.usbmodemNNNNN --seconds 10
+    uv run tools/console.py --port /dev/cu.usbmodemNNNNN --send "t,m,s" --seconds 20
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ def open_raw(port: str, baud: int, *, dtr: bool) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="/dev/cu.usbmodem83401")
+    ap.add_argument("--port", required=True)
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--seconds", type=float, default=10.0)
     ap.add_argument("--send", default="", help="keys to inject; comma-separated for explicit steps")

@@ -39,53 +39,80 @@ The default `c3-x4-dev` environment stays awake for console work and scheduled
 auto-refresh. The production `c3-x4` environment renders from cache, fetches
 when due, keeps a 60-second button window, puts the SSD1677 to sleep, holds the
 battery latch, and deep-sleeps until timer wake or the GPIO3 power button.
-Default remains dev until hardware-in-loop timer wake and latch-current checks
-pass.
+Default remains dev until the battery-powered timer/button wake and latch
+survival checks pass on the exact target.
+
+## Target identity — required
+
+USB device paths are ephemeral, not identity. The required Xteink X4 is an
+ESP32-C3 with base MAC `F8:5B:1B:5D:1D:60`. Set the current candidate port and
+verify it before any flash or console access:
+
+```bash
+x4_port=/dev/cu.usbmodemNNN
+"$HOME/.platformio-rcink-c3/penv/bin/esptool" \
+  --chip esp32c3 --port "$x4_port" read-mac
+```
+
+Proceed only when the command reports ESP32-C3 and that exact MAC. Stop on a
+mismatch; re-identify after any reset/upload that changes the port.
 
 ## Build + Flash
 
-Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom
-plus `LOCAL_TZ`.
+`firmware/c3-x4/include/config.h` is a local, gitignored secret input. Copy it
+from `include/config.h.example`, fill Wi-Fi/Axiom/time-zone values, and never
+commit its credentials. Run from the repository root and always name the
+environment; default remains dev until battery HIL passes.
 
 ```bash
-pio run -e c3-x4-dev
-pio run -e c3-x4-dev -t upload --upload-port /dev/cu.usbmodem101
+just native-c3-x4
+./scripts/pio-run.sh c3-x4 run -d firmware/c3-x4 -e c3-x4-dev
+./scripts/pio-run.sh c3-x4 run -d firmware/c3-x4 \
+  -e c3-x4-dev -t upload --upload-port "$x4_port"
 ```
 
 Use `c3-x4` only for production sleep testing:
 
 ```bash
-pio run -e c3-x4
-pio run -e c3-x4 -t upload --upload-port /dev/cu.usbmodem101
+./scripts/pio-run.sh c3-x4 run -d firmware/c3-x4 -e c3-x4
+./scripts/pio-run.sh c3-x4 run -d firmware/c3-x4 \
+  -e c3-x4 -t upload --upload-port "$x4_port"
 ```
 
-Native logic tests:
+For #4 HIL only, temporarily set `FETCH_INTERVAL_SEC` to `120`. Afterwards,
+restore `1800`, clean/rebuild, and reflash production. Restoring the ignored
+file without reflashing leaves the device on the test cadence.
 
-```bash
-pio test -e native
-```
-
-The target uses the pioarduino ESP32-C3 platform pinned in `platformio.ini`.
-Keep it in a separate PlatformIO core dir from the stock ESP32-S3 targets; the
-repo-level `just build` does this automatically via `scripts/pio-run.sh`.
-Manual equivalent:
-
-```bash
-PLATFORMIO_CORE_DIR="$HOME/.platformio-rcink-c3" \
-"$HOME/.local/bin/pio311" run -e c3-x4-dev
-```
+The wrapper keeps this target's pinned pioarduino core isolated from the stock
+ESP32-S3 targets.
 
 Monitor without DTR/RTS toggling the USB-CDC boot state:
 
 ```bash
-pio device monitor -p /dev/cu.usbmodem101 -b 115200
+uv run firmware/c3-x4/tools/x4_console.py \
+  --port "$x4_port" --read 75
 ```
 
-For non-interactive console work:
+Serial command dispatch is dev-only. Production serial is listen-only; during
+its 60-second awake window, drive HIL with physical buttons, not `--send`.
 
-```bash
-uv run tools/x4_console.py --port /dev/cu.usbmodem101 --send s --read 10
-```
+## Production HIL timing and latch proof
+
+`FETCH_INTERVAL_SEC` is a base, not guaranteed wake period. The effective
+interval is multiplied by 1/2/4 for the persisted unchanged-fetch streak, then
+doubled when a valid battery reading is below 20%. A temporary 120-second base
+may therefore yield 120/240/480 seconds, or 240/480/960 seconds at low battery.
+Use `[nvs] ... unch=...` and `[sleep] entering deep sleep for N s` as the oracle.
+
+No current meter is required. With battery attached and USB disconnected, the
+device must complete at least three consecutive sleep → timer wake → render
+cycles without losing power; the image must remain visible while asleep.
+GPIO3 POWER must then wake it, and an ADC-ladder navigation button must work in
+the 60-second awake window. USB sleep cannot prove the GPIO13 latch because USB
+masks latch failure; retained e-ink alone cannot prove the MCU is still powered.
+
+Only after that proof: restore/reflash `FETCH_INTERVAL_SEC=1800`, change
+`default_envs` from `c3-x4-dev` to `c3-x4`, rebuild, and commit the HIL evidence.
 
 ## Buttons
 
@@ -94,13 +121,15 @@ uv run tools/x4_console.py --port /dev/cu.usbmodem101 --send s --read 10
 | LEFT or UP | previous page |
 | RIGHT or DOWN | next page |
 | CONFIRM | fetch from Axiom; on success save NVS and restart |
-| BACK | re-render current cached page |
+| BACK | show diagnostics |
 | POWER | wakes the production deep-sleep build |
 
 The six UI buttons are ADC-ladder buttons, so they cannot wake the ESP32-C3
 from deep sleep. Production sleep arms the separate GPIO3 power button.
 
 ## Console
+
+The commands below are available only in `c3-x4-dev`.
 
 - `f` fetch from Axiom; on success save NVS and restart
 - `r` re-render current cached page
@@ -118,7 +147,9 @@ from deep sleep. Production sleep arms the separate GPIO3 power button.
 Dump the current framebuffer and convert it on the Mac:
 
 ```bash
-uv run tools/x4_console.py --port /dev/cu.usbmodem101 --send P --read 14 | uv run tools/fb_to_png.py /tmp/x4.png
+uv run firmware/c3-x4/tools/x4_console.py \
+  --port "$x4_port" --send P --read 14 \
+  | uv run firmware/c3-x4/tools/fb_to_png.py /tmp/x4.png
 ```
 
 `tools/preview_sidebar.py` is a narrow layout helper for sidebar iteration; it

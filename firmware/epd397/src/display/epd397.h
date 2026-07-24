@@ -2,6 +2,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "display/power_policy.h"
+
 namespace rcpaper {
 
 // Driver for the Waveshare ESP32-S3-ePaper-3.97 panel (SSD1677-family, 800x480,
@@ -9,8 +11,9 @@ namespace rcpaper {
 // this driver quantises that sprite to the panel's native 2bpp gray buffer
 // (render/gray_pack.h) and drives the 4-gray waveform.
 
-// GPIO + SPI bring-up, full init, then a white clear to wipe factory ghosting.
-void epd397_init();
+// GPIO + SPI/controller bring-up. Cold starts clear factory ghosting; resume
+// starts retain the old glass until the caller pushes the next complete frame.
+void epd397_init(PanelStartup startup);
 
 // Full white refresh (clears ghosting).
 void epd397_clear();

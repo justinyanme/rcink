@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proto/schema.h"
+#include "display/power_policy.h"
 
 #ifdef ARDUINO
 #include "proto/envelope.h"
@@ -23,7 +24,8 @@ static constexpr int16_t SCREEN_H = 480;
 static constexpr int16_t SIDEBAR_W = 110;
 static constexpr int16_t CONTENT_W = SCREEN_W - SIDEBAR_W;  // 690
 
-void display_init();
+// Resume startup initializes the controller without changing retained glass.
+void display_init(PanelStartup startup);
 void display_sleep();
 void clear_screen();
 
@@ -41,6 +43,8 @@ void render_error(const char* msg);
 // Transient centred status (e.g. "Fetching data...") shown during the
 // few-second fetch so the user sees progress instead of a stale page.
 void render_status(const char* msg);
+// Always logs fetch progress; only dev renders costly transient e-paper frames.
+void report_fetch_status(const char* msg);
 #endif
 
 }  // namespace rcpaper

@@ -236,9 +236,9 @@ int16_t content_right(const LaidOutNode& n) {
 
 }  // namespace
 
-void display_init() {
+void display_init(PanelStartup startup) {
   Serial.println("[display] epd397 init");
-  epd397_init();  // landscape 800x480, 4-level grayscale e-paper
+  epd397_init(startup);  // landscape 800x480, 4-level grayscale e-paper
 
   g_canvas.setColorDepth(16);
   g_canvas.setSwapBytes(true);
@@ -249,7 +249,6 @@ void display_init() {
   }
   fonts_begin(g_canvas);  // bind the u8g2 CJK renderer to the sprite buffer
   g_canvas.fillSprite(rgb565(kRgbWhite));
-  push_canvas();
   Serial.printf("[display] ready %dx%d free_heap=%u psram=%u\n",
                 SCREEN_W, SCREEN_H,
                 (unsigned)ESP.getFreeHeap(),
@@ -380,6 +379,16 @@ void render_status(const char* msg) {
   draw_utf8(g_canvas, x, (int16_t)((SCREEN_H - lh) / 2), TextSize::H2, Weight::Bold,
             c565(Color::Black), false, rgb565(kRgbWhite), s);
   push_canvas();
+}
+
+void report_fetch_status(const char* msg) {
+#ifdef RCEPD397_DEV_CONSOLE
+  constexpr FirmwareMode kMode = FirmwareMode::Development;
+#else
+  constexpr FirmwareMode kMode = FirmwareMode::Production;
+#endif
+  Serial.printf("[fetch] %s\n", msg);
+  if (render_fetch_status_on_panel(kMode)) render_status(msg);
 }
 
 // --- dashboard (hand-drawn, mirrors tools/preview_dashboard.py) -------------

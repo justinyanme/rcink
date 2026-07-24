@@ -11,6 +11,7 @@
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
 #include "power/sleep.h"
+#include "power/wake_display_policy.h"
 #include "proto/parser.h"
 #include "render/diagnostics.h"
 #include "render/page.h"
@@ -35,11 +36,40 @@ static bool woke_from_next_button() {
          (esp_sleep_get_ext1_wakeup_status() & kWakeButtonMask) != 0;
 }
 
-[[noreturn]] void sleep_after_render() {
+static SleepWakePolicy wait_for_button_wake_display() {
+  Serial.printf("[wake] keeping next page visible for %u ms\n",
+                (unsigned)kWakeDisplayVisibleMs);
+  WakeDisplayState state = begin_wake_display(millis());
+  while (true) {
+    const WakeDisplayAction action =
+        advance_wake_display(state, millis(),
+                             digitalRead(PIN_BUTTON_2) == HIGH);
+    if (action == WakeDisplayAction::SleepWithButtonWake) {
+      return SleepWakePolicy::TimerAndButton;
+    }
+    if (action == WakeDisplayAction::SleepTimerOnly) {
+      Serial.printf("[sleep] gpio%d held for %u ms; using timer wake only\n",
+                    PIN_BUTTON_2, (unsigned)kWakeButtonHeldLimitMs);
+      return SleepWakePolicy::TimerOnly;
+    }
+    delay(10);
+  }
+}
+
+[[noreturn]] void sleep_after_render(SleepWakePolicy wake_policy) {
   if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
   display_sleep();  // AMOLED panel must be dark between production wakes.
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
-  esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  // EXT1 is level-triggered. Re-arming it while the wake button is still held
+  // would immediately boot again and skip multiple pages. Fall back to the
+  // timer for this sleep; the next boot re-arms GPIO21 after it is released.
+  if (wake_policy == SleepWakePolicy::TimerAndButton &&
+      digitalRead(PIN_BUTTON_2) == HIGH) {
+    esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
+  } else if (wake_policy == SleepWakePolicy::TimerAndButton) {
+    Serial.printf("[sleep] gpio%d still low; button wake not armed\n",
+                  PIN_BUTTON_2);
+  }
   const uint32_t interval = adaptive_refresh_interval_sec(
       FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
   deep_sleep_until((uint64_t)time(nullptr) + interval);
@@ -371,7 +401,9 @@ void setup() {
   schedule_next_auto_refresh(millis());
   Serial.println("[console] ready");
 #else
-  sleep_after_render();
+  SleepWakePolicy wake_policy = SleepWakePolicy::TimerAndButton;
+  if (next_wake) wake_policy = wait_for_button_wake_display();
+  sleep_after_render(wake_policy);
 #endif
 }
 

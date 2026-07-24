@@ -10,9 +10,8 @@ DTR/RTS can latch the C3 USB-CDC into the ROM download stub. This opens the
 port with DTR/RTS held inactive, optionally sends console command chars, then
 reads for a fixed window — safe to run from a non-interactive shell.
 
-    uv run tools/x4_console.py --read 12             # just listen
-    uv run tools/x4_console.py --send f --read 8     # fetch, then listen
-    uv run tools/x4_console.py --send P --read 14 | uv run tools/fb_to_png.py /tmp/x4.png
+    uv run tools/x4_console.py --port /dev/cu.usbmodemNNN --read 12
+    uv run tools/x4_console.py --port /dev/cu.usbmodemNNN --send f --read 8
 """
 
 import argparse
@@ -35,7 +34,7 @@ def open_port(port: str, baud: int) -> serial.Serial:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="/dev/cu.usbmodem101")
+    ap.add_argument("--port", required=True)
     ap.add_argument("--baud", type=int, default=115200)
     ap.add_argument("--send", default="", help="console command chars to send first")
     ap.add_argument(

@@ -9,11 +9,12 @@
 #include "config.h"
 #include "display/epd397.h"
 #include "display/pins_config.h"
+#include "input/wheel.h"
 #include "net/axiom.h"
 #include "net/ntp.h"
 #include "net/wifi.h"
+#include "power/production_sleep.h"
 #include "power/refresh_schedule.h"
-#include "power/sleep.h"
 #include "proto/parser.h"
 #include "render/diagnostics.h"
 #include "render/page.h"
@@ -45,9 +46,6 @@ static int g_last_dash_min = -1;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
 
-static constexpr uint64_t kWakeButtonMask =
-    (1ULL << PIN_BUTTON_UP) | (1ULL << PIN_BUTTON_2) | (1ULL << PIN_BUTTON_DOWN);
-
 static const char* mode_name(Mode m) {
   return m == Mode::Dashboard ? "dashboard" : "deck";
 }
@@ -71,32 +69,6 @@ static bool network_refresh_due() {
   return g_state.pages.empty() || !wall_clock_is_valid() ||
          g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + interval;
 }
-
-#ifndef RCEPD397_DEV_CONSOLE
-static int wake_button_pin() {
-  if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT1) return -1;
-  const uint64_t mask = esp_sleep_get_ext1_wakeup_status();
-  if (mask & (1ULL << PIN_BUTTON_UP)) return PIN_BUTTON_UP;
-  if (mask & (1ULL << PIN_BUTTON_2)) return PIN_BUTTON_2;
-  if (mask & (1ULL << PIN_BUTTON_DOWN)) return PIN_BUTTON_DOWN;
-  return -1;
-}
-
-static uint64_t next_minute_epoch() {
-  const uint64_t now = (uint64_t)time(nullptr);
-  return ((now / 60) + 1) * 60;
-}
-
-[[noreturn]] void sleep_after_render() {
-  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
-  display_sleep();
-  pinMode(PIN_BUTTON_UP, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
-  esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
-  deep_sleep_until(next_minute_epoch());
-}
-#endif
 
 // Seed the system clock from the battery-backed RTC so the dashboard shows a
 // correct time immediately at boot, before (or without) any Wi-Fi/NTP.
@@ -148,16 +120,16 @@ void render_dashboard_now() {
 // Returns true if the page fetch succeeded. Rendering is left to the caller.
 bool refetch_now() {
   g_battery = read_battery();
-  render_status("Connecting Wi-Fi...");
+  report_fetch_status("Connecting Wi-Fi...");
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
     g_last_result = "wifi-failed";
     return false;
   }
-  render_status("Syncing time...");
+  report_fetch_status("Syncing time...");
   if (ntp_sync_once(LOCAL_TZ)) write_rtc_from_clock();
 
-  render_status("Fetching data...");
+  report_fetch_status("Fetching data...");
   std::vector<PageRecord> fresh;
   const bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
   if (!ok) {
@@ -438,23 +410,7 @@ void console_dispatch(char c) {
 //   FN   (GPIO5) tap  -> toggle dashboard <-> deck mode
 //   DOWN (GPIO6) tap  -> deck: next page; dashboard: re-read sensors
 //   any, hold >=800ms -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
-// Deck page turns use the fast ~1.5s mono refresh; everything else is 4-gray.
-struct Button {
-  int pin;
-  bool pressed;
-  uint32_t press_ms;
-  bool long_fired;
-};
-
-Button g_buttons[] = {
-    {PIN_BUTTON_UP, false, 0, false},    // GPIO4 = wheel UP
-    {PIN_BUTTON_2, false, 0, false},     // GPIO5 = wheel FUNCTION (centre)
-    {PIN_BUTTON_DOWN, false, 0, false},  // GPIO6 = wheel DOWN
-};
-
-constexpr uint32_t kLongPressMs = 800;
-constexpr uint32_t kDebounceMs = 40;
-
+// Every visible update uses the panel's hardware-fixed 4-gray waveform.
 void on_button_tap(int pin) {
   if (pin == PIN_BUTTON_2) {  // FUNCTION centre
     toggle_mode();
@@ -473,39 +429,6 @@ void on_button_long(int pin) {
   do_refresh();
 }
 
-void buttons_init() {
-  for (auto& b : g_buttons) {
-    pinMode(b.pin, INPUT_PULLUP);
-    b.pressed = digitalRead(b.pin) == 0;
-    b.press_ms = millis();
-    b.long_fired = false;
-  }
-}
-
-void buttons_poll() {
-  const uint32_t now = millis();
-  for (auto& b : g_buttons) {
-    const bool down = digitalRead(b.pin) == 0;
-    if (down && !b.pressed) {
-      b.pressed = true;
-      b.press_ms = now;
-      b.long_fired = false;
-    } else if (down && b.pressed) {
-      if (!b.long_fired && now - b.press_ms >= kLongPressMs) {
-        b.long_fired = true;
-        on_button_long(b.pin);
-      }
-    } else if (!down && b.pressed) {
-      const uint32_t held = now - b.press_ms;
-      b.pressed = false;
-      if (!b.long_fired && held >= kDebounceMs) {
-        Serial.printf("[btn] gpio%d tap\n", b.pin);
-        on_button_tap(b.pin);
-      }
-    }
-  }
-}
-
 }  // namespace rcpaper
 
 using namespace rcpaper;
@@ -518,8 +441,12 @@ void setup() {
 
   apply_local_tz(LOCAL_TZ);
   Wire.begin(I2C_SDA, I2C_SCL, 400000);  // shared SHTC3 + PCF85063 + AXP2101 bus
-  display_init();
-  buttons_init();
+  const esp_sleep_wakeup_cause_t wake_cause = esp_sleep_get_wakeup_cause();
+  const PanelStartup panel_startup =
+      wake_cause == ESP_SLEEP_WAKEUP_UNDEFINED ? PanelStartup::Cold
+                                               : PanelStartup::Resume;
+  display_init(panel_startup);
+  wheel_init(on_button_tap, on_button_long);
 
   rtc_begin();
   shtc3_begin();
@@ -542,9 +469,10 @@ void setup() {
   console_help();
   Serial.println("[console] ready");
 #else
-  const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
-  const int wake_pin = wake_button_pin();
-  Serial.printf("[wake] cause=%d gpio=%d\n", (int)wake, wake_pin);
+  const int wake_pin = wheel_wake_pin(
+      wake_cause == ESP_SLEEP_WAKEUP_EXT1,
+      esp_sleep_get_ext1_wakeup_status());
+  Serial.printf("[wake] cause=%d gpio=%d\n", (int)wake_cause, wake_pin);
   if (wake_pin >= 0) apply_wake_button(wake_pin);
 
   if (network_refresh_due()) {
@@ -552,7 +480,7 @@ void setup() {
   } else {
     render_current_mode();
   }
-  sleep_after_render();
+  enter_production_sleep();
 #endif
 }
 
@@ -563,7 +491,7 @@ void loop() {
     if (c < 0) break;
     console_dispatch((char)c);
   }
-  buttons_poll();
+  wheel_poll();
   dash_tick_poll();
   auto_refresh_poll();
   delay(20);

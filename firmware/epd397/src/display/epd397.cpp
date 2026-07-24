@@ -151,7 +151,7 @@ void clear_white_full() {
 
 }  // namespace
 
-void epd397_init() {
+void epd397_init(PanelStartup startup) {
   pinMode(EPD_DC, OUTPUT);
   pinMode(EPD_CS, OUTPUT);
   pinMode(EPD_RST, OUTPUT);
@@ -170,10 +170,13 @@ void epd397_init() {
 
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
   init_full();
-  clear_white_full();
+  if (clear_panel_on_startup(startup)) clear_white_full();
   g_spi.endTransaction();
-  Serial.printf("[epd] init done %dx%d 4-gray (gray buf %d bytes)\n",
-                kW, kH, kGrayBytes);
+  Serial.printf("[epd] init done %dx%d 4-gray "
+                "(gray buf %d bytes, startup=%s clear=%d)\n",
+                kW, kH, kGrayBytes,
+                startup == PanelStartup::Cold ? "cold" : "resume",
+                clear_panel_on_startup(startup));
 }
 
 void epd397_clear() {

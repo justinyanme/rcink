@@ -2,7 +2,7 @@
 // on the real Xteink X4 panel, in isolation from WiFi/render. Whatever shows on
 // the panel confirms: SPI pins, init sequence, orientation, full + fast refresh.
 //
-//   pio run -e c3-x4-bringup -t upload --upload-port /dev/cu.usbmodem101
+//   pio run -e c3-x4-bringup -t upload --upload-port "$x4_port"
 //
 // Only compiled into the `c3-x4-bringup` env (see build_src_filter).
 #include <Arduino.h>

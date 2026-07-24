@@ -44,40 +44,59 @@ hardware). CJK in deck mode renders via U8g2 + a baked WenQuanYi GB2312 font.
 
 E-paper can't flash on every tick, so the dashboard re-renders only when the
 displayed **minute** rolls over (≈once/min); mode switches and page changes do a
-full 4-gray refresh (~3 s). Boot does a full white clear to wipe ghosting.
+full 4-gray refresh (~3 s). A cold boot does one white clear to wipe ghosting.
+Deep-sleep wakes preserve the old image through controller initialization and
+perform exactly one visible update, with no intermediate blank/status frames.
 The default `waveshare-s3-epd397-dev` environment stays awake for console work.
 The production `waveshare-s3-epd397` environment renders once, puts the panel in
 deep sleep, wakes on the next minute boundary, and also wakes from the wheel's
-GPIO4/GPIO5/GPIO6 inputs. Default remains dev until hardware-in-loop timer wake
-and battery-current checks pass.
+GPIO4/GPIO5/GPIO6 inputs. Default remains dev until the production timer/button
+wake cycle passes on the exact target.
 
 ## Build + Flash
 
-Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom + `LOCAL_TZ`.
+Create `include/config.h` from `include/config.h.example` and fill Wi-Fi/Axiom
+plus `LOCAL_TZ`. USB suffixes drift and another ESP32-S3 may be attached; keep a
+port only after `read_mac` matches this unit's `9C:13:9E:A7:32:F8`:
 
 ```bash
-pio run -e waveshare-s3-epd397-dev
-pio run -e waveshare-s3-epd397-dev -t upload --upload-port /dev/cu.usbmodem83401
+EPD397_PORT=/dev/cu.usbmodemNNNNN
+uvx --from 'esptool==4.9.0' esptool.py \
+  --chip esp32s3 --port "$EPD397_PORT" \
+  --before usb_reset --after watchdog_reset read_mac
+./scripts/pio-run.sh epd397 run \
+  -d firmware/epd397 -e waveshare-s3-epd397-dev
+./scripts/pio-run.sh epd397 run \
+  -d firmware/epd397 -e waveshare-s3-epd397-dev \
+  -t upload --upload-port "$EPD397_PORT"
 ```
 
 Use `waveshare-s3-epd397` only for production sleep testing:
 
 ```bash
-pio run -e waveshare-s3-epd397
-pio run -e waveshare-s3-epd397 -t upload --upload-port /dev/cu.usbmodem83401
+./scripts/pio-run.sh epd397 run \
+  -d firmware/epd397 -e waveshare-s3-epd397
+./scripts/pio-run.sh epd397 run \
+  -d firmware/epd397 -e waveshare-s3-epd397 \
+  -t upload --upload-port "$EPD397_PORT"
 ```
 
 Native logic tests (palette, parser, layout engine, 4-gray packing):
 
 ```bash
-pio test -e native
+./scripts/pio-run.sh epd397 test -d firmware/epd397 -e native
 ```
 
 Monitor without DTR/RTS toggling the S3 into download mode:
 
 ```bash
-pio device monitor -p /dev/cu.usbmodem83401 -b 115200 --rts 0 --dtr 0
+uv run firmware/epd397/tools/console.py \
+  --port "$EPD397_PORT" --seconds 30
 ```
+
+Production deep sleep removes the port; reopen the raw console after each
+re-enumeration. Do not use the pyserial-based probe or screenshot capture
+against the production sleep build.
 
 ## Buttons
 
@@ -110,8 +129,8 @@ wake sources; GPIO0/BOOT is intentionally excluded.
 - `c` clear screen
 - `R` reboot
 
-For hands-free console testing over USB (no DTR/RTS reset), see
-`tools/serial_probe.py`, e.g. `uv run tools/serial_probe.py --send "t,m,s" --seconds 20`.
+For dev-console automation, use the raw console, e.g.
+`uv run firmware/epd397/tools/console.py --port "$EPD397_PORT" --send "t,m,s" --seconds 20`.
 
 ## Exact screenshots
 
@@ -120,7 +139,8 @@ For hands-free console testing over USB (no DTR/RTS reset), see
 800×480 PNGs (4 gray levels) that match the device exactly:
 
 ```bash
-uv run tools/capture_frames.py --port /dev/cu.usbmodem83401 --open
+uv run firmware/epd397/tools/capture_frames.py \
+  --port "$EPD397_PORT" --open
 ```
 
 Output:
@@ -131,5 +151,6 @@ Output:
 Capture the current cached deck without a network refresh:
 
 ```bash
-uv run tools/capture_frames.py --port /dev/cu.usbmodem83401 --no-refresh --open
+uv run firmware/epd397/tools/capture_frames.py \
+  --port "$EPD397_PORT" --no-refresh --open
 ```
