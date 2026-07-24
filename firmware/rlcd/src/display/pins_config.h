@@ -23,8 +23,9 @@
 #define PIN_BAT_VOLT 4
 
 // --- firmware-readable buttons (both active-low) ----------------------------
-// BOOT doubles as the download-mode strap but is safe as a runtime button (it
-// only enters download mode when held across a reset). The physical PWR key is
-// handled by the board power circuit and is not exposed as an application GPIO.
+// BOOT doubles as the download-mode strap. It is safe to poll while the CPU is
+// already awake, but must not wake production deep sleep because wake resets
+// the CPU with GPIO0 still held low. The physical PWR key is handled by the
+// board power circuit and is not exposed as an application GPIO.
 #define PIN_BUTTON_1 0   // BOOT
 #define PIN_BUTTON_2 18  // KEY

@@ -180,12 +180,12 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   }
 
   // --- nav hints (bottom) ---
-  // In deck mode KEY returns to the dashboard (HOME) and BOOT advances the page
-  // (NEXT, wrapping). See firmware/rlcd/src/main.cpp for the full mapping.
+  // Production has one safe wake button: KEY cycles through the deck, then
+  // returns home after the last page. GPIO0/BOOT is intentionally not armed.
   g_canvas.setCursor(cx, SCREEN_H - 40);
-  g_canvas.print("KEY HOME");
+  g_canvas.print("KEY NEXT");
   g_canvas.setCursor(cx, SCREEN_H - 22);
-  g_canvas.print("BOOT NXT");
+  g_canvas.print("END HOME");
 }
 
 class SpriteMeasurer : public Measurer {
@@ -227,9 +227,9 @@ int16_t content_bottom(const LaidOutNode& n) {
 
 }  // namespace
 
-void display_init() {
+void display_init(PanelStartup startup) {
   Serial.println("[display] st7305 init");
-  st7305_init();  // landscape 400x300, 1bpp reflective
+  st7305_init(startup);  // landscape 400x300, 1bpp reflective
 
   g_canvas.setColorDepth(16);
   g_canvas.setSwapBytes(true);
@@ -240,15 +240,15 @@ void display_init() {
   }
   fonts_begin(g_canvas);  // bind the u8g2 CJK renderer to the sprite buffer
   g_canvas.fillSprite(rgb565(kRgbWhite));
-  push_canvas();
+  if (panel_startup_pushes_blank_frame(startup)) push_canvas();
   Serial.printf("[display] ready %dx%d free_heap=%u psram=%u\n",
                 SCREEN_W, SCREEN_H,
                 (unsigned)ESP.getFreeHeap(),
                 (unsigned)ESP.getFreePsram());
 }
 
-void display_sleep() {
-  st7305_sleep();
+void display_prepare_for_deep_sleep() {
+  st7305_prepare_for_deep_sleep();
 }
 
 void clear_screen() {

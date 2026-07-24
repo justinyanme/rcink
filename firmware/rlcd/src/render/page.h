@@ -1,5 +1,6 @@
 #pragma once
 
+#include "display/power_policy.h"
 #include "proto/schema.h"
 
 #ifdef ARDUINO
@@ -23,8 +24,8 @@ static constexpr int16_t SCREEN_H = 300;
 static constexpr int16_t SIDEBAR_W = 56;
 static constexpr int16_t CONTENT_W = SCREEN_W - SIDEBAR_W;  // 344
 
-void display_init();
-void display_sleep();
+void display_init(PanelStartup startup);
+void display_prepare_for_deep_sleep();
 void clear_screen();
 
 // Hand-drawn consumer dashboard: top bar (title + clock + date), big indoor

@@ -44,13 +44,12 @@ is used only as a sprite/font engine (its ILI9341 setup is never driven against
 real hardware). CJK in deck mode renders via U8g2 + a baked WenQuanYi GB2312
 font.
 
-The dev build currently boots in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
+Both builds currently boot in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
 the final packed 1 bpp frame is inverted after normal black-on-white rendering.
 Use console `i` to toggle light/dark live and redraw the current screen.
-The default `waveshare-s3-rlcd-dev` environment stays awake for console work.
-The production `waveshare-s3-rlcd` environment renders once, puts the ST7305 in
-sleep mode, wakes every 30 seconds, and also wakes from GPIO18/KEY. Default
-remains dev until timer wake, retained-panel, and button HIL checks pass.
+The default production `waveshare-s3-rlcd` environment renders once, retains
+the ST7305 image in low-power mode, wakes every 30 seconds, and also wakes from
+GPIO18/KEY. Use `waveshare-s3-rlcd-dev` when a persistent USB console is needed.
 
 ## Build + Flash
 
@@ -64,11 +63,12 @@ RCLCD_PORT=/dev/cu.usbmodemNNNNN  # replace only after verifying board identity
 ```
 
 ```bash
+pio run
 pio run -e waveshare-s3-rlcd-dev
 pio run -e waveshare-s3-rlcd-dev -t upload --upload-port "$RCLCD_PORT"
 ```
 
-Use `waveshare-s3-rlcd` only for production sleep testing:
+Explicit production build and flash:
 
 ```bash
 pio run -e waveshare-s3-rlcd
@@ -98,14 +98,15 @@ press powers on, long press powers off, and normal taps do not reach the app.
 
 | Gesture | Dashboard | Deck |
 |---|---|---|
-| **KEY** (GPIO18) tap | → deck mode | → dashboard mode |
-| **BOOT** (GPIO0) tap | re-read sensors | next page (wraps) |
-| either, hold ≥800 ms | network refresh (NTP/RTC + Axiom) | same |
+| **KEY** (GPIO18) tap | first/current deck page | next page; last page → dashboard |
+| **BOOT** (GPIO0) tap, dev build only | re-read sensors | next page (wraps) |
+| either, hold ≥800 ms, dev build only | network refresh (NTP/RTC + Axiom) | same |
 
-BOOT doubles as the download strap — safe at runtime (it only enters download
-mode when held across a reset).
-In the production sleep build, only GPIO18/KEY is armed as an EXT1 wake source;
-GPIO0/BOOT is intentionally excluded.
+Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
+cycles through Dashboard → deck pages → Dashboard and persists the page index.
+GPIO0/BOOT is intentionally excluded because it doubles as the download strap.
+Timer and KEY wakes resume the retained ST7305 image without a hardware reset or
+an intermediate blank frame.
 
 ## Console
 

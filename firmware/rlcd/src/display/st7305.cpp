@@ -4,10 +4,12 @@
 
 #include <Arduino.h>
 #include <SPI.h>
+#include <driver/gpio.h>
 
 #include <initializer_list>
 
 #include "display/pins_config.h"
+#include "display/power_policy.h"
 #include "render/mono_pack.h"
 
 #ifndef RCRLCD_DEFAULT_DARK_MODE
@@ -56,7 +58,18 @@ void st7305_set_dark_mode(bool enabled) {
   Serial.printf("[st7305] polarity=%s\n", g_dark_mode ? "dark" : "light");
 }
 
-void st7305_init() {
+void st7305_init(PanelStartup startup) {
+  // Deep-sleep GPIO holds survive the CPU reset. Program the next active level
+  // before releasing each pad so the panel never sees a transition.
+  for (const GpioHold& hold : kPreDeepSleepGpioHolds) {
+    pinMode(hold.pin, OUTPUT);
+    digitalWrite(hold.pin, hold.level);
+  }
+  gpio_deep_sleep_hold_dis();
+  for (const GpioHold& hold : kPreDeepSleepGpioHolds) {
+    ESP_ERROR_CHECK(gpio_hold_dis(static_cast<gpio_num_t>(hold.pin)));
+  }
+
   pinMode(ST7305_DC, OUTPUT);
   pinMode(ST7305_CS, OUTPUT);
   pinMode(ST7305_RST, OUTPUT);
@@ -65,6 +78,14 @@ void st7305_init() {
   // default pins on ESP32S3" warning this logs is benign — SCK/MOSI still bind.
   g_spi.begin(ST7305_SCK, -1, ST7305_MOSI, -1);
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
+
+  if (!panel_startup_uses_hardware_reset(startup)) {
+    cmd(0x38);  // high-power mode for the frame write
+    cmd(0x29);  // keep display output enabled
+    g_spi.endTransaction();
+    Serial.println("[st7305] resumed retained panel");
+    return;
+  }
 
   // Hardware reset pulse.
   digitalWrite(ST7305_RST, HIGH);
@@ -135,11 +156,17 @@ const uint8_t* st7305_last_frame(size_t* len) {
   return g_buf;
 }
 
-void st7305_sleep() {
+void st7305_prepare_for_deep_sleep() {
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
-  cmd(0x28);  // display off
-  cmd(0x10);  // sleep in
+  for (uint8_t command : kPreDeepSleepCommands) cmd(command);
   g_spi.endTransaction();
+  for (const GpioHold& hold : kPreDeepSleepGpioHolds) {
+    pinMode(hold.pin, OUTPUT);
+    digitalWrite(hold.pin, hold.level);
+    ESP_ERROR_CHECK(gpio_hold_en(static_cast<gpio_num_t>(hold.pin)));
+  }
+  gpio_deep_sleep_hold_en();
+  Serial.println("[st7305] retained image in low-power mode");
 }
 
 }  // namespace rcpaper

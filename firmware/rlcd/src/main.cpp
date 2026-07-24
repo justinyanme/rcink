@@ -9,6 +9,7 @@
 #include "config.h"
 #include "display/st7305.h"
 #include "display/pins_config.h"
+#include "input/navigation.h"
 #include "net/axiom.h"
 #include "net/ntp.h"
 #include "net/wifi.h"
@@ -29,8 +30,6 @@ namespace rcpaper {
 // to the Axiom page-DECK ported from the AMOLED target. The dashboard works
 // fully offline: time comes from the PCF85063 RTC (NTP re-syncs it when Wi-Fi
 // is up) and the climate from I2C.
-enum class Mode : uint8_t { Dashboard, Deck };
-
 DeviceState g_state;
 BatteryReading g_battery;
 Shtc3Reading g_env;
@@ -79,7 +78,7 @@ static bool woke_from_key() {
 
 [[noreturn]] void sleep_after_render() {
   if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
-  display_sleep();
+  display_prepare_for_deep_sleep();
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
   esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
   deep_sleep_until((uint64_t)time(nullptr) + kDashRefreshSec);
@@ -281,8 +280,14 @@ void next_page() {
   render_current();
 }
 
-void apply_wake_key() {
-  set_mode(g_mode == Mode::Dashboard ? Mode::Deck : Mode::Dashboard);
+void advance_key_navigation() {
+  const NavigationState next =
+      navigation_after_key_press(g_mode, g_state.page_index, g_state.pages.size());
+  if (next.page_index != g_state.page_index) {
+    g_state.page_index = next.page_index;
+    nvs_save_progress(g_state.page_index);
+  }
+  set_mode(next.mode);
 }
 
 void schedule_next_auto_refresh(uint32_t now_ms) {
@@ -388,13 +393,13 @@ void console_dispatch(char c) {
   }
 }
 
-// Two firmware-readable buttons, both active-low.
-//   KEY  (GPIO18) tap  -> toggle dashboard <-> deck mode
-//   BOOT (GPIO0)  tap  -> dashboard: re-read sensors; deck: next page (wraps)
+// Dev-console button polling; both firmware-readable buttons are active-low.
+//   KEY  (GPIO18) tap  -> dashboard -> each deck page -> dashboard
+//   BOOT (GPIO0)  tap  -> dashboard: re-read sensors; deck: next page
 //   either, hold       -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
-// BOOT doubles as the download strap but is safe at runtime (download only
-// engages when it is held across a reset). PWR is a hardware power key
-// (short-press power on, long-press power off), not an application button.
+// Production deep sleep only arms KEY because BOOT is the download strap. PWR
+// is a hardware power key (short-press power on, long-press power off), not an
+// application button.
 struct Button {
   int pin;
   bool pressed;
@@ -412,7 +417,8 @@ constexpr uint32_t kDebounceMs = 40;
 
 void on_button_tap(int pin) {
   if (pin == PIN_BUTTON_2) {  // KEY
-    toggle_mode();
+    advance_key_navigation();
+    render_current_mode();
     return;
   }
   // BOOT
@@ -470,7 +476,10 @@ void setup() {
 
   apply_local_tz(LOCAL_TZ);
   Wire.begin(I2C_SDA, I2C_SCL, 400000);  // shared SHTC3 + PCF85063 bus
-  display_init();
+  const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
+  const bool resumed_from_deep_sleep =
+      wake == ESP_SLEEP_WAKEUP_TIMER || wake == ESP_SLEEP_WAKEUP_EXT1;
+  display_init(panel_startup_for_deep_sleep_wake(resumed_from_deep_sleep));
   buttons_init();
 
   rtc_begin();
@@ -493,10 +502,9 @@ void setup() {
   console_help();
   Serial.println("[console] ready");
 #else
-  const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
   const bool key_wake = woke_from_key();
   Serial.printf("[wake] cause=%d key=%d\n", (int)wake, (int)key_wake);
-  if (key_wake) apply_wake_key();
+  if (key_wake) advance_key_navigation();
 
   if (network_refresh_due()) {
     do_refresh();
