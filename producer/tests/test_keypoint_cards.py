@@ -19,7 +19,7 @@ from rcink.keypoint_cards import (
     weather_card,
 )
 from rcink.sources.calendar import CalEvent, TodaysCalendar
-from rcink.sources.claude import ClaudeUsage
+from rcink.sources.claude import ClaudeUsage, ScopedLimit
 from rcink.sources.codex import CodexUsage
 from rcink.sources.reminders import Reminder, TodaysReminders
 from rcink.sources.weather import Weather
@@ -43,8 +43,7 @@ def make_claude() -> ClaudeUsage:
     return ClaudeUsage(
         five_hour_pct=76.0,
         seven_day_pct=88.0,
-        opus_pct=18.0,
-        sonnet_pct=24.0,
+        scoped_limits=[ScopedLimit(label="FABLE", pct=41.0)],
         five_hour_reset="2h 14m",
         seven_day_reset="3d 5h",
         five_hour_reset_at=RESET_AT,
@@ -68,7 +67,7 @@ def test_claude_card_renders():
 
 
 def test_claude_card_rejects_missing_required_pct():
-    usage = ClaudeUsage(None, None, None, None, "", "", five_hour_reset_at=None)
+    usage = ClaudeUsage(None, None, [], "", "", five_hour_reset_at=None)
     with pytest.raises(ValueError, match="usage pct"):
         claude_card(usage, now=NOW)
 

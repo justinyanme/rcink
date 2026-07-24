@@ -386,8 +386,7 @@ def test_overview_usage_reset_times_are_compact():
         claude=ClaudeUsage(
             five_hour_pct=42,
             seven_day_pct=68,
-            opus_pct=None,
-            sonnet_pct=None,
+            scoped_limits=[],
             five_hour_reset="1h 39m",
             seven_day_reset="5d 4h",
         ),

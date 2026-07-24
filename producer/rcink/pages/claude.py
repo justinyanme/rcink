@@ -1,7 +1,7 @@
 """Build a Claude usage page in the magazine style.
 
 Knockout red header, two KPI rows (hbar height 18), optional BY MODEL · 7D
-cells, optional USAGE · LAST 24H sparkline. The firmware overlays its own
+bar rows, optional USAGE · LAST 24H sparkline. The firmware overlays its own
 status bar at the top and nav strip at the bottom, so this builder doesn't
 include either.
 """
@@ -69,19 +69,15 @@ def build_claude_compact_page(usage: ClaudeUsage) -> dict:
     )
 
 
-def _model_cell(label: str, pct: float) -> dict:
+def _scoped_limit_row(label: str, pct: float) -> dict:
     color: ColorToken = "accent" if pct >= 80 else "success"
-    return vstack(
-        pad=4,
-        gap=2,
+    return hstack(
+        gap=8,
+        align="center",
         children=[
             text(label, size="sm", weight="bold"),
-            text(
-                f"{int(pct)}%",
-                size="body",
-                color=color,
-                weight="bold",
-            ),
+            hbar(pct=pct, color=color, height=18),
+            text(f"{int(pct)}%", size="body", color=color, weight="bold"),
         ],
     )
 
@@ -107,19 +103,12 @@ def build_claude_page(
         kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "success"),
     ]
 
-    model_cells = []
-    if usage.opus_pct is not None:
-        model_cells.append(_model_cell("OPUS", usage.opus_pct))
-    if usage.sonnet_pct is not None:
-        model_cells.append(_model_cell("SONNET", usage.sonnet_pct))
-    if model_cells:
-        children.append(spacer(size=12))
+    if usage.scoped_limits:
         children.append(text("BY MODEL · 7D", size="sm", weight="bold"))
-        children.append(hstack(gap=6, children=model_cells))
+        children.extend(_scoped_limit_row(limit.label, limit.pct) for limit in usage.scoped_limits)
 
     if sparkline:
-        children.append(spacer(size=10))
         children.append(text("USAGE · LAST 24H", size="sm", weight="bold"))
-        children.append(spark(sparkline, color="info", height=56))
+        children.append(spark(sparkline, color="info", height=42))
 
     return vstack(pad=14, gap=6, children=children)

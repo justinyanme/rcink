@@ -34,11 +34,16 @@ class ClaudeCredsError(RuntimeError):
 
 
 @dataclass(slots=True)
+class ScopedLimit:
+    label: str
+    pct: float
+
+
+@dataclass(slots=True)
 class ClaudeUsage:
     five_hour_pct: float | None
     seven_day_pct: float | None
-    opus_pct: float | None
-    sonnet_pct: float | None
+    scoped_limits: list[ScopedLimit]
     five_hour_reset: str  # human-formatted countdown e.g. "2h 14m"
     seven_day_reset: str
     five_hour_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
@@ -80,6 +85,56 @@ def _reset_text(iso: str | None) -> str:
     return format_countdown(int(delta))
 
 
+def _checked_pct(value: object, *, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(f"Claude usage response has invalid pct for {label}")
+    pct = float(value)
+    if pct < 0.0:
+        raise ValueError(f"Claude usage response pct out of range for {label}: {pct}")
+    if pct > 100.0:
+        logger.warning(f"Claude usage response pct over 100 for {label}: {pct}; clamping to 100")
+        return 100.0
+    return pct
+
+
+def _scoped_limits(data: dict) -> list[ScopedLimit]:
+    if "limits" not in data:
+        logger.warning("Claude usage response missing limits; hiding model-scoped limits")
+        return []
+
+    raw_limits = data["limits"]
+    if not isinstance(raw_limits, list):
+        raise ValueError("Claude usage response has malformed limits list")
+
+    limits: list[ScopedLimit] = []
+    for index, entry in enumerate(raw_limits):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Claude usage response has malformed limits[{index}]")
+
+        scope = entry.get("scope")
+        if scope is None:
+            continue
+        if not isinstance(scope, dict):
+            raise ValueError(f"Claude usage response has malformed scope for limits[{index}]")
+        if scope.get("surface") is not None:
+            continue
+
+        model = scope.get("model")
+        if model is None:
+            continue
+        if not isinstance(model, dict):
+            raise ValueError(f"Claude usage response has malformed model scope for limits[{index}]")
+
+        display_name = model.get("display_name")
+        if not isinstance(display_name, str) or not display_name.strip():
+            raise ValueError(f"Claude usage response missing display_name for limits[{index}]")
+        label = display_name.strip().upper()
+        limits.append(ScopedLimit(label=label, pct=_checked_pct(entry.get("percent"), label=label)))
+
+    limits.sort(key=lambda limit: limit.label)
+    return limits
+
+
 def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
     creds = load_creds(path)
     now_ms = int(dt.datetime.now(dt.UTC).timestamp() * 1000)
@@ -118,16 +173,7 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
         block = window(key, required=required)
         if block is None:
             return None
-        value = block.get("utilization")
-        if isinstance(value, bool) or not isinstance(value, Real):
-            raise ValueError(f"Claude usage response has invalid pct for {key}")
-        pct = float(value)
-        if pct < 0.0:
-            raise ValueError(f"Claude usage response pct out of range for {key}: {pct}")
-        if pct > 100.0:
-            logger.warning(f"Claude usage response pct over 100 for {key}: {pct}; clamping to 100")
-            return 100.0
-        return pct
+        return _checked_pct(block.get("utilization"), label=key)
 
     def reset_iso(key: str) -> str | None:
         v = window(key, required=True)
@@ -143,8 +189,7 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
     return ClaudeUsage(
         five_hour_pct=checked_pct("five_hour"),
         seven_day_pct=checked_pct("seven_day"),
-        opus_pct=checked_pct("seven_day_opus", required=False),
-        sonnet_pct=checked_pct("seven_day_sonnet", required=False),
+        scoped_limits=_scoped_limits(data),
         five_hour_reset=_reset_text(five_hour_reset_iso),
         seven_day_reset=_reset_text(seven_day_reset_iso),
         five_hour_reset_at=(

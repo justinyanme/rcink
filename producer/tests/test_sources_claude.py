@@ -9,6 +9,7 @@ from rcink.sources.claude import (
     USAGE_URL,
     ClaudeCredsError,
     ClaudeUsage,
+    ScopedLimit,
     fetch_claude_usage,
     load_creds,
 )
@@ -55,16 +56,27 @@ def test_fresh_token_used_read_only(httpx_mock, tmp_path):
         json={
             "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
-            "seven_day_opus": {"utilization": 18.0, "resets_at": "2026-05-24T00:00:00Z"},
-            "seven_day_sonnet": {"utilization": 24.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "seven_day_opus": None,
+            "seven_day_sonnet": None,
+            "limits": [
+                {
+                    "kind": "weekly_scoped",
+                    "group": "weekly",
+                    "percent": 41,
+                    "scope": {
+                        "model": {"id": None, "display_name": "Fable"},
+                        "surface": None,
+                    },
+                    "is_active": False,  # Undocumented; scoped limit must still be retained.
+                }
+            ],
         },
     )
     usage = fetch_claude_usage(p)
     assert isinstance(usage, ClaudeUsage)
     assert usage.five_hour_pct == 42.0
     assert usage.seven_day_pct == 68.0
-    assert usage.opus_pct == 18.0
-    assert usage.sonnet_pct == 24.0
+    assert usage.scoped_limits == [ScopedLimit(label="FABLE", pct=41.0)]
     # Absolute reset epoch parsed for the keypoint live countdown.
     assert usage.five_hour_reset_at == int(dt.datetime(2026, 5, 17, 20, 0, tzinfo=dt.UTC).timestamp())
     # Exactly one request (no refresh round-trip), with the token verbatim.
@@ -157,8 +169,10 @@ def test_negative_pct_raises(httpx_mock, tmp_path):
         fetch_claude_usage(p)
 
 
-def test_optional_model_windows_can_be_absent(httpx_mock, tmp_path):
+def test_missing_limits_warns_and_returns_empty_list(httpx_mock, monkeypatch, tmp_path):
     p = write_creds(tmp_path, FRESH)
+    warnings = []
+    monkeypatch.setattr(claude_mod.logger, "warning", warnings.append)
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
@@ -167,8 +181,111 @@ def test_optional_model_windows_can_be_absent(httpx_mock, tmp_path):
         },
     )
     usage = fetch_claude_usage(p)
-    assert usage.opus_pct is None
-    assert usage.sonnet_pct is None
+    assert usage.scoped_limits == []
+    assert any("limits" in warning for warning in warnings)
+
+
+def test_non_model_and_surface_scoped_limits_are_skipped(httpx_mock, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "limits": [
+                {
+                    "kind": "session",
+                    "percent": 42,
+                    "scope": {"model": None, "surface": None},
+                },
+                {
+                    "kind": "weekly_all",
+                    "percent": 68,
+                    "scope": {"model": None, "surface": None},
+                },
+                {
+                    "kind": "weekly_scoped",
+                    "percent": 12,
+                    "scope": {
+                        "model": {"display_name": "Ignored"},
+                        "surface": {"display_name": "API"},
+                    },
+                },
+            ],
+        },
+    )
+
+    assert fetch_claude_usage(p).scoped_limits == []
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        (
+            {
+                "percent": "41",
+                "scope": {"model": {"display_name": "Fable"}, "surface": None},
+            },
+            "invalid pct",
+        ),
+        (
+            {
+                "percent": True,
+                "scope": {"model": {"display_name": "Fable"}, "surface": None},
+            },
+            "invalid pct",
+        ),
+        (
+            {
+                "percent": -1,
+                "scope": {"model": {"display_name": "Fable"}, "surface": None},
+            },
+            "out of range",
+        ),
+        (
+            {
+                "percent": 41,
+                "scope": {"model": {"display_name": ""}, "surface": None},
+            },
+            "display_name",
+        ),
+    ],
+)
+def test_malformed_model_scoped_limit_raises(httpx_mock, tmp_path, entry, message):
+    p = write_creds(tmp_path, FRESH)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "limits": [entry],
+        },
+    )
+
+    with pytest.raises(ValueError, match=message):
+        fetch_claude_usage(p)
+
+
+def test_scoped_pct_over_100_clamps_with_warning(httpx_mock, monkeypatch, tmp_path):
+    p = write_creds(tmp_path, FRESH)
+    warnings = []
+    monkeypatch.setattr(claude_mod.logger, "warning", warnings.append)
+    httpx_mock.add_response(
+        url=USAGE_URL,
+        json={
+            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "limits": [
+                {
+                    "percent": 142,
+                    "scope": {"model": {"display_name": "Fable"}, "surface": None},
+                }
+            ],
+        },
+    )
+
+    assert fetch_claude_usage(p).scoped_limits == [ScopedLimit(label="FABLE", pct=100.0)]
+    assert any("FABLE" in warning and "clamping" in warning for warning in warnings)
 
 
 def test_bool_pct_raises(httpx_mock, tmp_path):

@@ -21,8 +21,7 @@ def _claude_usage() -> ClaudeUsage:
     return ClaudeUsage(
         five_hour_pct=42.0,
         seven_day_pct=15.0,
-        opus_pct=None,
-        sonnet_pct=None,
+        scoped_limits=[],
         five_hour_reset="2h 14m",
         seven_day_reset="5d 4h",
     )

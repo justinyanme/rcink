@@ -1,5 +1,7 @@
+from rcink.devices_profile import EPD397
 from rcink.pages.claude import build_claude_compact_page, build_claude_page
-from rcink.sources.claude import ClaudeUsage
+from rcink.preview_png import render_to_png
+from rcink.sources.claude import ClaudeUsage, ScopedLimit
 
 
 def _count_nodes(node: dict) -> int:
@@ -10,8 +12,7 @@ def make_usage():
     return ClaudeUsage(
         five_hour_pct=42.0,
         seven_day_pct=68.0,
-        opus_pct=18.0,
-        sonnet_pct=24.0,
+        scoped_limits=[ScopedLimit(label="FABLE", pct=41.0)],
         five_hour_reset="2h 14m",
         seven_day_reset="3d 5h",
         plan="Max",
@@ -52,8 +53,7 @@ def test_compact_bar_turns_red_only_when_window_nearly_full():
     near_full = ClaudeUsage(
         five_hour_pct=92.0,
         seven_day_pct=10.0,
-        opus_pct=None,
-        sonnet_pct=None,
+        scoped_limits=[],
         five_hour_reset="1h",
         seven_day_reset="2d",
     )
@@ -98,12 +98,63 @@ def test_sparkline_only_added_when_present():
     assert sparkline_nodes[0]["values"] == [1, 2, 3, 4, 5, 6, 7]
 
 
-def test_missing_model_data_skipped():
+def test_sparkline_remains_visible_on_epd397():
+    page = build_claude_page(make_usage(), sparkline=[1, 2, 3, 4, 5, 6, 7])
+    image = render_to_png(page, EPD397)
+    lower_middle = image.crop(
+        (
+            EPD397.width // 3,
+            EPD397.height - 40,
+            EPD397.width * 2 // 3,
+            EPD397.height,
+        )
+    )
+
+    assert any(pixel != (255, 255, 255) for pixel in lower_middle.get_flattened_data())
+
+
+def test_scoped_limit_renders_as_bar_row():
+    page = build_claude_page(make_usage(), sparkline=None)
+    text_values = [
+        node.get("value") for child in page["children"] for node in child.get("children", []) if node["type"] == "text"
+    ]
+    scoped_rows = [
+        child
+        for child in page["children"]
+        if child["type"] == "hstack" and any(node.get("value") == "FABLE" for node in child["children"])
+    ]
+
+    assert "FABLE" in text_values
+    assert len(scoped_rows) == 1
+    assert [node["type"] for node in scoped_rows[0]["children"]] == ["text", "hbar", "text"]
+    assert scoped_rows[0]["children"][1] == {
+        "type": "hbar",
+        "pct": 41.0,
+        "color": "success",
+        "height": 18,
+    }
+    assert scoped_rows[0]["children"][2]["value"] == "41%"
+
+
+def test_scoped_limit_bar_turns_red_at_80_percent():
+    usage = make_usage()
+    usage.scoped_limits = [ScopedLimit(label="FABLE", pct=80.0)]
+    page = build_claude_page(usage, sparkline=None)
+    bars = [
+        node
+        for child in page["children"]
+        for node in child.get("children", [])
+        if node["type"] == "hbar" and node["pct"] == 80.0
+    ]
+
+    assert bars[0]["color"] == "accent"
+
+
+def test_missing_scoped_limits_skips_section():
     usage = ClaudeUsage(
         five_hour_pct=42.0,
         seven_day_pct=68.0,
-        opus_pct=None,
-        sonnet_pct=None,
+        scoped_limits=[],
         five_hour_reset="2h",
         seven_day_reset="3d",
     )
@@ -111,3 +162,10 @@ def test_missing_model_data_skipped():
     # Per-model row should be omitted entirely
     text_values = [c.get("value") for c in page["children"] if c["type"] == "text"]
     assert "BY MODEL · 7D" not in text_values
+
+
+def test_compact_page_explicitly_ignores_scoped_limits():
+    page = build_claude_compact_page(make_usage())
+    assert "FABLE" not in {
+        node.get("value") for child in page["children"] for node in child.get("children", []) if node["type"] == "text"
+    }

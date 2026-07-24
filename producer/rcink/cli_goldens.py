@@ -51,13 +51,12 @@ def _build_image() -> dict:
 
 def _build_claude() -> dict:
     from rcink.pages.claude import build_claude_page
-    from rcink.sources.claude import ClaudeUsage
+    from rcink.sources.claude import ClaudeUsage, ScopedLimit
 
     usage = ClaudeUsage(
         five_hour_pct=42.0,
         seven_day_pct=15.0,
-        opus_pct=8.0,
-        sonnet_pct=70.0,
+        scoped_limits=[ScopedLimit(label="FABLE", pct=70.0)],
         five_hour_reset="2h 14m",
         seven_day_reset="5d 4h",
         plan="Max 20x",
@@ -72,8 +71,7 @@ def _build_claude_compact() -> dict:
     usage = ClaudeUsage(
         five_hour_pct=42.0,
         seven_day_pct=15.0,
-        opus_pct=None,
-        sonnet_pct=None,
+        scoped_limits=[],
         five_hour_reset="2h 14m",
         seven_day_reset="5d 4h",
         plan="Max 20x",
