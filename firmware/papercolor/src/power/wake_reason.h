@@ -35,4 +35,9 @@ inline WakeReason wake_reason_from_ext1_mask(uint64_t mask) {
   return WakeReason::Unknown;
 }
 
+inline WakeReason wake_reason_from_ext1_and_boot_masks(
+    uint64_t ext1_mask, uint64_t boot_low_mask) {
+  return wake_reason_from_ext1_mask(ext1_mask | boot_low_mask);
+}
+
 }  // namespace rcpaper

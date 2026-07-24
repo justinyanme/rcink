@@ -40,6 +40,12 @@ Two halves of one repo:
    pio device monitor -p "$RCPAPER_PORT" -b 115200 --rts 0 --dtr 0
    ```
 
+   Attach the monitor only immediately after an intentional flash/reset.
+   Opening this unit's native USB-CDC port can produce
+   `USB_UART_CHIP_RESET` even with RTS/DTR inactive, so attaching during a
+   natural timer/button wake destroys that wake reason. Validate natural
+   button wakes from the retained panel and USB disappearance instead.
+
    For cable-driven iteration use the dev env instead — it adds the USB-CDC
    command console and **disables deep sleep** (stays awake, does not refresh
    on the timer, drains the battery — never leave this on battery):
@@ -95,18 +101,22 @@ PaperColor RGB LEDs are low-duty heartbeats: brief pulse, off between pulses.
 - **BtnC** — force re-fetch from Axiom now
 - **BtnA + BtnB** — diagnostics (battery, wake count, fetch/dedup state)
 
-Rapid taps within ~500 ms of each other coalesce into a single net page
-jump and one e-ink refresh. Example: BtnA × 3 then BtnB × 1 quickly →
-device advances 2 pages with one render (≈ 17 s) instead of four.
+Repeated taps on the same navigation button within ~500 ms coalesce into a
+single page jump and one e-ink refresh. Example: BtnA × 3 advances three pages
+with one render (≈ 17 s) instead of three.
 The window slides on each new tap, caps at 2 s total, and a BtnC press
 during the window cancels nav and triggers a refetch instead. Each press
 flashes the LEDs in its color so you know it registered.
 
-A truly simultaneous A+B wake is decoded directly from the ESP32 EXT1 wake
-bitmask. This is intentional: both pins are already low before runtime ISRs are
-installed, so waiting for a second falling edge would misread the chord as
-navigation. A staggered A-then-B or B-then-A chord still enters diagnostics
-through the coalescing window.
+A truly simultaneous A+B wake combines the ESP32 EXT1 wake bitmask with an
+early snapshot of the live button levels. `EXT1 ANY_LOW` may latch only the
+first human press; the other button can become low before runtime ISRs are
+installed, leaving no falling edge to count. `setup()` therefore snapshots the
+pins before `M5.begin()` while the user is still holding both, then unions that
+mask with EXT1. Hold both buttons for about one second when opening
+diagnostics. A staggered chord means holding the first button while pressing
+the second. To reverse navigation direction, let the current wake cycle finish
+before pressing the other button.
 
 ## Native tests
 

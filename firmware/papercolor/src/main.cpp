@@ -14,6 +14,7 @@
 #include <time.h>
 
 #include "config.h"
+#include "input/button_capture.h"
 #include "net/axiom.h"
 #include "net/wifi.h"
 #include "power/nav_delta.h"
@@ -64,44 +65,6 @@ constexpr uint16_t kNavCoalesceWindowMs = 500;
 constexpr uint16_t kNavCoalesceMaxMs    = 2000;
 constexpr uint16_t kNavPollIntervalMs   = 10;
 constexpr uint16_t kNavLedPulseMs       = 80;
-constexpr uint32_t kNavDebounceMs       = 30;
-
-namespace {
-volatile uint32_t g_isr_count_a    = 0;
-volatile uint32_t g_isr_count_b    = 0;
-volatile uint32_t g_isr_count_c    = 0;
-volatile uint32_t g_isr_last_a_ms  = 0;
-volatile uint32_t g_isr_last_b_ms  = 0;
-volatile uint32_t g_isr_last_c_ms  = 0;
-}  // namespace
-
-void IRAM_ATTR isr_btn_a() {
-  uint32_t now = millis();
-  if (now - g_isr_last_a_ms < kNavDebounceMs) return;
-  g_isr_last_a_ms = now;
-  g_isr_count_a++;
-}
-void IRAM_ATTR isr_btn_b() {
-  uint32_t now = millis();
-  if (now - g_isr_last_b_ms < kNavDebounceMs) return;
-  g_isr_last_b_ms = now;
-  g_isr_count_b++;
-}
-void IRAM_ATTR isr_btn_c() {
-  uint32_t now = millis();
-  if (now - g_isr_last_c_ms < kNavDebounceMs) return;
-  g_isr_last_c_ms = now;
-  g_isr_count_c++;
-}
-
-static void install_button_isrs() {
-  pinMode(kButtonAGpio, INPUT_PULLUP);
-  pinMode(kButtonBGpio, INPUT_PULLUP);
-  pinMode(kButtonCGpio, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(kButtonAGpio), isr_btn_a, FALLING);
-  attachInterrupt(digitalPinToInterrupt(kButtonBGpio), isr_btn_b, FALLING);
-  attachInterrupt(digitalPinToInterrupt(kButtonCGpio), isr_btn_c, FALLING);
-}
 
 struct NavCoalesceResult {
   int  delta         = 0;
@@ -122,9 +85,7 @@ static void flash_for_button(WakeReason r) {
 // delta (+1 / -1 from whichever press triggered entry) and provides baselines
 // for the ISR counters so already-counted presses aren't replayed.
 static NavCoalesceResult run_coalesce_loop(int initial_delta,
-                                            uint32_t seen_a,
-                                            uint32_t seen_b,
-                                            uint32_t seen_c) {
+                                            ButtonPressCounts seen) {
   NavCoalesceResult out;
   out.delta = initial_delta;
   bool saw_a = initial_delta > 0;
@@ -137,26 +98,24 @@ static NavCoalesceResult run_coalesce_loop(int initial_delta,
     if ((int32_t)(deadline_ms - now) <= 0) break;
     if (now - start_ms >= kNavCoalesceMaxMs) break;
 
-    uint32_t cur_a = g_isr_count_a;
-    uint32_t cur_b = g_isr_count_b;
-    uint32_t cur_c = g_isr_count_c;
-    uint32_t new_a = cur_a - seen_a;
-    uint32_t new_b = cur_b - seen_b;
-    uint32_t new_c = cur_c - seen_c;
+    const ButtonPressCounts counts = button_press_counts();
+    const uint32_t new_a = counts.a - seen.a;
+    const uint32_t new_b = counts.b - seen.b;
+    const uint32_t new_c = counts.c - seen.c;
 
     if (new_a > 0) {
       saw_a = true;
       out.delta += (int)new_a;
       for (uint32_t i = 0; i < new_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
-      seen_a = cur_a;
+      seen.a = counts.a;
     }
     if (new_b > 0) {
       saw_b = true;
       out.delta -= (int)new_b;
       for (uint32_t i = 0; i < new_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
       deadline_ms = now + kNavCoalesceWindowMs;
-      seen_b = cur_b;
+      seen.b = counts.b;
     }
     if (saw_a && saw_b) {
       out.delta = 0;
@@ -167,7 +126,7 @@ static NavCoalesceResult run_coalesce_loop(int initial_delta,
     if (new_c > 0) {
       out.force_refetch = true;
       led_status_pulse(96, 56, 0, kNavLedPulseMs);
-      seen_c = cur_c;
+      seen.c = counts.c;
       break;
     }
     delay(kNavPollIntervalMs);
@@ -186,24 +145,27 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
   int delta0 = (initial == WakeReason::ButtonA) ? 1 : -1;
   flash_for_button(initial);
 
-  uint32_t boot_a = g_isr_count_a;
-  uint32_t boot_b = g_isr_count_b;
-  uint32_t boot_c = g_isr_count_c;
+  const ButtonPressCounts boot_counts = button_press_counts();
   Serial.printf("[nav] enter initial=%d boot_isr a=%u b=%u c=%u\n",
-                (int)initial, (unsigned)boot_a, (unsigned)boot_b, (unsigned)boot_c);
+                (int)initial, (unsigned)boot_counts.a, (unsigned)boot_counts.b,
+                (unsigned)boot_counts.c);
 
-  delta0 += (int)boot_a - (int)boot_b;
-  for (uint32_t i = 0; i < boot_a; ++i) led_status_pulse(0, 96, 0, kNavLedPulseMs);
-  for (uint32_t i = 0; i < boot_b; ++i) led_status_pulse(0, 0, 96, kNavLedPulseMs);
-  if ((initial == WakeReason::ButtonA && boot_b > 0) ||
-      (initial == WakeReason::ButtonB && boot_a > 0) ||
-      (boot_a > 0 && boot_b > 0)) {
+  delta0 += (int)boot_counts.a - (int)boot_counts.b;
+  for (uint32_t i = 0; i < boot_counts.a; ++i) {
+    led_status_pulse(0, 96, 0, kNavLedPulseMs);
+  }
+  for (uint32_t i = 0; i < boot_counts.b; ++i) {
+    led_status_pulse(0, 0, 96, kNavLedPulseMs);
+  }
+  if ((initial == WakeReason::ButtonA && boot_counts.b > 0) ||
+      (initial == WakeReason::ButtonB && boot_counts.a > 0) ||
+      (boot_counts.a > 0 && boot_counts.b > 0)) {
     NavCoalesceResult r;
     r.show_diagnostics = true;
     Serial.println("[nav] A+B chord -> diagnostics (boot)");
     return r;
   }
-  if (boot_c > 0) {
+  if (boot_counts.c > 0) {
     NavCoalesceResult r;
     r.delta = delta0;
     r.force_refetch = true;
@@ -211,7 +173,7 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
     Serial.printf("[nav] coalesce done delta=%d force_refetch=1 (boot-c)\n", r.delta);
     return r;
   }
-  return run_coalesce_loop(delta0, boot_a, boot_b, boot_c);
+  return run_coalesce_loop(delta0, boot_counts);
 }
 
 // Entry from the dev-console button poll. Unlike the wake path, the press
@@ -225,12 +187,11 @@ NavCoalesceResult coalesce_nav_from_poll(int initial_delta) {
   // Small delay so a pending ISR for the just-detected falling edge has
   // definitely fired before we snapshot baselines.
   delay(2);
-  uint32_t seen_a = g_isr_count_a;
-  uint32_t seen_b = g_isr_count_b;
-  uint32_t seen_c = g_isr_count_c;
+  const ButtonPressCounts counts = button_press_counts();
   Serial.printf("[nav] poll-entry initial=%d baseline a=%u b=%u c=%u\n",
-                initial_delta, (unsigned)seen_a, (unsigned)seen_b, (unsigned)seen_c);
-  return run_coalesce_loop(initial_delta, seen_a, seen_b, seen_c);
+                initial_delta, (unsigned)counts.a, (unsigned)counts.b,
+                (unsigned)counts.c);
+  return run_coalesce_loop(initial_delta, counts);
 }
 
 static void apply_local_tz() {
@@ -337,8 +298,7 @@ void render_current() {
   // epd_fast / epd_fastest all clock ~16.8 s on this hardware), and the image
   // already on the panel is byte-equivalent to what we'd render — so skipping
   // is invisible to the user and saves both wall-clock + panel-wear refreshes.
-  if (g_state.last_rendered_id == rec.id &&
-      g_state.last_rendered_data_ts == rec.data_ts) {
+  if (render_marker_matches(g_state, rec)) {
     Serial.printf("[render] skip — id=%s data_ts=%llu unchanged\n",
                   rec.id.c_str(), (unsigned long long)rec.data_ts);
     return;
@@ -363,10 +323,9 @@ void render_current() {
   render_page(rec, root, stale, g_state, g_battery, g_env);
 
   // Persist the render marker so the next wake (cold or warm) can compare and
-  // skip if nothing changed. Partial NVS write — see nvs_save_render_marker.
-  g_state.last_rendered_id      = rec.id;
-  g_state.last_rendered_data_ts = rec.data_ts;
-  nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+  // skip if nothing changed. nvs_record_rendered_page performs a tiny partial
+  // write instead of re-serializing the cached pages.
+  nvs_record_rendered_page(g_state, rec);
 
   if (connected_here) {
     wifi_disconnect();
@@ -396,6 +355,10 @@ void render_diagnostics() {
   LayoutNode root = build_diagnostics_page(snap);
   led_status_show(LedState::Refreshing);
   render_page(rec, root, false, g_state, g_battery, g_env);
+  // Diagnostics replaces the physical panel too. Persist that fact; otherwise
+  // the next normal wake can match a stale normal-page marker, skip its paint,
+  // and leave diagnostics stranded on glass.
+  nvs_record_rendered_page(g_state, rec);
 }
 
 }  // namespace rcpaper
@@ -413,6 +376,9 @@ void setup() {
   // M5.begin() (~200 ms) are captured. See the comment block above the ISR
   // definitions for why this is ISR-based rather than M5.update()-based.
   install_button_isrs();
+  // EXT1 ANY_LOW may latch only the first pin in a human A+B chord. Snapshot
+  // live levels before M5.begin() while both buttons are still held.
+  const uint64_t boot_button_low_mask = sample_button_low_mask();
 
   auto cfg = M5.config();
   // clear_display would force a full ~17 s panel refresh to white at the
@@ -445,7 +411,7 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok,
                 g_env.temp_c, g_env.humidity_pct, g_env.ok);
 
-  WakeReason wr = current_wake_reason();
+  WakeReason wr = current_wake_reason(boot_button_low_mask);
   Serial.printf("[main] wake reason = %u\n", (unsigned)wr);
 
   g_state = nvs_load();

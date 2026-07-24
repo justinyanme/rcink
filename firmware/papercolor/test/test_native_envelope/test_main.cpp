@@ -91,6 +91,25 @@ void test_nvs_load_helper_skips_invalid_cached_rows() {
   TEST_ASSERT_EQUAL_STRING("{\"type\":\"text\",\"value\":\"R\"}", pages[0].layout_json.c_str());
 }
 
+void test_diagnostics_render_replaces_normal_page_marker() {
+  DeviceState state;
+  state.last_rendered_id = "codex";
+  state.last_rendered_data_ts = 1780000000;
+
+  PageRecord codex;
+  codex.id = "codex";
+  codex.data_ts = 1780000000;
+  TEST_ASSERT_TRUE(render_marker_matches(state, codex));
+
+  PageRecord diagnostics;
+  diagnostics.id = "diagnostics";
+  diagnostics.data_ts = 1780000100;
+  update_render_marker(state, diagnostics);
+
+  TEST_ASSERT_TRUE(render_marker_matches(state, diagnostics));
+  TEST_ASSERT_FALSE(render_marker_matches(state, codex));
+}
+
 void test_empty_matches_is_ok_with_zero_pages() {
   std::vector<PageRecord> out;
   bool ok = parse_str(R"({"matches": []})", out);
@@ -140,6 +159,7 @@ int main() {
   RUN_TEST(test_partial_null_row_skipped);
   RUN_TEST(test_null_data_row_skipped);
   RUN_TEST(test_nvs_load_helper_skips_invalid_cached_rows);
+  RUN_TEST(test_diagnostics_render_replaces_normal_page_marker);
   RUN_TEST(test_empty_matches_is_ok_with_zero_pages);
   RUN_TEST(test_argmax_bucket_groups_parse_and_sort_by_order);
   RUN_TEST(test_missing_matches_fails);

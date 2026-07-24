@@ -165,10 +165,7 @@ void render_current() {
 
   if (g_state.last_rendered_id != rec.id ||
       g_state.last_rendered_data_ts != rec.data_ts) {
-    g_state.last_rendered_id = rec.id;
-    g_state.last_rendered_data_ts = rec.data_ts;
-    nvs_save_render_marker(g_state.last_rendered_id,
-                           g_state.last_rendered_data_ts);
+    nvs_record_rendered_page(g_state, rec);
   }
 }
 

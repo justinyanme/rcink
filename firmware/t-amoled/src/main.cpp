@@ -139,9 +139,7 @@ void render_current() {
   const bool stale = g_state.last_fetch_s > 0 && now > g_state.last_fetch_s + FETCH_INTERVAL_SEC;
   render_page(rec, root, stale, g_state, g_battery);
 
-  g_state.last_rendered_id = rec.id;
-  g_state.last_rendered_data_ts = rec.data_ts;
-  nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+  nvs_record_rendered_page(g_state, rec);
 }
 
 void render_diagnostics() {

@@ -29,7 +29,17 @@ DeviceState nvs_load();
 void nvs_save(const DeviceState& s);
 void nvs_save_progress(uint8_t idx);
 void nvs_save_view(uint8_t view_id);
-void nvs_save_render_marker(const std::string& id, uint64_t data_ts);
+void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
+
+inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {
+  return state.last_rendered_id == page.id
+      && state.last_rendered_data_ts == page.data_ts;
+}
+
+inline void update_render_marker(DeviceState& state, const PageRecord& page) {
+  state.last_rendered_id = page.id;
+  state.last_rendered_data_ts = page.data_ts;
+}
 
 inline bool nvs_cached_page_is_valid(const PageRecord& rec) {
   return !rec.id.empty() && !rec.layout_json.empty();

@@ -111,14 +111,15 @@ void nvs_save_view(uint8_t view_id) {
   p.end();
 }
 
-void nvs_save_render_marker(const std::string& id, uint64_t data_ts) {
+void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {
   // Tiny partial write — keep the render-dedup tuple cheap to update every
   // render. Re-serializing the full pages blob (~15 KB) would defeat the
   // savings we just gained by skipping the panel refresh.
+  update_render_marker(state, page);
   Preferences p;
   p.begin(NS, false, PART);
-  p.putString("rid", id.c_str());
-  p.putULong64("rts", data_ts);
+  p.putString("rid", state.last_rendered_id.c_str());
+  p.putULong64("rts", state.last_rendered_data_ts);
   p.end();
 }
 

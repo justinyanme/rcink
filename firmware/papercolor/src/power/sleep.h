@@ -8,7 +8,7 @@
 namespace rcpaper {
 
 WakeReason wake_reason_from_esp(esp_sleep_wakeup_cause_t cause, uint64_t ext1_mask);
-WakeReason current_wake_reason();
+WakeReason current_wake_reason(uint64_t boot_low_mask);
 [[noreturn]] void deep_sleep_until(uint64_t epoch_seconds);
 [[noreturn]] void enter_deep_sleep_until(uint64_t epoch_seconds);
 

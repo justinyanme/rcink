@@ -57,9 +57,15 @@ WakeReason wake_reason_from_esp(esp_sleep_wakeup_cause_t cause, uint64_t ext1_ma
   }
 }
 
-WakeReason current_wake_reason() {
+WakeReason current_wake_reason(uint64_t boot_low_mask) {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   uint64_t mask = esp_sleep_get_ext1_wakeup_status();
+  if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+    Serial.printf("[wake] ext1=0x%llx boot_low=0x%llx\n",
+                  static_cast<unsigned long long>(mask),
+                  static_cast<unsigned long long>(boot_low_mask));
+    return wake_reason_from_ext1_and_boot_masks(mask, boot_low_mask);
+  }
   return wake_reason_from_esp(cause, mask);
 }
 
