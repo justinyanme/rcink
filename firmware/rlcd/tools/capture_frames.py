@@ -32,10 +32,13 @@ FRAME_BYTES = (SCREEN_W * SCREEN_H) // 8
 
 BEGIN_RE = re.compile(
     r"^\[frame\] begin w=(?P<w>\d+) h=(?P<h>\d+) bytes=(?P<bytes>\d+) "
-    r"mode=(?P<mode>\S+) idx=(?P<idx>\d+) count=(?P<count>\d+) "
+    r"view=(?P<view>\S+) idx=(?P<idx>\d+) count=(?P<count>\d+) "
     r"id=(?P<id>\S+) polarity=(?P<polarity>\S+)$"
 )
-STATE_RE = re.compile(r"\[state\] mode=(?P<mode>\S+) pages=(?P<pages>\d+) idx=(?P<idx>\d+)")
+STATE_RE = re.compile(
+    r"\[state\] view=(?P<view>\S+) runtime=\S+ host=\d+ "
+    r"pages=(?P<pages>\d+) idx=(?P<idx>\d+)"
+)
 HEX_RE = re.compile(r"^[0-9A-Fa-f]+$")
 
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -44,7 +47,7 @@ app = typer.Typer(add_completion=False, help=__doc__)
 @dataclass(slots=True)
 class FrameDump:
     image: Image.Image
-    mode: str
+    view: str
     page_id: str
     idx: int
     count: int
@@ -53,7 +56,7 @@ class FrameDump:
 
 @dataclass(slots=True)
 class DeviceState:
-    mode: str
+    view: str
     pages: int
     idx: int
 
@@ -128,7 +131,7 @@ def read_state(ser: serial.Serial, *, timeout_s: float = 4.0) -> DeviceState:
         seen.append(line)
         if m := STATE_RE.search(line):
             return DeviceState(
-                mode=m.group("mode"),
+                view=m.group("view"),
                 pages=int(m.group("pages")),
                 idx=int(m.group("idx")),
             )
@@ -148,28 +151,36 @@ def wait_for_refresh(ser: serial.Serial, *, timeout_s: float) -> int:
         seen.append(line)
         if m := re.search(r"\[main\] fetched (\d+) pages", line):
             pages = int(m.group(1))
-        if "[auto] next network refresh" in line:
+        if "[auto] retry gate" in line:
             if pages <= 0:
                 raise RuntimeError("refresh completed but fetched zero pages")
             return pages
-        if "[main] fetch failed" in line:
+        if "[main] fetch failed" in line or "[main] wifi failed" in line:
             raise RuntimeError("firmware reported fetch failure")
     tail = "\n".join(seen[-12:])
     raise RuntimeError(f"refresh timed out; tail:\n{tail}")
 
 
-def capture_frame(ser: serial.Serial, *, timeout_s: float = 12.0) -> FrameDump:
+def capture_frame(ser: serial.Serial, *, timeout_s: float = 60.0) -> FrameDump:
     _drain(ser, seconds=0.2)
     _send(ser, "p")
     deadline = time.monotonic() + timeout_s
     meta: re.Match[str] | None = None
     chunks: list[str] = []
     seen: list[str] = []
+    waiting_for_refresh = False
     while time.monotonic() < deadline:
         line = _line(ser, timeout_s=0.2)
         if not line:
             continue
         seen.append(line)
+        if line == "[console] frame unavailable: refresh running":
+            waiting_for_refresh = True
+            continue
+        if waiting_for_refresh and "[auto] retry gate" in line:
+            waiting_for_refresh = False
+            _send(ser, "p")
+            continue
         if meta is None:
             meta = BEGIN_RE.match(line)
             continue
@@ -182,7 +193,7 @@ def capture_frame(ser: serial.Serial, *, timeout_s: float = 12.0) -> FrameDump:
                 raise RuntimeError(f"frame length mismatch: got {len(data)}, expected {n}")
             return FrameDump(
                 image=unpack_st7305_frame(data, width=w, height=h),
-                mode=meta.group("mode"),
+                view=meta.group("view"),
                 page_id=meta.group("id"),
                 idx=int(meta.group("idx")),
                 count=int(meta.group("count")),
@@ -283,7 +294,7 @@ def main(
             _drain(ser, seconds=0.5)
 
         state = read_state(ser)
-        if state.mode == "deck":
+        if state.view == "deck":
             _send(ser, "m")
             time.sleep(1.5)
 
@@ -295,7 +306,7 @@ def main(
         time.sleep(1.5)
         state = read_state(ser)
         if state.pages <= 0:
-            raise RuntimeError("no deck pages available; run with --refresh or long-press/fetch on device")
+            raise RuntimeError("no deck pages available; run with --refresh or console f")
 
         for i in range(state.pages):
             saved.append(_save_frame(capture_frame(ser), out, prefix=f"{i + 1:02d}"))

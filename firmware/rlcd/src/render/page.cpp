@@ -52,6 +52,8 @@ namespace {
 TFT_eSPI g_tft;
 TFT_eSprite g_canvas(&g_tft);
 bool g_canvas_ready = false;
+constexpr int16_t kRuntimeBadgeWidth = 44;
+constexpr int16_t kRuntimeBadgeHeight = 12;
 
 uint16_t rgb565(uint32_t rgb) {
   const uint8_t r = (rgb >> 16) & 0xFF;
@@ -121,11 +123,27 @@ void draw_battery(int16_t x, int16_t y, const BatteryReading& batt) {
   if (fill_w > 0) g_canvas.fillRect(x + 2, y + 2, fill_w, h - 4, c565(fill));
 }
 
+// Fixed size keeps chrome stable across ECO/ACTIVE/HOST. Draw normally
+// black-on-white; final panel polarity remains the driver's responsibility.
+void draw_runtime_badge(int16_t x, int16_t y, RuntimeMode runtime_mode) {
+  const char* label = runtime_mode_name(runtime_mode);
+  g_canvas.setTextFont(1);
+  g_canvas.setTextSize(1);
+  g_canvas.setTextWrap(false, false);
+  g_canvas.fillRect(x, y, kRuntimeBadgeWidth, kRuntimeBadgeHeight,
+                    c565(Color::Black));
+  g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Black));
+  const int16_t label_w = g_canvas.textWidth(label);
+  g_canvas.setCursor((int16_t)(x + (kRuntimeBadgeWidth - label_w) / 2),
+                     (int16_t)(y + 2));
+  g_canvas.print(label);
+  g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
+}
+
 // Page-position rail: a scrollbar "thumb" folded onto the content/sidebar
 // divider. The thumb is 1/N of the track tall and slides top->bottom as the
-// deck advances, so position-in-deck reads at a glance without spending a
-// status-block row on "N/M" text. A fat black thumb straddles the thin black
-// divider line. Skipped for single-page decks (nothing to page through).
+// deck advances. A fat black thumb straddles the divider; skipped for a
+// single-page deck.
 void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
   if (count <= 1) return;
   constexpr int16_t kTop = 8;
@@ -138,23 +156,22 @@ void draw_page_rail(int16_t divider_x, size_t count, size_t index) {
   g_canvas.fillRect((int16_t)(divider_x - 2), ty, 5, th, c565(Color::Black));
 }
 
-// Right-edge chrome strip, next to the two physical buttons. Top block =
-// status (battery, clock) with a page-position rail on the divider; bottom
-// block = prev/next hints aligned to the buttons. STALE shows as a red chip
-// when the cache is past its window.
+// Right-edge chrome: battery, runtime mode, page rail, nav hints. Deck pages
+// omit all date/time chrome so unchanged content needs no clock-driven redraw;
+// STALE remains a red chip when the cache is past its window.
 void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
-                   uint64_t last_fetch_s, bool stale) {
-  const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 480
+                   bool stale, RuntimeMode runtime_mode) {
+  const int16_t x0 = SCREEN_W - SIDEBAR_W;  // 344
   const int16_t cx = x0 + 6;                // text inset inside the sidebar
   g_canvas.fillRect(x0, 0, SIDEBAR_W, SCREEN_H, rgb565(kRgbWhite));
   g_canvas.drawFastVLine(x0, 0, SCREEN_H, c565(Color::Black));
 
   g_canvas.setTextFont(1);
   g_canvas.setTextSize(1);
+  g_canvas.setTextWrap(false, false);
   g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
 
-  // --- status block (top): battery, weekday + date, clock; page-position
-  //     rail rides the divider (drawn below) instead of a "N/M" text row ---
+  // Page-position rail rides the divider instead of consuming a text row.
   draw_battery(cx, 8, batt);
   char pct[8];
   if (batt.ok) snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
@@ -162,30 +179,25 @@ void paint_sidebar(const DeviceState& state, const BatteryReading& batt,
   g_canvas.setCursor(cx, 24);
   g_canvas.print(pct);
 
-  g_canvas.setCursor(cx, 38);
-  g_canvas.print(format_local_wday(last_fetch_s));
-  g_canvas.setCursor(cx, 50);
-  g_canvas.print(format_local_md(last_fetch_s));
-  g_canvas.setCursor(cx, 62);
-  g_canvas.print(format_local_hhmm(last_fetch_s));
+  draw_runtime_badge(cx, 38, runtime_mode);
 
   draw_page_rail(x0, state.pages.size(), state.page_index);
 
   if (stale) {
-    g_canvas.fillRect(cx, 102, 42, 11, c565(Color::Red));
+    g_canvas.fillRect(cx, 60, 42, 11, c565(Color::Red));
     g_canvas.setTextColor(rgb565(kRgbWhite), c565(Color::Red));
-    g_canvas.setCursor(cx + 4, 104);
+    g_canvas.setCursor(cx + 4, 62);
     g_canvas.print("STALE");
     g_canvas.setTextColor(c565(Color::Black), rgb565(kRgbWhite));
   }
 
   // --- nav hints (bottom) ---
-  // Production has one safe wake button: KEY cycles through the deck, then
-  // returns home after the last page. GPIO0/BOOT is intentionally not armed.
-  g_canvas.setCursor(cx, SCREEN_H - 40);
+  // Font 1: BOOT PREV needs 54 px; x=346 keeps it inside the 400 px canvas.
+  constexpr int16_t kNavX = SCREEN_W - SIDEBAR_W + 2;
+  g_canvas.setCursor(kNavX, SCREEN_H - 40);
   g_canvas.print("KEY NEXT");
-  g_canvas.setCursor(cx, SCREEN_H - 22);
-  g_canvas.print("END HOME");
+  g_canvas.setCursor(kNavX, SCREEN_H - 22);
+  g_canvas.print("BOOT PREV");
 }
 
 class SpriteMeasurer : public Measurer {
@@ -257,12 +269,10 @@ void clear_screen() {
   push_canvas();
 }
 
-// Producer page mastheads emit the date as `now.strftime("%a · %b %d").upper()`
-// — e.g. "MON · JUN 08". On the landscape t-amoled the weekday/date already
-// live in the right sidebar, so this node is redundant. The shared layout_json
-// can't be changed per-device (s3's full status bar relies on this content
-// date), so we drop it here, on this target only. Matched by the specific
-// weekday-led "AAA · " prefix so it can't collide with body content.
+// Producer mastheads include a generated date such as "MON · JUN 08". Deck
+// pages intentionally omit date/time chrome so unchanged content needs no
+// clock-driven redraw. Drop it only on this target; the shared layout_json is
+// still needed elsewhere. The weekday-led prefix cannot collide with body text.
 static bool is_masthead_date(const std::string& v) {
   static const char* kW[] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
   for (const char* w : kW) {
@@ -290,7 +300,7 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
     return false;
   }
   root = parse_layout(doc.as<JsonVariantConst>());
-  prune_masthead_date(root);  // de-dup: sidebar already shows weekday/date
+  prune_masthead_date(root);  // keep deck content free of date/time chrome
   if (layout_has_unknown_node(root)) {
     Serial.println("[render] layout rejected: unknown node type or invalid color token");
     return false;
@@ -298,11 +308,12 @@ bool parse_page_layout(const PageRecord& rec, LayoutNode& root) {
   return true;
 }
 
-void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
-                 const DeviceState& state, const BatteryReading& batt) {
+bool render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
+                 const DeviceState& state, const BatteryReading& batt,
+                 RuntimeMode runtime_mode) {
   if (!g_canvas_ready) {
     Serial.println("[render] skipped: display not ready");
-    return;
+    return false;
   }
   const uint32_t t0 = millis();
   SpriteMeasurer m(g_canvas);
@@ -329,16 +340,17 @@ void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
 
   g_canvas.fillSprite(rgb565(kRgbWhite));
   paint_layout(g_canvas, laid);
-  paint_sidebar(state, batt, state.last_fetch_s, stale);
+  paint_sidebar(state, batt, stale, runtime_mode);
   set_text_scale(1.0f);  // chrome renders at nominal size
 
   push_canvas();
   Serial.printf("[render] page=%s scale=%.2f fit=%d/%d in %u ms\n",
                 rec.id.c_str(), scale, (int)used, (int)SCREEN_H,
                 (unsigned)(millis() - t0));
+  return true;
 }
 
-void render_error(const char* msg) {
+void render_error(const char* msg, RuntimeMode runtime_mode) {
   if (!g_canvas_ready) return;
   g_canvas.fillSprite(rgb565(kRgbWhite));
   g_canvas.setTextFont(2);
@@ -349,20 +361,7 @@ void render_error(const char* msg) {
   g_canvas.setTextFont(1);
   g_canvas.setCursor(14, 54);
   g_canvas.print(printable_text(msg).c_str());
-  push_canvas();
-}
-
-void render_status(const char* msg) {
-  if (!g_canvas_ready) return;
-  set_text_scale(1.0f);
-  g_canvas.fillSprite(rgb565(kRgbWhite));
-  const std::string s = msg;
-  const int16_t w = measured_width(g_canvas, TextSize::H2, Weight::Bold, s);
-  const int16_t lh = text_line_height(TextSize::H2);
-  int16_t x = (int16_t)((CONTENT_W - w) / 2);
-  if (x < 6) x = 6;
-  draw_utf8(g_canvas, x, (int16_t)((SCREEN_H - lh) / 2), TextSize::H2, Weight::Bold,
-            c565(Color::Black), false, rgb565(kRgbWhite), s);
+  draw_runtime_badge(SCREEN_W - 14 - kRuntimeBadgeWidth, 14, runtime_mode);
   push_canvas();
 }
 
@@ -400,7 +399,7 @@ void dash_bar(int16_t x, int16_t y, int16_t w, int16_t h, float pct) {
 }  // namespace
 
 void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
-                      uint64_t epoch) {
+                      uint64_t epoch, RuntimeMode runtime_mode) {
   if (!g_canvas_ready) return;
   set_text_scale(1.0f);
   g_canvas.fillSprite(rgb565(kRgbWhite));
@@ -409,7 +408,10 @@ void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
 
   // --- top status bar ---
   gfx_text(PAD, 6, "RCINK", &FreeSansBold18pt7b, 1, ink);
-  gfx_text(PAD, 36, "DESK CLIMATE", &FreeSansBold9pt7b, 1, ink);
+  constexpr const char* kClimateLabel = "DESK CLIMATE";
+  gfx_text(PAD, 36, kClimateLabel, &FreeSansBold9pt7b, 1, ink);
+  const int16_t climate_w = gfx_w(kClimateLabel, &FreeSansBold9pt7b, 1);
+  draw_runtime_badge((int16_t)(PAD + climate_w + 8), 42, runtime_mode);
   const String clk = format_local_hhmm(epoch);
   const int16_t cw = gfx_w(clk.c_str(), &FreeSansBold24pt7b, 1);
   gfx_text((int16_t)(SCREEN_W - PAD - cw), 4, clk.c_str(), &FreeSansBold24pt7b, 1, ink);

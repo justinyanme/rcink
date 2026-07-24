@@ -1,6 +1,7 @@
 #pragma once
 
 #include "display/power_policy.h"
+#include "power/runtime_policy.h"
 #include "proto/schema.h"
 
 #ifdef ARDUINO
@@ -18,7 +19,7 @@ bool layout_has_any_image(const LayoutNode& node);
 #ifdef ARDUINO
 // ST7305 4.2" reflective panel, driven landscape 400x300 (1bpp). The dashboard
 // is a fixed hand-drawn screen; the Axiom page-deck reuses the layout engine
-// with a right sidebar (battery/clock/nav) like the AMOLED target.
+// with a right sidebar (battery/runtime mode/nav) like the AMOLED target.
 static constexpr int16_t SCREEN_W = 400;
 static constexpr int16_t SCREEN_H = 300;
 static constexpr int16_t SIDEBAR_W = 56;
@@ -32,16 +33,13 @@ void clear_screen();
 // temperature hero, humidity + bar, bottom battery strip. `epoch` is local
 // wall-clock seconds (0 => clock shows --:--).
 void render_dashboard(const Shtc3Reading& env, const BatteryReading& batt,
-                      uint64_t epoch);
+                      uint64_t epoch, RuntimeMode runtime_mode);
 
 bool parse_page_layout(const PageRecord& rec, LayoutNode& root);
-void render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
-                 const DeviceState& state, const BatteryReading& batt);
-void render_error(const char* msg);
-
-// Transient centred status (e.g. "Fetching data...") shown during the
-// few-second fetch so the user sees progress instead of a stale page.
-void render_status(const char* msg);
+bool render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
+                 const DeviceState& state, const BatteryReading& batt,
+                 RuntimeMode runtime_mode);
+void render_error(const char* msg, RuntimeMode runtime_mode);
 #endif
 
 }  // namespace rcpaper

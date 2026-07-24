@@ -233,8 +233,8 @@ void render_current_mode() {
 
 void set_mode(Mode m) {
   g_mode = m;
-  g_state.ui_mode = mode_to_nvs(m);
-  nvs_save_ui_mode(g_state.ui_mode);
+  g_state.view_id = mode_to_nvs(m);
+  nvs_save_view(g_state.view_id);
   Serial.printf("[mode] -> %s\n", mode_name(m));
 }
 
@@ -530,7 +530,7 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
-  g_mode = mode_from_nvs(g_state.ui_mode);
+  g_mode = mode_from_nvs(g_state.view_id);
   Serial.printf("[mode] loaded %s\n", mode_name(g_mode));
 
 #ifdef RCEPD397_DEV_CONSOLE

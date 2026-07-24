@@ -3,169 +3,144 @@
 #include <WiFi.h>
 #include <esp_sleep.h>
 #include <esp_system.h>
-#include <sys/time.h>
 #include <time.h>
 
 #include "config.h"
+#include "dev/console_dump.h"
 #include "display/st7305.h"
 #include "display/pins_config.h"
+#include "input/buttons.h"
+#include "input/interaction_policy.h"
 #include "input/navigation.h"
-#include "net/axiom.h"
 #include "net/ntp.h"
+#include "net/refresh_controller.h"
+#include "net/refresh_flow.h"
 #include "net/wifi.h"
-#include "power/refresh_schedule.h"
+#include "power/runtime_policy.h"
 #include "power/sleep.h"
+#include "power/wake_schedule.h"
 #include "proto/parser.h"
+#include "render/dashboard_schedule.h"
+#include "render/deck_view.h"
 #include "render/diagnostics.h"
 #include "render/page.h"
 #include "sense/battery.h"
+#include "sense/clock.h"
 #include "sense/rtc.h"
 #include "sense/shtc3.h"
 #include "store/nvs.h"
 
 namespace rcpaper {
 
-// The RLCD-4.2 is a desk climate display. It boots into a hand-drawn DASHBOARD
-// (clock + indoor temp/humidity from the onboard SHTC3 + battery) and can flip
-// to the Axiom page-DECK ported from the AMOLED target. The dashboard works
-// fully offline: time comes from the PCF85063 RTC (NTP re-syncs it when Wi-Fi
-// is up) and the climate from I2C.
+// Desk climate Dashboard plus the Axiom Deck. RTC + SHTC3 keep Dashboard useful
+// offline; network refreshes resync the RTC and update the secondary Deck.
 DeviceState g_state;
 BatteryReading g_battery;
 Shtc3Reading g_env;
-Mode g_mode = Mode::Dashboard;
+View g_view = View::Dashboard;
+RuntimeState g_runtime = {RuntimeMode::Eco, 0, 0, false};
 
-static uint32_t g_next_auto_refresh_ms = 0;
-static uint32_t g_next_dash_ms = 0;
 RTC_DATA_ATTR static uint32_t g_wake_count = 0;
+RTC_DATA_ATTR static uint64_t g_last_dashboard_minute = UINT64_MAX;
+// Runtime-badge redraws reuse this retained minute sample. Without it, a
+// HOST/ACTIVE/ECO edge would violate the dashboard's minute cadence.
+RTC_DATA_ATTR static Shtc3Reading g_dashboard_env;
+RTC_DATA_ATTR static BatteryReading g_dashboard_battery;
+RTC_DATA_ATTR static bool g_dashboard_snapshot_valid = false;
+RTC_DATA_ATTR static uint64_t g_fetch_retry_not_before_s = 0;
+RTC_DATA_ATTR static bool g_deck_frame_valid = false;
+RTC_DATA_ATTR static bool g_last_deck_stale = false;
 static const char* g_last_result = "boot";
-constexpr uint32_t kDashRefreshMs = 30000;  // re-read sensors + clock every 30 s
-constexpr uint32_t kDashRefreshSec = kDashRefreshMs / 1000;
+static bool g_render_pending = false;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
 
-static constexpr uint64_t kWakeButtonMask = 1ULL << PIN_BUTTON_2;  // GPIO18 only; never GPIO0/BOOT.
+static constexpr uint64_t kWakeButtonMask =
+    1ULL << PIN_BUTTON_2;  // GPIO18 only; never GPIO0/BOOT.
 
-static const char* mode_name(Mode m) {
-  return m == Mode::Dashboard ? "dashboard" : "deck";
+#ifdef RCRLCD_DEV_CONSOLE
+constexpr bool kAlwaysActive = true;
+#else
+constexpr bool kAlwaysActive = false;
+#endif
+
+static const char* view_name(View view) {
+  return view == View::Dashboard ? "dashboard" : "deck";
 }
 
-static uint8_t mode_to_nvs(Mode m) {
-  return m == Mode::Dashboard ? 0 : 1;
+static uint8_t view_to_nvs(View view) {
+  return view == View::Dashboard ? 0 : 1;
 }
 
-static Mode mode_from_nvs(uint8_t raw) {
-  return raw == 1 ? Mode::Deck : Mode::Dashboard;
+static View view_from_nvs(uint8_t raw) {
+  return raw == 1 ? View::Deck : View::Dashboard;
 }
 
-static bool wall_clock_is_valid() {
-  return time(nullptr) >= 1704067200;  // 2024-01-01 UTC; before that means RTC/NTP absent.
+static bool usb_host_present() {
+  // Arduino's HWCDC implementation derives this from 1 ms USB SOF packets.
+  // It means a USB data host, not VBUS, a charger, or external power.
+  return Serial.isPlugged();
 }
 
-static bool network_refresh_due() {
-  const uint64_t now = (uint64_t)time(nullptr);
-  const uint32_t interval = adaptive_refresh_interval_sec(
-      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
-  return g_state.pages.empty() || !wall_clock_is_valid() ||
-         g_state.last_fetch_s == 0 || now >= g_state.last_fetch_s + interval;
-}
-
-#ifndef RCRLCD_DEV_CONSOLE
 static bool woke_from_key() {
   return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT1 &&
          (esp_sleep_get_ext1_wakeup_status() & kWakeButtonMask) != 0;
 }
 
-[[noreturn]] void sleep_after_render() {
+static RefreshAppState refresh_app_state() {
+  return {
+      g_state,
+      g_battery,
+      g_runtime.mode,
+      g_fetch_retry_not_before_s,
+      g_last_result,
+  };
+}
+
+static void try_enter_deep_sleep() {
+  if (buttons::any_down()) return;
   if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
-  display_prepare_for_deep_sleep();
+  if (buttons::any_down()) return;
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
   esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
-  deep_sleep_until((uint64_t)time(nullptr) + kDashRefreshSec);
-}
-#endif
-
-// Seed the system clock from the battery-backed RTC so the dashboard shows a
-// correct time immediately at boot, before (or without) any Wi-Fi/NTP.
-static void seed_clock_from_rtc() {
-  RtcTime rt;
-  if (!rtc_get(rt) || !rt.ok || rt.year < 2024) {
-    Serial.println("[rtc] no valid time (needs NTP sync)");
-    return;
-  }
-  struct tm tmv = {};
-  tmv.tm_year = rt.year - 1900;
-  tmv.tm_mon = rt.mon - 1;
-  tmv.tm_mday = rt.day;
-  tmv.tm_hour = rt.hour;
-  tmv.tm_min = rt.min;
-  tmv.tm_sec = rt.sec;
-  tmv.tm_isdst = -1;
-  const time_t epoch = mktime(&tmv);  // interprets tmv as local (TZ already set)
-  const struct timeval tv = {.tv_sec = epoch, .tv_usec = 0};
-  settimeofday(&tv, nullptr);
-  Serial.printf("[rtc] clock seeded %04d-%02d-%02d %02d:%02d:%02d\n",
-                rt.year, rt.mon, rt.day, rt.hour, rt.min, rt.sec);
+  // Final raw check protects both GPIO18 repeat wakes and GPIO0's boot strap.
+  if (buttons::any_down()) return;
+  display_prepare_for_deep_sleep();
+  deep_sleep_until(next_probe_wake_epoch((uint64_t)time(nullptr)));
 }
 
-// Persist the NTP-synced wall clock back into the RTC for offline use.
-static void write_rtc_from_clock() {
-  time_t now = time(nullptr);
-  struct tm ti;
-  localtime_r(&now, &ti);
-  if (rtc_set(ti.tm_year + 1900, ti.tm_mon + 1, ti.tm_mday, ti.tm_hour, ti.tm_min, ti.tm_sec)) {
-    Serial.println("[rtc] written from NTP-synced clock");
+void render_dashboard_now(bool force_sample = false) {
+  const uint64_t now = (uint64_t)time(nullptr);
+  if (force_sample ||
+      dashboard_sample_due(now, g_last_dashboard_minute,
+                           g_dashboard_snapshot_valid)) {
+    g_dashboard_env = shtc3_read();
+    g_dashboard_battery = read_battery();
+    g_dashboard_snapshot_valid = true;
+    g_last_dashboard_minute = now / 60;
+    Serial.printf("[dash] sampled T=%.1fC RH=%.0f%% env_ok=%d batt=%u%%/%umV\n",
+                  g_dashboard_env.temp_c, g_dashboard_env.rh,
+                  (int)g_dashboard_env.ok,
+                  (unsigned)g_dashboard_battery.pct,
+                  (unsigned)g_dashboard_battery.mv);
   }
+  g_env = g_dashboard_env;
+  g_battery = g_dashboard_battery;
+  render_dashboard(g_dashboard_env, g_dashboard_battery, now, g_runtime.mode);
+  g_deck_frame_valid = false;
 }
 
-void render_dashboard_now() {
-  g_env = shtc3_read();
-  g_battery = read_battery();
-  Serial.printf("[dash] T=%.1fC RH=%.0f%% env_ok=%d batt=%u%%/%umV\n",
-                g_env.temp_c, g_env.rh, (int)g_env.ok,
-                (unsigned)g_battery.pct, (unsigned)g_battery.mv);
-  render_dashboard(g_env, g_battery, (uint64_t)time(nullptr));
-  g_next_dash_ms = millis() + kDashRefreshMs;
-}
-
-// Connect Wi-Fi, sync NTP -> RTC, fetch the Axiom deck into the page cache.
-// Returns true if the page fetch succeeded. Rendering is left to the caller.
-bool refetch_now() {
-  g_battery = read_battery();
-  render_status("Connecting Wi-Fi...");
-  if (!wifi_connect()) {
-    Serial.println("[main] wifi failed");
-    g_last_result = "wifi-failed";
-    return false;
-  }
-  render_status("Syncing time...");
-  if (ntp_sync_once(LOCAL_TZ)) write_rtc_from_clock();
-
-  render_status("Fetching data...");
-  std::vector<PageRecord> fresh;
-  const bool ok = axiom_fetch_pages(fresh) && !fresh.empty();
-  if (!ok) {
-    Serial.println("[main] fetch failed; keeping cache");
-    g_last_result = "fetch-failed";
-    return false;
-  }
-
-  record_successful_fetch(g_state, fresh);
-  g_state.pages = std::move(fresh);
-  if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
-  g_state.last_fetch_s = (uint64_t)time(nullptr);
-  nvs_save(g_state);
-  g_last_result = "fetch-ok";
-  Serial.printf("[main] fetched %u pages idx=%u\n",
-                (unsigned)g_state.pages.size(), (unsigned)g_state.page_index);
-  return true;
+static bool deck_is_stale(uint64_t now) {
+  return g_state.last_fetch_s > 0 && now >= g_state.last_fetch_s &&
+         now - g_state.last_fetch_s >= FETCH_INTERVAL_SEC;
 }
 
 void render_current() {
   g_battery = read_battery();
   if (g_state.pages.empty()) {
     g_last_result = "no-pages";
-    render_error("no pages - long-press to fetch");
+    render_error("no pages - waiting for refresh", g_runtime.mode);
+    g_deck_frame_valid = false;
     return;
   }
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
@@ -174,17 +149,27 @@ void render_current() {
   LayoutNode root;
   if (!parse_page_layout(rec, root)) {
     g_last_result = "parse-failed";
-    render_error("layout_json parse failed");
+    render_error("layout_json parse failed", g_runtime.mode);
+    g_deck_frame_valid = false;
     return;
   }
 
   const uint64_t now = (uint64_t)time(nullptr);
-  const bool stale = g_state.last_fetch_s > 0 && now > g_state.last_fetch_s + FETCH_INTERVAL_SEC;
-  render_page(rec, root, stale, g_state, g_battery);
+  const bool stale = deck_is_stale(now);
+  if (!render_page(rec, root, stale, g_state, g_battery, g_runtime.mode)) {
+    g_deck_frame_valid = false;
+    return;
+  }
+  g_deck_frame_valid = true;
+  g_last_deck_stale = stale;
 
-  g_state.last_rendered_id = rec.id;
-  g_state.last_rendered_data_ts = rec.data_ts;
-  nvs_save_render_marker(g_state.last_rendered_id, g_state.last_rendered_data_ts);
+  if (g_state.last_rendered_id != rec.id ||
+      g_state.last_rendered_data_ts != rec.data_ts) {
+    g_state.last_rendered_id = rec.id;
+    g_state.last_rendered_data_ts = rec.data_ts;
+    nvs_save_render_marker(g_state.last_rendered_id,
+                           g_state.last_rendered_data_ts);
+  }
 }
 
 void render_diagnostics() {
@@ -207,121 +192,127 @@ void render_diagnostics() {
   rec.order = -1;
   rec.data_ts = (uint64_t)time(nullptr);
   LayoutNode root = build_diagnostics_page(snap);
-  render_page(rec, root, false, g_state, g_battery);
+  render_page(rec, root, false, g_state, g_battery, g_runtime.mode);
+  g_deck_frame_valid = false;
 }
 
-void render_current_mode() {
-  if (g_mode == Mode::Dashboard) render_dashboard_now();
+void render_current_view() {
+  g_render_pending = false;
+  if (g_view == View::Dashboard) render_dashboard_now();
   else render_current();
 }
 
-void set_mode(Mode m) {
-  g_mode = m;
-  g_state.ui_mode = mode_to_nvs(m);
-  nvs_save_ui_mode(g_state.ui_mode);
-  Serial.printf("[mode] -> %s\n", mode_name(m));
+void set_view(View view) {
+  if (g_view == view) return;
+  g_view = view;
+  g_state.view_id = view_to_nvs(view);
+  nvs_save_view(g_state.view_id);
+  Serial.printf("[view] -> %s\n", view_name(view));
 }
 
-void enter_mode(Mode m) {
-  set_mode(m);
-  render_current_mode();
+void enter_view(View view) {
+  set_view(view);
+  render_current_view();
 }
 
-void toggle_mode() {
-  enter_mode(g_mode == Mode::Dashboard ? Mode::Deck : Mode::Dashboard);
+void toggle_view() {
+  enter_view(g_view == View::Dashboard ? View::Deck : View::Dashboard);
 }
 
-void dump_state() {
-  Serial.printf("[state] mode=%s pages=%u idx=%u T=%.1f RH=%.0f env_ok=%d "
-                "dark=%d last_fetch=%llu heap=%u psram=%u batt=%u%%/%umV\n",
-                mode_name(g_mode),
-                (unsigned)g_state.pages.size(), (unsigned)g_state.page_index,
-                g_env.temp_c, g_env.rh, (int)g_env.ok,
-                (int)st7305_dark_mode(),
-                (unsigned long long)g_state.last_fetch_s,
-                (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
-                (unsigned)g_battery.pct, (unsigned)g_battery.mv);
-}
-
-void dump_frame() {
-  size_t len = 0;
-  const uint8_t* frame = st7305_last_frame(&len);
-  const char* mode = g_mode == Mode::Dashboard ? "dashboard" : "deck";
-  const char* id = "dashboard";
-  if (g_mode == Mode::Deck && !g_state.pages.empty() && g_state.page_index < g_state.pages.size()) {
-    id = g_state.pages[g_state.page_index].id.c_str();
-  }
-  Serial.printf("[frame] begin w=%d h=%d bytes=%u mode=%s idx=%u count=%u id=%s polarity=%s\n",
-                SCREEN_W, SCREEN_H, (unsigned)len, mode,
-                (unsigned)g_state.page_index, (unsigned)g_state.pages.size(), id,
-                st7305_dark_mode() ? "dark" : "light");
-  constexpr size_t kBytesPerLine = 32;
-  for (size_t i = 0; i < len; i += kBytesPerLine) {
-    const size_t end = (i + kBytesPerLine < len) ? i + kBytesPerLine : len;
-    for (size_t j = i; j < end; ++j) {
-      if (frame[j] < 0x10) Serial.print('0');
-      Serial.print(frame[j], HEX);
-    }
-    Serial.println();
-    delay(1);
-  }
-  Serial.println("[frame] end");
-  Serial.flush();
-}
-
-void next_page() {
-  if (g_state.pages.empty()) {
-    Serial.println("[nav] no pages");
-    return;
-  }
-  g_state.page_index = (g_state.page_index + 1) % g_state.pages.size();
-  nvs_save_progress(g_state.page_index);
-  Serial.printf("[nav] next idx=%u\n", (unsigned)g_state.page_index);
-  render_current();
-}
-
-void advance_key_navigation() {
-  const NavigationState next =
-      navigation_after_key_press(g_mode, g_state.page_index, g_state.pages.size());
+void apply_navigation(const NavigationState& next) {
   if (next.page_index != g_state.page_index) {
     g_state.page_index = next.page_index;
     nvs_save_progress(g_state.page_index);
   }
-  set_mode(next.mode);
+  set_view(next.view);
 }
 
-void schedule_next_auto_refresh(uint32_t now_ms) {
-  const uint32_t interval = adaptive_refresh_interval_sec(
-      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
-  g_next_auto_refresh_ms = schedule_next_refresh_ms(now_ms, interval);
-  Serial.printf("[auto] next network refresh in %u s (unchanged=%u batt=%u%%)\n",
-                (unsigned)interval, (unsigned)g_state.unchanged_fetches,
-                (unsigned)g_battery.pct);
+void navigate_next() {
+  apply_navigation(navigation_after_next_press(
+      g_view, g_state.page_index, g_state.pages.size()));
 }
 
-void do_refresh() {
-  refetch_now();
-  if (WiFi.status() == WL_CONNECTED) wifi_disconnect();
-  render_current_mode();  // resilient: dashboard still draws even if fetch failed
-  schedule_next_auto_refresh(millis());
+void navigate_previous() {
+  apply_navigation(navigation_after_previous_press(
+      g_view, g_state.page_index, g_state.pages.size()));
 }
 
-void auto_refresh_poll() {
-  const uint32_t now = millis();
-  if (!refresh_due_ms(now, g_next_auto_refresh_ms)) return;
-  Serial.println("[auto] network refresh interval elapsed");
-  do_refresh();
+static DeckViewKey deck_visible_state() {
+  DeckViewKey visible = {
+      "", 0, g_state.page_index, g_state.pages.size(),
+      g_battery.pct, g_battery.ok,
+      deck_is_stale((uint64_t)time(nullptr)),
+      g_runtime.mode, st7305_dark_mode(),
+  };
+  if (g_state.page_index < g_state.pages.size()) {
+    const PageRecord& page = g_state.pages[g_state.page_index];
+    visible.page_id = page.id;
+    visible.data_ts = page.data_ts;
+  }
+  return visible;
 }
 
-void dash_tick_poll() {
-  if (g_mode != Mode::Dashboard) return;
-  if ((int32_t)(millis() - g_next_dash_ms) < 0) return;
-  render_dashboard_now();
+static bool dashboard_minute_due() {
+  return g_view == View::Dashboard &&
+         dashboard_sample_due((uint64_t)time(nullptr),
+                              g_last_dashboard_minute,
+                              g_dashboard_snapshot_valid);
+}
+
+static bool deck_stale_edge_due() {
+  return g_view == View::Deck && g_deck_frame_valid &&
+         deck_is_stale((uint64_t)time(nullptr)) != g_last_deck_stale;
+}
+
+static bool poll_refresh_completion() {
+  const DeckViewKey before = deck_visible_state();
+  if (!finish_network_refresh(refresh_app_state())) return false;
+  return g_view == View::Dashboard ? dashboard_minute_due()
+                                   : before != deck_visible_state();
+}
+
+struct InteractionDecision {
+  bool screen_changed;
+  bool sleep_requested;
+};
+
+static InteractionDecision poll_interaction() {
+  const buttons::Events events = buttons::poll();
+  bool activity = events.activity;
+  if (events.key_tap) {
+    Serial.println("[btn] KEY -> next");
+    navigate_next();
+    activity = true;
+  }
+  if (events.boot_tap) {
+    Serial.println("[btn] BOOT -> previous");
+    navigate_previous();
+    activity = true;
+  }
+
+  const RuntimeMode previous = g_runtime.mode;
+  const RuntimeInput input = {
+      millis(), kAlwaysActive, usb_host_present(), activity,
+      buttons::any_down(),
+  };
+  const RuntimeDecision decision = advance_runtime_state(g_runtime, input);
+  g_runtime = decision.state;
+  if (decision.mode_changed) {
+    adjust_refresh_gate_for_runtime_change(refresh_app_state(), previous);
+    Serial.printf("[runtime] %s -> %s\n", runtime_mode_name(previous),
+                  runtime_mode_name(g_runtime.mode));
+  }
+  return {
+      interaction_changes_visible_state(events, decision.mode_changed),
+      decision.sleep_requested,
+  };
 }
 
 void console_help() {
-  Serial.println("[console] f fetch, r render, d diagnostics, m toggle-mode, n next(deck), "
-                 "t read-sensors, i invert, s state, q layout, p frame, c clear, R reboot, h help");
+  Serial.println(
+      "[console] f fetch, r render, d diagnostics, m toggle-view, n next, "
+      "v previous, t read-sensors, i invert, s state, q layout, p frame, "
+      "c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -332,32 +323,42 @@ void console_dispatch(char c) {
       break;
     case 'f':
       Serial.println("[console] network refresh");
-      do_refresh();
+      start_network_refresh(refresh_app_state());
       break;
     case 'r':
       Serial.println("[console] render");
-      render_current_mode();
+      render_current_view();
       break;
     case 'd':
       Serial.println("[console] diagnostics");
       render_diagnostics();
       break;
     case 'm':
-      toggle_mode();
+      toggle_view();
       break;
     case 'n':
-      if (g_mode == Mode::Deck) next_page();
-      else Serial.println("[console] n: deck mode only");
+      navigate_next();
+      render_current_view();
+      break;
+    case 'v':
+      navigate_previous();
+      render_current_view();
       break;
     case 't':
-      render_dashboard_now();
+      if (g_view == View::Dashboard) {
+        render_dashboard_now(true);
+      } else {
+        g_env = shtc3_read();
+        g_battery = read_battery();
+      }
       break;
     case 'i':
       st7305_set_dark_mode(!st7305_dark_mode());
-      render_current_mode();
+      render_current_view();
       break;
     case 's':
-      dump_state();
+      console_dump_state(g_view, g_runtime.mode, usb_host_present(), g_state,
+                         g_env, g_battery);
       break;
     case 'q':
       if (g_state.pages.empty()) {
@@ -370,13 +371,22 @@ void console_dispatch(char c) {
       }
       break;
     case 'p':
-      dump_frame();
+      if (refresh_busy()) {
+        Serial.println("[console] frame unavailable: refresh running");
+      } else {
+        console_dump_frame(g_view, g_state);
+      }
       break;
     case 'c':
       Serial.println("[console] clear");
       clear_screen();
+      g_deck_frame_valid = false;
       break;
     case 'R':
+      if (buttons::any_down()) {
+        Serial.println("[console] reboot rejected: button held");
+        break;
+      }
       Serial.println("[console] reboot");
       Serial.flush();
       delay(50);
@@ -393,77 +403,6 @@ void console_dispatch(char c) {
   }
 }
 
-// Dev-console button polling; both firmware-readable buttons are active-low.
-//   KEY  (GPIO18) tap  -> dashboard -> each deck page -> dashboard
-//   BOOT (GPIO0)  tap  -> dashboard: re-read sensors; deck: next page
-//   either, hold       -> network refresh (Wi-Fi -> NTP/RTC + Axiom deck)
-// Production deep sleep only arms KEY because BOOT is the download strap. PWR
-// is a hardware power key (short-press power on, long-press power off), not an
-// application button.
-struct Button {
-  int pin;
-  bool pressed;
-  uint32_t press_ms;
-  bool long_fired;
-};
-
-Button g_buttons[] = {
-    {PIN_BUTTON_1, false, 0, false},  // GPIO0  = BOOT
-    {PIN_BUTTON_2, false, 0, false},  // GPIO18 = KEY
-};
-
-constexpr uint32_t kLongPressMs = 800;
-constexpr uint32_t kDebounceMs = 40;
-
-void on_button_tap(int pin) {
-  if (pin == PIN_BUTTON_2) {  // KEY
-    advance_key_navigation();
-    render_current_mode();
-    return;
-  }
-  // BOOT
-  if (g_mode == Mode::Deck) next_page();
-  else render_dashboard_now();
-}
-
-void on_button_long(int pin) {
-  Serial.printf("[btn] gpio%d long-press -> network refresh\n", pin);
-  do_refresh();
-}
-
-void buttons_init() {
-  for (auto& b : g_buttons) {
-    pinMode(b.pin, INPUT_PULLUP);
-    b.pressed = digitalRead(b.pin) == 0;
-    b.press_ms = millis();
-    b.long_fired = false;
-  }
-}
-
-void buttons_poll() {
-  const uint32_t now = millis();
-  for (auto& b : g_buttons) {
-    const bool down = digitalRead(b.pin) == 0;
-    if (down && !b.pressed) {
-      b.pressed = true;
-      b.press_ms = now;
-      b.long_fired = false;
-    } else if (down && b.pressed) {
-      if (!b.long_fired && now - b.press_ms >= kLongPressMs) {
-        b.long_fired = true;
-        on_button_long(b.pin);
-      }
-    } else if (!down && b.pressed) {
-      const uint32_t held = now - b.press_ms;
-      b.pressed = false;
-      if (!b.long_fired && held >= kDebounceMs) {
-        Serial.printf("[btn] gpio%d tap\n", b.pin);
-        on_button_tap(b.pin);
-      }
-    }
-  }
-}
-
 }  // namespace rcpaper
 
 using namespace rcpaper;
@@ -472,59 +411,96 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n[boot] rcink rlcd (Waveshare ESP32-S3-RLCD-4.2)");
+  refresh_flow_init();
   g_wake_count++;
 
   apply_local_tz(LOCAL_TZ);
   Wire.begin(I2C_SDA, I2C_SCL, 400000);  // shared SHTC3 + PCF85063 bus
   const esp_sleep_wakeup_cause_t wake = esp_sleep_get_wakeup_cause();
+  const bool key_wake = woke_from_key();
   const bool resumed_from_deep_sleep =
       wake == ESP_SLEEP_WAKEUP_TIMER || wake == ESP_SLEEP_WAKEUP_EXT1;
+  if (!resumed_from_deep_sleep) {
+    g_last_dashboard_minute = UINT64_MAX;
+    g_dashboard_snapshot_valid = false;
+    g_fetch_retry_not_before_s = 0;
+    g_deck_frame_valid = false;
+  }
   display_init(panel_startup_for_deep_sleep_wake(resumed_from_deep_sleep));
-  buttons_init();
+  buttons::init(key_wake);
 
   rtc_begin();
   shtc3_begin();
   seed_clock_from_rtc();
   g_battery = read_battery();
+  if (g_dashboard_snapshot_valid) g_env = g_dashboard_env;
   Serial.printf("[sense] batt=%u%% (%u mV) ok=%d\n",
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
-  g_mode = mode_from_nvs(g_state.ui_mode);
-  Serial.printf("[mode] loaded %s\n", mode_name(g_mode));
+  g_view = view_from_nvs(g_state.view_id);
+  Serial.printf("[view] loaded %s\n", view_name(g_view));
 
-#ifdef RCRLCD_DEV_CONSOLE
-  // Draw the dashboard immediately from RTC + sensors (instant, offline)...
-  render_dashboard_now();
-  // ...then go online to sync the clock and warm the deck cache.
-  do_refresh();
-
-  console_help();
-  Serial.println("[console] ready");
-#else
-  const bool key_wake = woke_from_key();
-  Serial.printf("[wake] cause=%d key=%d\n", (int)wake, (int)key_wake);
-  if (key_wake) advance_key_navigation();
-
-  if (network_refresh_due()) {
-    do_refresh();
-  } else {
-    render_current_mode();
+  const bool host = usb_host_present();
+  const RuntimeBootInput runtime_boot = {
+      millis(),
+      kAlwaysActive,
+      host,
+      key_wake,
+  };
+  g_runtime = initial_runtime_state(runtime_boot);
+  if (g_runtime.mode == RuntimeMode::Host) {
+    g_fetch_retry_not_before_s = 0;
   }
-  sleep_after_render();
-#endif
+  if (key_wake) navigate_next();
+
+  g_render_pending = !resumed_from_deep_sleep || key_wake ||
+                     g_runtime.mode != RuntimeMode::Eco ||
+                     dashboard_minute_due();
+  Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s render=%d\n",
+                (int)wake, (int)key_wake, (int)host,
+                runtime_mode_name(g_runtime.mode), (int)g_render_pending);
+  if (host || kAlwaysActive) {
+    console_help();
+    Serial.println("[console] ready");
+  }
 }
 
 void loop() {
-#ifdef RCRLCD_DEV_CONSOLE
+  const bool refresh_changed_screen = poll_refresh_completion();
+  const InteractionDecision interaction = poll_interaction();
+  if (refresh_changed_screen || interaction.screen_changed) {
+    render_current_view();
+    delay(20);
+    return;
+  }
+
+  bool used_console = false;
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;
     console_dispatch((char)c);
+    used_console = true;
   }
-  buttons_poll();
-  dash_tick_poll();
-  auto_refresh_poll();
+  if (used_console) {
+    delay(20);
+    return;
+  }
+
+  if (g_render_pending || dashboard_minute_due() || deck_stale_edge_due()) {
+    render_current_view();
+    delay(20);
+    return;
+  }
+
+  if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
+      refresh_due_now(refresh_app_state())) {
+    Serial.println("[auto] network refresh due");
+    start_network_refresh(refresh_app_state());
+    delay(20);
+    return;
+  }
+
+  if (interaction.sleep_requested && !refresh_busy()) try_enter_deep_sleep();
   delay(20);
-#endif
 }

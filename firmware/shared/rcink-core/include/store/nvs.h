@@ -12,7 +12,7 @@ namespace rcpaper {
 struct DeviceState {
   std::vector<PageRecord> pages;
   uint8_t  page_index   = 0;
-  uint8_t  ui_mode      = 0;   // target-local mode id; 0 means default mode
+  uint8_t  view_id      = 0;   // target-local View id; 0 means default View
   uint64_t last_fetch_s = 0;   // epoch seconds; 0 = never
   uint32_t last_fetch_fingerprint = 0;  // fingerprint of last successful page set
   uint8_t  unchanged_fetches = 0;       // consecutive successful fetches with no content change
@@ -28,7 +28,7 @@ void nvs_init();
 DeviceState nvs_load();
 void nvs_save(const DeviceState& s);
 void nvs_save_progress(uint8_t idx);
-void nvs_save_ui_mode(uint8_t mode);
+void nvs_save_view(uint8_t view_id);
 void nvs_save_render_marker(const std::string& id, uint64_t data_ts);
 
 inline bool nvs_cached_page_is_valid(const PageRecord& rec) {

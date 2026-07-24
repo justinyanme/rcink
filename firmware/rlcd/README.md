@@ -31,7 +31,7 @@ BATTERY  [████████░░░]  4.01V    87%
 
 The climate comes from the onboard SHTC3; the clock from the PCF85063 RTC
 (NTP re-syncs it whenever Wi-Fi is up), so the dashboard is correct **offline**.
-A second **mode** flips to the Axiom page-deck ported from `firmware/t-amoled`.
+The **Deck View** shows the Axiom page-deck ported from `firmware/t-amoled`.
 
 ### How it draws
 
@@ -41,15 +41,53 @@ sprite is thresholded to 1 bpp and packed into the ST7305's native buffer
 (`src/render/mono_pack.cpp`, `src/display/st7305.cpp`) — there is **no** AMOLED
 white↔black swap; reflective panels are read black-on-white directly. TFT_eSPI
 is used only as a sprite/font engine (its ILI9341 setup is never driven against
-real hardware). CJK in deck mode renders via U8g2 + a baked WenQuanYi GB2312
+real hardware). CJK in the Deck View renders via U8g2 + a baked WenQuanYi GB2312
 font.
 
 Both builds currently boot in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
 the final packed 1 bpp frame is inverted after normal black-on-white rendering.
 Use console `i` to toggle light/dark live and redraw the current screen.
-The default production `waveshare-s3-rlcd` environment renders once, retains
-the ST7305 image in low-power mode, wakes every 30 seconds, and also wakes from
-GPIO18/KEY. Use `waveshare-s3-rlcd-dev` when a persistent USB console is needed.
+The default production environment retains the last ST7305 frame during deep
+sleep. `waveshare-s3-rlcd-dev` uses the same state machine but never sleeps, for
+recovery and development.
+
+## Runtime modes
+
+Dashboard, Deck, and error screens carry one truthful mode badge:
+
+| Badge | Meaning | Behavior |
+|---|---|---|
+| `HOST` | USB **data host** detected from 1 ms SOF frames | stays awake; USB console + both buttons available; fixed 15-minute fetch |
+| `ACTIVE` | interactive grace window | stays awake for 8 seconds after last button activity |
+| `ECO` | no host and no recent activity | retained display; deep sleep; 30-second aligned probe wake |
+
+USB Host loss must be continuous for 1 second before `HOST → ACTIVE`; idle then
+causes `ACTIVE → ECO` after 8 seconds. Reconnect during either grace period
+returns to `HOST`. Runtime transitions preserve the current View and page.
+
+**Important hardware limitation:** `HOST` does not mean external power or
+charging. Arduino `HWCDC::isPlugged()` observes USB SOF traffic. This board
+routes neither USB VBUS nor charger STAT to a firmware-readable GPIO, so a
+charge-only wall adapter is indistinguishable from battery and remains `ECO`.
+Detecting arbitrary cable power would require a hardware change. USB insertion
+cannot wake deep sleep either; the next 30-second probe detects it, so entry to
+`HOST` may take up to 30 seconds.
+
+Screen/network cadence:
+
+- Dashboard: HH:MM, sensors, and battery update at minute boundaries.
+- Runtime-badge redraws reuse the retained current-minute Dashboard sample;
+  they do not silently resample sensors or battery.
+- Deck: no date/clock chrome; redraw only for navigation, current-page data,
+  battery/STALE state, polarity, or runtime badge changes.
+- Silent probe wakes and unchanged fetches do not push a frame.
+- Producer normally publishes every 15 minutes. `HOST` fetches every 15
+  minutes, including after a failed attempt. `ACTIVE`/`ECO` keep adaptive 30
+  min → 1 h → 2 h intervals; low battery may extend that to 4 h.
+- Wi-Fi/NTP/Axiom work runs as one background refresh. The main loop continues
+  polling USB SOF, buttons, and the console; state/NVS/RTC/display reconciliation
+  stays serialized on the main task after the worker finishes.
+- Page navigation never starts Wi-Fi. Console `f` is the explicit manual fetch.
 
 ## Build + Flash
 
@@ -98,24 +136,26 @@ press powers on, long press powers off, and normal taps do not reach the app.
 
 | Gesture | Dashboard | Deck |
 |---|---|---|
-| **KEY** (GPIO18) tap | first/current deck page | next page; last page → dashboard |
-| **BOOT** (GPIO0) tap, dev build only | re-read sensors | next page (wraps) |
-| either, hold ≥800 ms, dev build only | network refresh (NTP/RTC + Axiom) | same |
+| **KEY** (GPIO18) tap | Page 1 | next page; last page → Dashboard |
+| **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
-cycles through Dashboard → deck pages → Dashboard and persists the page index.
-GPIO0/BOOT is intentionally excluded because it doubles as the download strap.
-Timer and KEY wakes resume the retained ST7305 image without a hardware reset or
-an intermediate blank frame.
+advances exactly once through Dashboard ⇄ Page 1 ⇄ … ⇄ Page N; its eventual
+release is consumed rather than counted as a second press. GPIO0/BOOT cannot
+wake `ECO`: it is polling-only because it doubles as the download strap. There
+are no long-press or double-click actions. Firmware never sleeps or resets while
+either raw button is held. Timer and KEY wakes resume the retained image without
+a panel reset or intermediate blank frame.
 
 ## Console
 
 - `f` network refresh (Wi-Fi → NTP/RTC + Axiom fetch)
-- `r` re-render current mode
-- `m` toggle dashboard ↔ deck
-- `n` next page (deck only)
+- `r` re-render current View
+- `m` toggle Dashboard ↔ Deck View
+- `n` next through Dashboard/Deck ring
+- `v` previous through Dashboard/Deck ring
 - `t` re-read sensors + redraw dashboard
-- `i` invert light/dark polarity + redraw current mode
+- `i` invert light/dark polarity + redraw current View
 - `s` state dump
 - `q` dump current `layout_json`
 - `p` dump current packed ST7305 framebuffer as hex for screenshot capture

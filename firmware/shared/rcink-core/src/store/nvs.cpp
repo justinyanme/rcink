@@ -25,7 +25,8 @@ DeviceState nvs_load() {
   Preferences p;
   bool opened = p.begin(NS, true, PART);
   s.page_index            = p.getUChar("idx", 0);
-  s.ui_mode               = p.getUChar("mode", 0);
+  // Keep the deployed key string stable while using the domain name in code.
+  s.view_id               = p.getUChar("mode", 0);
   s.last_fetch_s          = p.getULong64("last", 0);
   s.last_fetch_fingerprint = p.getUInt("fp", 0);
   s.unchanged_fetches      = p.getUChar("unch", 0);
@@ -39,8 +40,8 @@ DeviceState nvs_load() {
     blob = String(buf.data());
   }
   p.end();
-  Serial.printf("[nvs] load opened=%d idx=%u mode=%u last=%llu fp=%08x unch=%u blob_len=%u rid=%s rts=%llu\n",
-                (int)opened, (unsigned)s.page_index, (unsigned)s.ui_mode,
+  Serial.printf("[nvs] load opened=%d idx=%u view=%u last=%llu fp=%08x unch=%u blob_len=%u rid=%s rts=%llu\n",
+                (int)opened, (unsigned)s.page_index, (unsigned)s.view_id,
                 (unsigned long long)s.last_fetch_s,
                 (unsigned)s.last_fetch_fingerprint, (unsigned)s.unchanged_fetches,
                 (unsigned)blob_len, s.last_rendered_id.c_str(),
@@ -79,7 +80,7 @@ void nvs_save(const DeviceState& s) {
   // at the 4 KB NVS string ceiling — see K_PAGES comment above.
   size_t written = p.putBytes(K_PAGES, blob.c_str(), blob.length());
   p.putUChar("idx", s.page_index);
-  p.putUChar("mode", s.ui_mode);
+  p.putUChar("mode", s.view_id);
   p.putULong64("last", s.last_fetch_s);
   p.putUInt("fp", s.last_fetch_fingerprint);
   p.putUChar("unch", s.unchanged_fetches);
@@ -103,10 +104,10 @@ void nvs_save_progress(uint8_t idx) {
   p.end();
 }
 
-void nvs_save_ui_mode(uint8_t mode) {
+void nvs_save_view(uint8_t view_id) {
   Preferences p;
   p.begin(NS, false, PART);
-  p.putUChar("mode", mode);
+  p.putUChar("mode", view_id);
   p.end();
 }
 
