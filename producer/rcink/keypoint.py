@@ -6,8 +6,9 @@ Wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py
 excluded, <=8 chars each), <=75 bytes total, written to a GATT characteristic
 on the left keyboard half. GEN is a two-digit uppercase hex transaction id;
 the firmware commits a deck only after every page for the same GEN arrives.
-Screen convention: L1 title, L2-L5 content rows, L6 empty. LED is a single
-digit trackpad status hint: 0 normal, 1 active, 2 attention, 3 warning, 4 error.
+Screen convention: L1 title, L2-L6 content rows (L6 may be empty). LED is a
+single digit trackpad status hint: 0 normal, 1 active, 2 attention, 3 warning,
+4 error.
 
 Bar row encoding: a line matching ``[NNN]`` (exactly 5 chars, N=decimal digit,
 0-100) is rendered by the firmware as a filled progress rectangle rather than
@@ -36,7 +37,7 @@ PREFIX = "KP3"
 GENERATION_FIELD_MAX = 2
 TEXT_LINE_COUNT = 6
 LINE_MAX = 8
-MAX_ROWS = 4  # rows[0] -> L2, rows[1:4] -> L4..L6
+MAX_ROWS = TEXT_LINE_COUNT - 1  # L1 is the title; L2..L6 are content.
 PAGE_MAX = 8  # firmware deck capacity; idx/total are single decimal digits
 FRAME_MAX_BYTES = 75  # KP3|GEN|IDX|TOTAL|ICON|LED|L1..L6
 ICON_IDS = frozenset({"NONE", "SUN", "CLOUD", "RAIN", "TEMP", "WARN", "CODE", "TIME", "CODEX", "CLAUDE"})
@@ -58,7 +59,7 @@ CACHE_DEFAULT = "~/.cache/rcink/keypoint"
 @dataclass(slots=True, frozen=True)
 class Row:
     """One display line: a kv text row (value or until countdown) or a progress
-    bar row (bar). Exactly one of value/until/bar must be set.
+    bar row (bar), or an unpadded text-only row. Exactly one payload is set.
 
     Bar rows encode a 0-100 utilization percentage as ``[NNN]``; the firmware
     detects this pattern and renders a filled rectangle instead of text."""
@@ -67,10 +68,13 @@ class Row:
     value: str | None = None
     until: int | None = None
     bar: int | None = None
+    text: str | None = None
 
     def __post_init__(self) -> None:
-        if sum(x is not None for x in (self.value, self.until, self.bar)) != 1:
-            raise ValueError(f"row {self.label!r}: exactly one of value/until/bar required")
+        if sum(x is not None for x in (self.value, self.until, self.bar, self.text)) != 1:
+            raise ValueError(f"row {self.label!r}: exactly one of value/until/bar/text required")
+        if self.text is not None and self.label:
+            raise ValueError("text-only row cannot also have a label")
         if self.bar is not None and not 0 <= self.bar <= 100:
             raise ValueError(f"row {self.label!r}: bar {self.bar} out of range 0..100")
 
@@ -83,7 +87,7 @@ class Card:
     led_hint: int
     rows: list[Row] = field(default_factory=list)
     data_ts: int = 0  # epoch seconds of the source data, shown on L3 when show_timestamp=True
-    show_timestamp: bool = True  # set False to reclaim L3 as a fourth content row
+    show_timestamp: bool = True  # set False to reclaim L3 as a fifth content row
 
 
 def kv(label: str, value: str) -> str:
@@ -139,6 +143,8 @@ def _validate_generation(generation: int) -> int:
 
 
 def _render_row(row: Row, *, now_ts: int) -> str:
+    if row.text is not None:
+        return row.text
     if row.bar is not None:
         return f"[{row.bar:03d}]"
     value = row.value if row.value is not None else fmt_countdown(row.until - now_ts)
@@ -156,17 +162,18 @@ def render_frame(card: Card, *, now: dt.datetime, generation: int, index: int, t
     if card.icon not in ICON_IDS:
         raise ValueError(f"unsupported icon {card.icon!r}; expected one of: {', '.join(sorted(ICON_IDS))}")
     led_hint = _validate_led_hint(card.led_hint)
-    if not 1 <= len(card.rows) <= MAX_ROWS:
-        raise ValueError(f"card {card.id!r}: expected 1..{MAX_ROWS} rows, got {len(card.rows)}")
+    max_rows = MAX_ROWS if not card.show_timestamp else MAX_ROWS - 1
+    if not 1 <= len(card.rows) <= max_rows:
+        raise ValueError(f"card {card.id!r}: expected 1..{max_rows} rows, got {len(card.rows)}")
 
     now_ts = int(now.timestamp())
     rendered = [_render_row(r, now_ts=now_ts) for r in card.rows]
-    rendered += [""] * (MAX_ROWS - len(rendered))
+    rendered += [""] * (max_rows - len(rendered))
     if card.show_timestamp:
         data_time = dt.datetime.fromtimestamp(card.data_ts, tz=now.tzinfo).strftime("%H:%M")
         lines = [title(card.title), rendered[0], data_time, *rendered[1:]]
     else:
-        lines = [title(card.title), *rendered, ""]
+        lines = [title(card.title), *rendered]
 
     frame = "|".join(
         [

@@ -1,9 +1,9 @@
 """Build compact KP3 cards from the existing source dataclasses.
 
 Each builder turns one source's rich data into a renderable :class:`Card`:
-icon + 8-char title + up to 4 grid rows + the fetch timestamp. Reset rows use
-``Row(until=epoch)`` so the keypoint-push job renders a live countdown instead
-of the frozen "2h 14m" string the e-ink page builders show.
+icon + 8-char title + either 5 grid rows or 4 rows plus the fetch timestamp.
+Reset rows use ``Row(until=epoch)`` so the keypoint-push job renders a live
+countdown instead of the frozen "2h 14m" string the e-ink page builders show.
 """
 
 from __future__ import annotations
@@ -25,6 +25,21 @@ def _pct(value: float | None) -> str:
     if value is None:
         raise ValueError("usage pct is required")
     return f"{int(value)}%"
+
+
+def _scoped_label(label: str) -> str:
+    words = ["".join(ch for ch in word.upper() if ch.isascii() and ch.isalnum()) for word in label.split()]
+    words = [word for word in words if word]
+    if not words:
+        raise ValueError(f"scoped limit label has no KEYPOINT-safe characters: {label!r}")
+    if len(words) > 1:
+        return "".join(word[0] for word in words[:2])
+
+    word = words[0]
+    consonants = word[0] + "".join(ch for ch in word[1:] if ch not in "AEIOU")
+    if len(consonants) < 2:
+        consonants += word[1:2]
+    return consonants[:2]
 
 
 def _usage_led_hint(*values: float | None) -> int:
@@ -103,6 +118,9 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
     else:
         rows.append(Row("7D", _pct(usage.seven_day_pct)))
     rows.append(Row(bar=_bar(usage.seven_day_pct)))
+    if usage.scoped_limits:
+        limit = max(usage.scoped_limits, key=lambda item: item.pct)
+        rows.append(Row(text=f"{_scoped_label(limit.label)} {int(limit.pct)}%"))
     return Card(
         id="claude",
         icon="CLAUDE",

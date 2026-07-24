@@ -1,8 +1,8 @@
 """Compact KP3 cards built from the existing source dataclasses.
 
-Each builder must yield a renderable Card (icon in the KP3 set, 1..4 rows, all
-lines <=8 ASCII chars). Reset rows carry an absolute epoch (``until``) so the
-countdown stays live between 15-minute fetches instead of freezing at the
+Each builder must yield a renderable Card (icon in the KP3 set, up to 5 rows,
+all lines <=8 ASCII chars). Reset rows carry an absolute epoch (``until``) so
+the countdown stays live between 15-minute fetches instead of freezing at the
 formatted string the page builders use.
 """
 
@@ -54,7 +54,8 @@ def make_claude() -> ClaudeUsage:
 
 def test_claude_card_renders():
     card = claude_card(make_claude(), now=NOW)
-    fields = _renders(card)
+    frame = render_frame(card, now=NOW, generation=0xA0, index=0, total=1)
+    fields = frame.decode("ascii").split("|")
     assert fields[4] == "CLAUDE"
     assert fields[5] == "2"  # ATTENTION: peak >= 75%
     assert fields[6] == "CLAUDE  "
@@ -62,8 +63,40 @@ def test_claude_card_renders():
     assert fields[8] == "[076]"  # L3: 5H bar at 76%
     assert fields[9] == "7D    4d"  # L4: 7D countdown to reset
     assert fields[10] == "[088]"  # L5: 7D bar at 88%
-    assert fields[11] == ""  # L6: empty
+    assert fields[11] == "FB 41%"  # L6: highest model-scoped limit
+    assert len(frame) <= 66
     assert card.data_ts == NOW_TS
+
+
+def test_claude_card_uses_highest_scoped_limit():
+    usage = make_claude()
+    usage.scoped_limits = [
+        ScopedLimit(label="FABLE", pct=41.0),
+        ScopedLimit(label="SONNET", pct=82.0),
+    ]
+
+    fields = _renders(claude_card(usage, now=NOW))
+
+    assert fields[11] == "SN 82%"
+
+
+def test_claude_card_scoped_limit_fits_66_byte_budget_at_100_pct():
+    usage = make_claude()
+    usage.scoped_limits = [ScopedLimit(label="FABLE", pct=100.0)]
+
+    frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
+
+    assert frame.decode("ascii").split("|")[11] == "FB 100%"
+    assert len(frame) == 66
+
+
+def test_claude_card_without_scoped_limits_is_byte_identical():
+    usage = make_claude()
+    usage.scoped_limits = []
+
+    frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
+
+    assert frame == b"KP3|A0|0|1|CLAUDE|2|CLAUDE  |5H 1h30m|[076]|7D    4d|[088]|"
 
 
 def test_claude_card_rejects_missing_required_pct():

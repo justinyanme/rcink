@@ -153,6 +153,34 @@ def test_render_frame_pads_missing_rows_with_empty_lines():
     assert fields[9] == fields[10] == fields[11] == ""
 
 
+def test_render_frame_supports_fifth_raw_row_without_timestamp():
+    card = make_card(
+        rows=[
+            Row("5H", until=NOW_TS + 90 * 60),
+            Row(bar=76),
+            Row("7D", until=NOW_TS + 4 * 86400),
+            Row(bar=88),
+            Row(text="FB 41%"),
+        ],
+        show_timestamp=False,
+    )
+
+    fields = render_frame(card, now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
+
+    assert fields[11] == "FB 41%"
+
+
+def test_render_frame_rejects_sixth_row_without_timestamp():
+    with pytest.raises(ValueError, match="expected 1..5 rows"):
+        render_frame(
+            make_card(rows=[Row("A", "1")] * 6, show_timestamp=False),
+            now=NOW,
+            generation=0xA0,
+            index=0,
+            total=1,
+        )
+
+
 def test_render_frame_rejects_bad_icon():
     with pytest.raises(ValueError, match="icon"):
         render_frame(make_card(icon="WEATHER"), now=NOW, generation=0xA0, index=0, total=1)
@@ -165,8 +193,8 @@ def test_render_frame_rejects_unsupported_chars():
         render_frame(make_card(rows=[Row("A|B", "1")]), now=NOW, generation=0xA0, index=0, total=1)
 
 
-def test_render_frame_rejects_too_many_rows():
-    with pytest.raises(ValueError, match="rows"):
+def test_render_frame_rejects_fifth_row_when_timestamp_is_shown():
+    with pytest.raises(ValueError, match="expected 1..4 rows"):
         render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW, generation=0xA0, index=0, total=1)
 
 
