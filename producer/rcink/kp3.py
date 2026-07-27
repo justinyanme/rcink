@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.13"
-# dependencies = []
-# ///
 # VENDORED, DO NOT HAND-EDIT. Copied verbatim (plus this notice) from
 # RoCry/zmk-config-KEYPOINT `scripts/kp3.py` together with its frozen
 # `kp3_contract.json`. Refresh by re-copying both files from that repo; a test
 # there regenerates the snapshot from the firmware C and fails on any drift, so
 # the frozen contract is only ever as stale as the last copy.
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
 """The KP3 contract: one derived home for the frame grammar.
 
 Every contract value here is parsed out of the firmware C sources at import
@@ -399,6 +399,17 @@ def build_frame(
     """
     if len(lines) > TEXT_LINE_COUNT:
         raise FrameError(f"at most {TEXT_LINE_COUNT} lines, got {len(lines)}")
+    for name, value in (
+        ("generation", generation),
+        ("index", index),
+        ("total", total),
+        ("led_hint", led_hint),
+    ):
+        # bool is an int subclass, so `led_hint=True` would silently ship as
+        # ACTIVE and `total=True` as a one-page deck. Both are caller bugs the
+        # wire cannot express, so they are rejected here rather than encoded.
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise FrameError(f"{name} must be an int, got {value!r}")
     if not 0 <= generation <= _GENERATION_MAX:
         raise FrameError(f"generation {generation} outside 0..{_GENERATION_MAX}")
 
