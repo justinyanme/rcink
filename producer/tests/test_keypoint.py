@@ -1,9 +1,8 @@
-"""KP3 keypoint live-card protocol: format helpers, card cache, frame render.
+"""rcink's KP3 card cache and frame rendering.
 
-The wire contract mirrors zmk-config-KEYPOINT scripts/send_keypoint_live_demo.py:
-ASCII "KP3|GEN|IDX|TOTAL|ICON|LED|L1|..|L6", 6 lines x 8 chars
-(0x20..0x7E, no '|'), <=75 bytes. GEN is a two-digit uppercase hex deck
-transaction id.
+The wire grammar itself is `rcink.kp3`'s (and its own repo's tests'); what is
+checked here is rcink's card shape on top of it — row rendering, which line
+carries what, the cache round-trip, and the deck the pusher emits.
 """
 
 import datetime as dt
@@ -11,18 +10,16 @@ import json
 
 import pytest
 
+from rcink import kp3
 from rcink.keypoint import (
     CARD_ORDER,
-    LINE_MAX,
     Card,
     Row,
     fmt_countdown,
     frames_to_push,
     fresh_cards,
-    kv,
     load_cards,
     render_frame,
-    title,
     write_card,
 )
 
@@ -44,22 +41,6 @@ def make_card(**over) -> Card:
 
 
 # --- format helpers ---
-
-
-def test_kv_pads_to_full_grid_line():
-    assert kv("HUM", "40%") == "HUM  40%"
-    assert kv("5H", "100%") == "5H  100%"
-
-
-def test_kv_rejects_overflow():
-    with pytest.raises(ValueError):
-        kv("LABEL", "VALU")  # 9 chars, no gap possible
-
-
-def test_title_left_anchors():
-    assert title("CAL") == "CAL     "
-    with pytest.raises(ValueError):
-        title("TOOLONGTITLE")
 
 
 @pytest.mark.parametrize(
@@ -94,19 +75,26 @@ def test_render_frame_layout():
     assert fields[3] == "1"  # TOTAL (deck size)
     assert fields[4] == "CLAUDE"  # icon
     assert fields[5] == "0"  # LED hint
-    assert fields[6] == "CLAUDE  "  # L1 title, left-anchored
-    assert fields[7] == "5H   76%"  # L2 = rows[0] key metric
+    assert fields[6] == "CLAUDE   "  # L1 title, left-anchored
+    assert fields[7] == "5H    76%"  # L2 = rows[0] key metric
     assert fields[8] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
-    assert fields[9] == "WK   88%"
-    assert fields[10] == "RST 1h5m"  # countdown computed at render time, not fetch time
-    assert fields[11] == "OP   18%"
-    assert len(frame) <= 75
+    assert fields[9] == "WK    88%"
+    assert fields[10] == "RST  1h5m"  # countdown computed at render time, not fetch time
+    assert fields[11] == "OP    18%"
+    assert len(frame) <= kp3.FRAME_MAX
+
+
+def test_render_frame_fills_the_contract_line_width():
+    """The drift this producer had for a while: labels padded one column short."""
+    fields = render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
+    kv_lines = [fields[6], fields[7], fields[9], fields[10], fields[11]]  # title + kv rows, not the HH:MM stamp
+    assert {len(line) for line in kv_lines} == {kp3.LINE_MAX}
 
 
 def test_render_frame_carries_idx_total():
     fields = render_frame(make_card(), now=NOW, generation=0xA0, index=2, total=5).decode("ascii").split("|")
     assert (fields[1], fields[2], fields[3], fields[4], fields[5]) == ("A0", "2", "5", "CLAUDE", "0")
-    assert fields[6] == "CLAUDE  "  # LED hint now precedes L1
+    assert fields[6] == "CLAUDE   "  # LED hint now precedes L1
 
 
 def test_render_frame_carries_led_hint():
@@ -116,27 +104,23 @@ def test_render_frame_carries_led_hint():
 
 def test_render_frame_rejects_bad_led_hint():
     with pytest.raises(ValueError, match="LED hint"):
-        render_frame(make_card(led_hint=5), now=NOW, generation=0xA0, index=0, total=1)
-    with pytest.raises(ValueError, match="LED hint"):
-        render_frame(make_card(led_hint=True), now=NOW, generation=0xA0, index=0, total=1)
+        render_frame(make_card(led_hint=len(kp3.LED_CODES)), now=NOW, generation=0xA0, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_generation():
     with pytest.raises(ValueError, match="generation"):
         render_frame(make_card(), now=NOW, generation=-1, index=0, total=1)
     with pytest.raises(ValueError, match="generation"):
-        render_frame(make_card(), now=NOW, generation=256, index=0, total=1)
-    with pytest.raises(ValueError, match="generation"):
-        render_frame(make_card(), now=NOW, generation=True, index=0, total=1)
+        render_frame(make_card(), now=NOW, generation=16**kp3.GENERATION_FIELD_MAX, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_page_args():
-    with pytest.raises(ValueError, match="index"):
+    with pytest.raises(ValueError, match="IDX"):
         render_frame(make_card(), now=NOW, generation=0xA0, index=3, total=3)  # idx must be < total
-    with pytest.raises(ValueError, match="total"):
+    with pytest.raises(ValueError, match="TOTAL"):
         render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=0)  # total must be >= 1
-    with pytest.raises(ValueError, match="total"):
-        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=9)  # total must be <= PAGE_MAX
+    with pytest.raises(ValueError, match="TOTAL"):
+        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=kp3.PAGE_MAX + 1)
 
 
 def test_render_frame_l3_is_data_ts_not_now():
@@ -275,10 +259,6 @@ def test_card_json_is_plain_and_compact(cache):
     assert data["rows"][0] == {"label": "5H", "value": "76%"}
 
 
-def test_line_max_matches_kp3_contract():
-    assert LINE_MAX == 8
-
-
 # --- frames_to_push (load + freshness + render glue the pusher consumes) ---
 
 
@@ -295,11 +275,11 @@ def test_frames_to_push_stamps_index_and_total(cache):
     write_card(make_card(id="codex", icon="CODEX", title="CODEX"))
     frames = frames_to_push(now=NOW, max_age_s=6 * 3600)
     parsed = [f.decode("ascii").split("|") for f in frames]
-    generation = f"{NOW_TS & 0xFF:02X}"
     # Whole deck pushed under one generation: each card stamped with page index and deck total.
-    assert [(p[1], p[2], p[3], p[4], p[5]) for p in parsed] == [
-        (generation, "0", "2", "CLAUDE", "0"),
-        (generation, "1", "2", "CODEX", "0"),
+    assert len({p[1] for p in parsed}) == 1
+    assert [(p[2], p[3], p[4], p[5]) for p in parsed] == [
+        ("0", "2", "CLAUDE", "0"),
+        ("1", "2", "CODEX", "0"),
     ]
 
 

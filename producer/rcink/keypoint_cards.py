@@ -1,9 +1,10 @@
 """Build compact KP3 cards from the existing source dataclasses.
 
-Each builder turns one source's rich data into a renderable :class:`Card`:
-icon + 8-char title + either 5 grid rows or 4 rows plus the fetch timestamp.
-Reset rows use ``Row(until=epoch)`` so the keypoint-push job renders a live
-countdown instead of the frozen "2h 14m" string the e-ink page builders show.
+Each builder turns one source's rich data into a renderable :class:`Card`: icon
++ title + either a full set of grid rows or one fewer plus the fetch timestamp.
+Widths are `rcink.kp3`'s to decide — the builders only choose what goes on a
+line. Reset rows use ``Row(until=epoch)`` so the keypoint-push job renders a
+live countdown instead of the frozen "2h 14m" string the e-ink pages show.
 """
 
 from __future__ import annotations

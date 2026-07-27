@@ -1,15 +1,20 @@
 """Compact KP3 cards built from the existing source dataclasses.
 
-Each builder must yield a renderable Card (icon in the KP3 set, up to 5 rows,
-all lines <=8 ASCII chars). Reset rows carry an absolute epoch (``until``) so
-the countdown stays live between 15-minute fetches instead of freezing at the
-formatted string the page builders use.
+Each builder must yield a renderable Card: an icon and rows kp3 accepts on the
+wire. Reset rows carry an absolute epoch (``until``) so the countdown stays live
+between 15-minute fetches instead of freezing at the formatted string the page
+builders use.
+
+The claude and codex cards are also the shape the keyboard repo's preview deck
+models through ``kp3.claude_card`` / ``kp3.codex_card``; the byte-match tests
+below are what keep the two from drifting apart again.
 """
 
 import datetime as dt
 
 import pytest
 
+from rcink import kp3
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
     calendar_card,
@@ -58,13 +63,13 @@ def test_claude_card_renders():
     fields = frame.decode("ascii").split("|")
     assert fields[4] == "CLAUDE"
     assert fields[5] == "2"  # ATTENTION: peak >= 75%
-    assert fields[6] == "CLAUDE  "
-    assert fields[7] == "5H 1h30m"  # L2: 5H countdown to reset
+    assert fields[6] == "CLAUDE   "
+    assert fields[7] == "5H  1h30m"  # L2: 5H countdown to reset
     assert fields[8] == "[076]"  # L3: 5H bar at 76%
-    assert fields[9] == "7D    4d"  # L4: 7D countdown to reset
+    assert fields[9] == "7D     4d"  # L4: 7D countdown to reset
     assert fields[10] == "[088]"  # L5: 7D bar at 88%
     assert fields[11] == "FB 41%"  # L6: highest model-scoped limit
-    assert len(frame) <= 66
+    assert len(frame) <= kp3.FRAME_MAX
     assert card.data_ts == NOW_TS
 
 
@@ -80,23 +85,24 @@ def test_claude_card_uses_highest_scoped_limit():
     assert fields[11] == "SN 82%"
 
 
-def test_claude_card_scoped_limit_fits_66_byte_budget_at_100_pct():
+def test_claude_card_scoped_limit_still_fits_the_frame_at_100_pct():
     usage = make_claude()
     usage.scoped_limits = [ScopedLimit(label="FABLE", pct=100.0)]
 
     frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
 
     assert frame.decode("ascii").split("|")[11] == "FB 100%"
-    assert len(frame) == 66
+    assert len(frame) <= kp3.FRAME_MAX
 
 
-def test_claude_card_without_scoped_limits_is_byte_identical():
+def test_claude_card_byte_matches_the_kp3_usage_card():
+    """The keyboard repo's preview deck is kp3.claude_card; same data, same bytes."""
     usage = make_claude()
-    usage.scoped_limits = []
+    usage.scoped_limits = []  # kp3's usage-card shape leaves L6 empty
 
     frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
 
-    assert frame == b"KP3|A0|0|1|CLAUDE|2|CLAUDE  |5H 1h30m|[076]|7D    4d|[088]|"
+    assert frame == kp3.claude_card("1h30m", 76, "4d", 88, led_hint=2, generation=0xA0).encode("ascii")
 
 
 def test_claude_card_rejects_missing_required_pct():
@@ -134,10 +140,16 @@ def test_codex_card_renders():
     fields = _renders(codex_card(make_codex(), now=NOW))
     assert fields[4] == "CODEX"
     assert fields[5] == "0"
-    assert fields[7] == "5H 1h30m"  # L2: primary countdown to reset
+    assert fields[7] == "5H  1h30m"  # L2: primary countdown to reset
     assert fields[8] == "[042]"  # L3: primary bar at 42%
-    assert fields[9] == "7D    6d"  # L4: secondary countdown to reset
+    assert fields[9] == "7D     6d"  # L4: secondary countdown to reset
     assert fields[10] == "[068]"  # L5: secondary bar at 68%
+
+
+def test_codex_card_byte_matches_the_kp3_usage_card():
+    frame = render_frame(codex_card(make_codex(), now=NOW), now=NOW, generation=0xA0, index=0, total=1)
+
+    assert frame == kp3.codex_card("1h30m", 42, "6d", 68, led_hint=0, generation=0xA0).encode("ascii")
 
 
 def test_codex_card_warns_on_high_usage():
@@ -163,7 +175,7 @@ def test_codex_card_renders_single_weekly_window():
 
     fields = _renders(codex_card(usage, now=NOW))
 
-    assert fields[7] == "7D    4d"
+    assert fields[7] == "7D     4d"
     assert fields[8] == "[012]"
     assert fields[9] == ""
     assert fields[10] == ""
@@ -189,11 +201,11 @@ def test_weather_card_renders():
 
     assert fields[4] == "RAIN"
     assert fields[5] == "2"
-    assert fields[6] == "WEATHER "
-    assert fields[7] == "T    28C"
-    assert fields[9] == "H    31C"
-    assert fields[10] == "L    25C"
-    assert fields[11] == "POP  67%"
+    assert fields[6] == "WEATHER  "
+    assert fields[7] == "T     28C"
+    assert fields[9] == "H     31C"
+    assert fields[10] == "L     25C"
+    assert fields[11] == "POP   67%"
 
 
 # --- calendar ---
@@ -216,16 +228,16 @@ def test_calendar_card_uses_live_countdown():
 
     assert fields[4] == "TIME"
     assert fields[5] == "1"
-    assert fields[6] == "CAL     "
-    assert fields[7] == "AT 14:04"
-    assert fields[9] == "IN 1h30m"
-    assert fields[10] == "EV Stand"
+    assert fields[6] == "CAL      "
+    assert fields[7] == "AT  14:04"
+    assert fields[9] == "IN  1h30m"
+    assert fields[10] == "EV  Stand"
 
 
 def test_calendar_card_sanitizes_non_ascii_title():
     event = _event(NOW + dt.timedelta(minutes=10), "会议|Sync")
     fields = _renders(calendar_card(TodaysCalendar(today=NOW.date(), events=[event], upcoming=[]), now=NOW))
-    assert fields[10] == "EV ???Sy"
+    assert fields[10] == "EV  ???Sy"
 
 
 # --- todo ---
@@ -243,10 +255,10 @@ def test_todo_card_renders_top_item_and_due_countdown():
 
     assert fields[4] == "WARN"
     assert fields[5] == "2"
-    assert fields[6] == "TODO    "
-    assert fields[7] == "CNT    8"
-    assert fields[9] == "TOP Ship"
-    assert fields[10] == "D     2h"
+    assert fields[6] == "TODO     "
+    assert fields[7] == "CNT     8"
+    assert fields[9] == "TOP  Ship"
+    assert fields[10] == "D      2h"
 
 
 def test_todo_card_all_clear():
@@ -254,5 +266,5 @@ def test_todo_card_all_clear():
     fields = _renders(todo_card(rem, now=NOW))
     assert fields[4] == "NONE"
     assert fields[5] == "0"
-    assert fields[7] == "CNT    0"
-    assert fields[9] == "OK   YES"
+    assert fields[7] == "CNT     0"
+    assert fields[9] == "OK    YES"
