@@ -98,11 +98,23 @@ def test_claude_card_scoped_limit_still_fits_the_frame_at_100_pct():
 def test_claude_card_byte_matches_the_kp3_usage_card():
     """The keyboard repo's preview deck is kp3.claude_card; same data, same bytes."""
     usage = make_claude()
-    usage.scoped_limits = []  # kp3's usage-card shape leaves L6 empty
+    usage.scoped_limits = []  # a plan without scoped limits leaves L6 empty
 
     frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
 
     assert frame == kp3.claude_card("1h30m", 76, "4d", 88, led_hint=2, generation=0xA0).encode("ascii")
+
+
+def test_claude_card_with_a_scoped_limit_byte_matches_the_kp3_usage_card():
+    """The usual card: kp3 owns the L6 scoped-limit row too, so the shapes agree
+    with a scoped limit present -- not only in the empty-L6 case."""
+    usage = make_claude()
+    usage.scoped_limits = [ScopedLimit(label="FABLE", pct=68.0)]
+
+    frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
+
+    expected = kp3.claude_card("1h30m", 76, "4d", 88, scoped_limit=("FB", 68), led_hint=2, generation=0xA0)
+    assert frame == expected.encode("ascii")
 
 
 def test_claude_card_rejects_missing_required_pct():

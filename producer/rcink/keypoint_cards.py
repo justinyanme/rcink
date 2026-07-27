@@ -2,9 +2,11 @@
 
 Each builder turns one source's rich data into a renderable :class:`Card`: icon
 + title + either a full set of grid rows or one fewer plus the fetch timestamp.
-Widths are `rcink.kp3`'s to decide — the builders only choose what goes on a
-line. Reset rows use ``Row(until=epoch)`` so the keypoint-push job renders a
-live countdown instead of the frozen "2h 14m" string the e-ink pages show.
+Widths are `rcink.kp3`'s to decide, as is the spelling of any row kp3 has a
+builder for (the usage cards' scoped-limit line); the builders here only choose
+what goes on a line. Reset rows use ``Row(until=epoch)`` so the
+keypoint-push job renders a live countdown instead of the frozen "2h 14m"
+string the e-ink pages show.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
+from rcink import kp3
 from rcink.keypoint import LED_HINT_ACTIVE, LED_HINT_ATTENTION, LED_HINT_NONE, LED_HINT_WARNING, Card, Row
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
@@ -121,7 +124,7 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
     rows.append(Row(bar=_bar(usage.seven_day_pct)))
     if usage.scoped_limits:
         limit = max(usage.scoped_limits, key=lambda item: item.pct)
-        rows.append(Row(text=f"{_scoped_label(limit.label)} {int(limit.pct)}%"))
+        rows.append(Row(text=kp3.scoped_limit_row(_scoped_label(limit.label), int(limit.pct))))
     return Card(
         id="claude",
         icon="CLAUDE",
