@@ -48,8 +48,8 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/tmp/rcpaper.log</string>
+  <string>/Users/rocry/Library/Logs/rcpaper.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/rcpaper.log</string>
+  <string>/Users/rocry/Library/Logs/rcpaper.log</string>
 </dict>
 </plist>
