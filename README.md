@@ -2,6 +2,11 @@
 
 Umbrella repo for rc e-ink dashboard devices. One DSL, one producer, multiple firmware targets.
 
+Sibling project: [`rctlsr`](../rctlsr) (`~/w/_hw/rctlsr`) is the other TLSR8258 tag — there the host lays out
+every page (packs of hundreds of text pages, shown offline for weeks) and the device only chooses the page; here
+the host says what and the device lays it out (dashboards refreshed every 15 min). Pick rcink for live data on
+a panel with its own fonts, rctlsr for CJK text pages a person writes once. Code is not shared.
+
 ## Layout
 
 - `dsl/` — DSL spec (JSON schema + cross-device golden render fixtures).
