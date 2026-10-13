@@ -142,6 +142,48 @@ whether the old autodetection failure still occurs.
 
 ### Fast-refresh compatibility findings (2026-10-13)
 
+**Status: paused at the user's request on 2026-10-13; root cause unresolved.**
+The user also tried the modes and confirmed quality was substantially below
+expectations. This rejects the current implementation for everyday use; it
+does **not** establish that acceptable fast refresh is impossible on PaperColor.
+Resume hardware experiments only when the user requests further debugging.
+
+#### Handoff for the next session
+
+- Implementation checkpoint: `3478781`. Power policy and repeatable flash /
+  console / P4 trial tools are retained. Normal pages still use native refresh;
+  F/Q/M/C/I are manual experiments. Do not enable them automatically based on
+  successful command acknowledgements or shorter BUSY timing.
+- Last agent-verified application: `flash-015`; last inspected dashboard:
+  `final-native-001/01-restored.jpg`. The user subsequently ran manual tests;
+  no new device inspection or flashing was performed during this wrap-up.
+- Evidence root: `.cache/papercolor/2026-10-13/`. It is local, Git-ignored
+  evidence, **not included in the commit**. Preserve it for later comparison.
+  `flash-014/firmware.bin` retains the temporary interrupted-diagnostics build;
+  production diagnostics no longer have that experimental canvas path.
+- Confirmed: native transport produces readable color output; all four sf32rc
+  modes execute but fail optical acceptance; coarse mono checker success did
+  not predict readable small text. Full native refresh restored usable output
+  after the captured experiments.
+- Still unknown: whether the failure comes from panel-specific waveform /
+  analog initialization, pixel-selector or old-plane semantics, timing /
+  temperature assumptions, or another porting error. These are investigation
+  candidates, not diagnoses. The native chart passing does not prove the
+  custom LUT encoding or controller state is correct.
+
+When resumed, first capture a fresh native reference and current panel framing.
+Compare a known-good sf32rc run and this port using identical simple inputs;
+audit command order, packed pixel bytes, old/new plane preparation and power
+sequencing before changing LUT bytes. For the same-panel interrupted path,
+audit FreeInk's initial image, setup and cutoff anchor against the port rather
+than assuming its reported340 ms transfers unchanged. Change one variable per
+trial; retain failed logs and settled photos, then complete a native cleanup.
+Reintroduce a real small-text comparison before proposing any automatic policy.
+Acceptance requires readable text, useful colors where promised, tolerable
+residue across repeated updates, and verified native recovery—not timing alone.
+
+#### Source findings and retained experiments
+
 - Pinned `Panel_ED2208` maps `quality/text/fast/fastest` to dithering only;
   all use the same full-frame transfer and OTP waveform. Mode names do not
   establish faster physical refresh.
