@@ -1,6 +1,7 @@
 #include "dev/console.h"
+#include "dev/waveform_trial.h"
 
-#ifdef RCPAPER_DEV_CONSOLE
+#ifdef ARDUINO
 #include <Arduino.h>
 #include <M5Unified.h>
 #include <WiFi.h>
@@ -9,7 +10,7 @@
 
 #include "net/wifi.h"
 #include "power/nav_delta.h"
-#include "power/sleep.h"
+#include "power/runtime.h"
 #include "render/page.h"
 #include "render/palette.h"
 #include "status/led_status.h"
@@ -38,8 +39,9 @@ void console_help() {
   Serial.println(F("  s  state dump"));
   Serial.println(F("  q  dump cached layout_json for current page"));
   Serial.println(F("  m  cycle EPD mode (quality→text→fast→fastest)"));
-  Serial.println(F("  D  enter deep sleep (10 s)"));
+  Serial.println(F("  p  supply source, VIN, uptime and next fetch"));
   Serial.println(F("  R  reboot now"));
+  Serial.println(F("  N/F/Q/M/C/I  waveform chart: native/fast-color/quality-color/mono/mono-clear/interrupted"));
   Serial.println(F("  h  this help"));
 }
 
@@ -59,9 +61,8 @@ static void console_state_dump() {
   }
 }
 
-// In production the buttons act as EXT1 deep-sleep wake sources, so the device
-// wakes → fetches or navigates → renders → sleeps in one cycle. In DEV_CONSOLE mode
-// the device stays awake and never sleeps, so those wake sources are inert.
+// On battery the buttons act as EXT1 deep-sleep wake sources. On external
+// power the MCU stays awake, so poll buttons instead of waiting for wake IRQs.
 // Poll the three side buttons (M5Unified mapping: G9=A, G10=B, G1=C) directly
 // in loop() and dispatch the matching console command on a falling edge so the
 // device behaves the same as a deep-sleep cycle from the user's POV.
@@ -73,7 +74,11 @@ static DevBtn g_dev_btns[] = {
 };
 
 void dev_buttons_init() {
-  for (auto& b : g_dev_btns) pinMode(b.pin, INPUT_PULLUP);
+  for (auto& b : g_dev_btns) {
+    pinMode(b.pin, INPUT_PULLUP);
+    b.prev_high = digitalRead(b.pin) != 0;
+    b.last_change_ms = millis();
+  }
 }
 
 static void dev_handle_nav_button(int initial_delta) {
@@ -82,10 +87,11 @@ static void dev_handle_nav_button(int initial_delta) {
   if (nav.show_diagnostics) {
     render_diagnostics();
     led_status_show(LedState::IdleDisconnected);
+    dev_buttons_init();
     return;
   }
   if (nav.force_refetch) {
-    if (refetch_now()) {}
+    refetch_now();
   }
   if (nav.delta != 0) {
     g_state.page_index = apply_nav_delta(g_state.page_index, nav.delta,
@@ -123,6 +129,7 @@ void dev_buttons_poll() {
       } else {                 // BtnC = refetch (single-step)
         Serial.printf("[btn] G%d → '%c'\n", b.pin, b.cmd);
         console_dispatch(b.cmd);
+        dev_buttons_init();
       }
     }
   }
@@ -130,6 +137,19 @@ void dev_buttons_poll() {
 
 void console_dispatch(char c) {
   switch (c) {
+    case 'N': case 'F': case 'Q': case 'M': case 'C': case 'I': {
+      // Mark BEFORE IO: reset/failure must never leave a dashboard cache marker
+      // claiming that the experimental chart is the cached dashboard.
+      PageRecord trial;
+      trial.id = "waveform-trial";
+      trial.data_ts = 0;
+      nvs_record_rendered_page(g_state, trial);
+      led_status_show(LedState::Refreshing);
+      const bool ok = waveform_trial(c);
+      Serial.printf("[trial] %s mode=%c\n", ok ? "complete" : "FAILED", c);
+      led_status_show(LedState::IdleDisconnected);
+      break;
+    }
     case 'h': case '?':
       console_help();
       break;
@@ -201,9 +221,8 @@ void console_dispatch(char c) {
                     epd_mode_name(cur), epd_mode_name(nxt));
       break;
     }
-    case 'D':
-      Serial.println("[console] D → deep sleep 10s");
-      enter_deep_sleep_until((uint64_t)time(nullptr) + 10);
+    case 'p':
+      print_power_state();
       break;
     case 'R':
       Serial.println("[console] R → esp_restart");
@@ -221,4 +240,4 @@ void console_dispatch(char c) {
 
 }  // namespace rcpaper::dev
 
-#endif  // RCPAPER_DEV_CONSOLE
+#endif  // ARDUINO

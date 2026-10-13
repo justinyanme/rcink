@@ -1,106 +1,169 @@
-"""USB-CDC console helper for the rcpapercolor M5 PaperColor firmware.
+"""PaperColor USB console: explicit port, one exclusive connection, no reconnect.
 
-Forwards keystrokes to `dev/console.cpp::console_dispatch` (enabled by the
-`RCPAPER_DEV_CONSOLE` build flag in platformio.ini).
+    uv run dev-cli session s --port /dev/cu.usbmodem20111401 --timeout 5 --save state.log
+    uv run dev-cli session r --port /dev/cu.usbmodem20111401 --timeout 40
+    uv run dev-cli log --port /dev/cu.usbmodem20111401 --timeout 10
 
-    uv run dev-cli send f        # refetch + render
-    uv run dev-cli send r        # re-render current page
-    uv run dev-cli send n        # next page
-    uv run dev-cli send d        # diagnostics page
-    uv run dev-cli send mmm      # cycle EPD mode 3 times
-    uv run dev-cli send s        # print state dump (read log via `dev-cli log`)
-    uv run dev-cli send h        # show on-device help
-
-    uv run dev-cli log           # tail serial output until Ctrl-C
-    uv run dev-cli log --once    # read until next deep-sleep marker, then exit
-
-The device must be flashed with the dev env (`pio run -e m5stack-papercolor`);
-without RCPAPER_DEV_CONSOLE the firmware deep-sleeps right after the first
-render and the port drops.
+`send` is an alias for `session`: command responses are collected on the same
+connection. DTR/RTS remain inactive; opening the console must not request reset.
+The firmware exposes the console while externally powered. A missing/disconnected port fails;
+the CLI never switches ports or retries a command.
 """
 
 from __future__ import annotations
 
-import os
+import codecs
+import json
 import sys
 import time
-from contextlib import ExitStack, suppress
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
+from typing import Annotated
 
 import serial
 import typer
-from loguru import logger
-
-DEFAULT_PORT = "/dev/cu.usbmodem3101"
 
 app = typer.Typer(add_completion=False, help=__doc__, no_args_is_help=True)
+Port = Annotated[str, typer.Option("--port", "-p", help="Exact target port; required, never autodiscovered.")]
+Timeout = Annotated[float, typer.Option(min=0, help="Session seconds, including sending; 0 = until Ctrl-C.")]
+Save = Annotated[Path | None, typer.Option(help="Save original received bytes to a new file.")]
 
 
-@app.command("send")
-def cmd_send(
-    chars: str = typer.Argument(..., help="Char(s) to send. See dev/console.cpp::console_dispatch."),
-    port: str = typer.Option(DEFAULT_PORT, "--port", "-p"),
-    delay: float = typer.Option(0.2, "--delay", help="Inter-char delay (s)."),
+@contextmanager
+def open_port(port: str):
+    """Configure control lines before opening; never let Serial's constructor open."""
+    if not Path(port).exists():
+        raise serial.SerialException(f"Port does not exist: {port}")
+    connection = serial.Serial(port=None, baudrate=115200, timeout=0.1, write_timeout=1, exclusive=True)
+    try:
+        connection.dtr = False
+        connection.rts = False
+        connection.port = port
+        connection.open()
+        yield connection
+    finally:
+        connection.close()
+
+
+def run_session(
+    *,
+    port: str,
+    chars: str,
+    delay: float,
+    timeout: float,
+    save: Path | None,
+    once: bool,
+    start_delay: float = 0,
+    events: Path | None = None,
 ) -> None:
-    """Send one or more chars to the device's USB-CDC dev console."""
-    with serial.Serial(port, 115200, timeout=0.5) as s:
-        for c in chars:
-            s.write(c.encode("ascii"))
-            s.flush()
-            time.sleep(delay)
-    logger.info(f"sent {chars!r} to {port}")
+    try:
+        payload = chars.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise typer.BadParameter("Console commands must be ASCII.", param_hint="chars") from error
+    try:
+        with ExitStack() as stack:
+            connection = stack.enter_context(open_port(port))
+            output = stack.enter_context(save.open("xb")) if save else None
+            event_log = stack.enter_context(events.open("x")) if events else None
+            deadline = time.monotonic() + timeout if timeout else None
+            next_send = time.monotonic() + start_delay
+            index = 0
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            marker_tail = b""
+            while deadline is None or time.monotonic() < deadline:
+                if not Path(port).exists():
+                    raise serial.SerialException(f"Port disconnected: {port}")
+                if index < len(payload) and time.monotonic() >= next_send:
+                    byte = bytes([payload[index]])
+                    if event_log:
+                        timestamp = time.monotonic_ns()
+                        event_log.write(
+                            json.dumps(
+                                {
+                                    "t_ns": timestamp,
+                                    "clock": "host-monotonic",
+                                    "label": f"console {byte.decode('ascii')!r}",
+                                    "host_monotonic_ns": timestamp,
+                                    "event": "console-write-start",
+                                    "command": byte.decode("ascii"),
+                                },
+                                ensure_ascii=False,
+                            )
+                            + "\n"
+                        )
+                        event_log.flush()
+                    if connection.write(byte) != 1:
+                        raise serial.SerialException(f"Short write sending command byte {index + 1}/{len(payload)}")
+                    connection.flush()
+                    index += 1
+                    next_send = time.monotonic() + delay
+                now = time.monotonic()
+                waits = [0.1]
+                if index < len(payload):
+                    waits.append(max(0, next_send - now))
+                if deadline is not None:
+                    waits.append(max(0, deadline - now))
+                connection.timeout = min(waits)
+                data = connection.read(4096)
+                if not data:
+                    continue
+                if output:
+                    output.write(data)
+                    output.flush()
+                sys.stdout.write(decoder.decode(data))
+                sys.stdout.flush()
+                marker = marker_tail + data
+                if any(failure in marker for failure in (b"[power] fatal:", b"[boot] fatal:", b"Guru Meditation")):
+                    raise serial.SerialException("Firmware reported a fatal error; session stopped")
+                if once and b"[sleep]" in marker:
+                    break
+                marker_tail = marker[-32:]
+            if index < len(payload):
+                raise serial.SerialException("Session ended before all commands were sent")
+            sys.stdout.write(decoder.decode(b"", final=True))
+            sys.stdout.flush()
+    except (OSError, serial.SerialException) as error:
+        typer.echo(f"Console failed on {port}: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+
+@app.command("session")
+@app.command("send")
+def cmd_session(
+    port: Port,
+    chars: Annotated[str, typer.Argument(help="Console chars; omit to collect logs only.")] = "",
+    delay: Annotated[float, typer.Option(min=0, help="Inter-command delay in seconds.")] = 0.2,
+    timeout: Timeout = 10.0,
+    save: Save = None,
+    start_delay: Annotated[float, typer.Option(min=0, help="Read boot logs before sending the first byte.")] = 0,
+    events: Annotated[Path | None, typer.Option(help="New JSONL file: host monotonic command-write times.")] = None,
+    once: Annotated[bool, typer.Option(help="Stop after the firmware '[sleep]' marker.")] = False,
+) -> None:
+    """Collect logs while sending commands; never reopen the port."""
+    run_session(
+        port=port,
+        chars=chars,
+        delay=delay,
+        timeout=timeout,
+        save=save,
+        once=once,
+        start_delay=start_delay,
+        events=events,
+    )
 
 
 @app.command("log")
 def cmd_log(
-    port: str = typer.Option(DEFAULT_PORT, "--port", "-p"),
-    once: bool = typer.Option(False, "--once", help="Exit on first '[sleep]' or after --timeout."),
-    timeout: float = typer.Option(0.0, "--timeout", help="Wall-clock seconds (0 = forever)."),
-    save: str | None = typer.Option(None, "--save", help="Also write a copy to this file."),
+    port: Port,
+    timeout: Timeout = 0.0,
+    save: Save = None,
+    once: Annotated[bool, typer.Option(help="Stop after the firmware '[sleep]' marker.")] = False,
 ) -> None:
-    """Stream serial output. Reopens on USB-CDC drops (deep sleep)."""
-    deadline = (time.time() + timeout) if timeout > 0 else None
-    with ExitStack() as stack:
-        out = stack.enter_context(open(save, "w")) if save else None
-        while True:
-            if deadline is not None and time.time() >= deadline:
-                logger.info("timeout reached")
-                return
-            if not os.path.exists(port):
-                time.sleep(0.3)
-                continue
-            try:
-                s = serial.Serial(port, 115200, timeout=0.3)
-            except (OSError, serial.SerialException) as e:
-                logger.warning(f"open {port}: {e}")
-                time.sleep(0.5)
-                continue
-            logger.info(f"opened {port}")
-            while True:
-                if deadline is not None and time.time() >= deadline:
-                    return
-                try:
-                    data = s.read(4096)
-                except OSError as e:
-                    logger.info(f"{port} dropped: {e}")
-                    break
-                if not data:
-                    continue
-                text = data.decode("utf-8", errors="replace")
-                sys.stdout.write(text)
-                sys.stdout.flush()
-                if out:
-                    out.write(text)
-                    out.flush()
-                if once and "[sleep]" in text:
-                    logger.info("sleep marker seen; exiting")
-                    return
-            with suppress(Exception):
-                s.close()
+    """Collect output until timeout/Ctrl-C; fail on disconnect."""
+    run_session(port=port, chars="", delay=0, timeout=timeout, save=save, once=once)
 
 
 def main() -> None:
-    logger.remove()
-    logger.add(sys.stderr, format="{level: <7} {message}", level="INFO")
     app()
 
 

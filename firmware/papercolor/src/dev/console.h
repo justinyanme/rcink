@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef RCPAPER_DEV_CONSOLE
+#ifdef ARDUINO
 
 namespace rcpaper::dev {
 
@@ -19,4 +19,4 @@ void console_dispatch(char c);
 
 }  // namespace rcpaper::dev
 
-#endif  // RCPAPER_DEV_CONSOLE
+#endif  // ARDUINO

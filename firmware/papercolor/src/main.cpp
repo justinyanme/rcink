@@ -20,6 +20,7 @@
 #include "power/nav_delta.h"
 #include "power/refresh_schedule.h"
 #include "power/sleep.h"
+#include "power/runtime.h"
 #include "proto/parser.h"
 #include "render/diagnostics.h"
 #include "render/page.h"
@@ -28,9 +29,6 @@
 #include "status/led_status.h"
 #include "store/nvs.h"
 
-#ifdef RCPAPER_DEV_CONSOLE
-#include "dev/console.h"
-#endif
 
 namespace rcpaper {
 
@@ -182,6 +180,11 @@ static NavCoalesceResult coalesce_nav_presses(WakeReason initial) {
 // baseline — additional presses during the window are everything beyond it.
 // Exposed (non-static) so dev/console.cpp can call it.
 NavCoalesceResult coalesce_nav_from_poll(int initial_delta) {
+  if (wake_reason_from_ext1_mask(sample_button_low_mask()) == WakeReason::ButtonAB) {
+    NavCoalesceResult result;
+    result.show_diagnostics = true;
+    return result;
+  }
   WakeReason fake = (initial_delta > 0) ? WakeReason::ButtonA : WakeReason::ButtonB;
   flash_for_button(fake);
   // Small delay so a pending ISR for the just-detected falling edge has
@@ -250,6 +253,7 @@ bool refetch_now() {
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
     g_last_result = "wifi-failed";
+    schedule_runtime_refresh();
     return false;
   }
   bool ntp_ok = sync_ntp_once();
@@ -259,6 +263,7 @@ bool refetch_now() {
   if (ok) {
     record_successful_fetch(g_state, fresh);
     g_state.pages = std::move(fresh);
+    if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
     // Preserve g_state.page_index: scheduled refreshes update content without
     // changing pages. setup() clamps idx if the producer shrank the page list.
     // Stamp last_fetch_s: prefer NTP-synced wall clock; fall back to the max
@@ -281,6 +286,7 @@ bool refetch_now() {
     g_last_result = "fetch-failed";
     led_status_show(LedState::SyncFailed);
   }
+  schedule_runtime_refresh();
   return ok;
 }
 
@@ -294,8 +300,8 @@ void render_current() {
   const PageRecord& rec = g_state.pages[g_state.page_index];
 
   // Skip the panel refresh when (id, data_ts) match what we drew last time.
-  // The Spectra 6 panel has no genuinely-faster refresh mode (epd_quality /
-  // epd_fast / epd_fastest all clock ~16.8 s on this hardware), and the image
+  // The pinned ED2208 driver's modes change dithering, not its waveform
+  // (quality / fast / fastest all clock ~16.8 s here), and the image
   // already on the panel is byte-equivalent to what we'd render — so skipping
   // is invisible to the user and saves both wall-clock + panel-wear refreshes.
   if (render_marker_matches(g_state, rec)) {
@@ -392,7 +398,16 @@ void setup() {
   cfg.internal_imu  = false;
   cfg.internal_spk  = false;
   cfg.internal_mic  = false;
+  cfg.fallback_board = m5::board_t::board_M5PaperColor;
   M5.begin(cfg);
+  if (M5.getBoard() != m5::board_t::board_M5PaperColor
+      || M5.Display.width() == 0 || M5.Display.height() == 0) {
+    Serial.println("[boot] fatal: PaperColor board/display initialization failed");
+    Serial.flush();
+    abort();
+  }
+  Serial.printf("[boot] PaperColor %dx%d build=%s %s\n",
+                M5.Display.width(), M5.Display.height(), __DATE__, __TIME__);
   led_status_init();
   // epd_quality buffers all draws into M5GFX's offscreen buffer and commits
   // them in one full-panel refresh on Display.display(). epd_text auto-pushes
@@ -459,25 +474,9 @@ void setup() {
     led_status_show(LedState::IdleDisconnected);
   }
 
-#ifdef RCPAPER_DEV_CONSOLE
-  dev::dev_buttons_init();
-  led_status_show(LedState::IdleDisconnected);
-  Serial.println("[console] ready — type 'h' for commands. Deep sleep disabled.");
-#else
-  const uint32_t interval = adaptive_refresh_interval_sec(
-      FETCH_INTERVAL_SEC, g_state.unchanged_fetches, g_battery.pct, g_battery.ok);
-  enter_deep_sleep_until((uint64_t)time(nullptr) + interval);
-#endif
+  runtime_begin();
 }
 
 void loop() {
-#ifdef RCPAPER_DEV_CONSOLE
-  while (Serial.available() > 0) {
-    int c = Serial.read();
-    if (c < 0) break;
-    dev::console_dispatch((char)c);
-  }
-  dev::dev_buttons_poll();
-  delay(20);
-#endif
+  runtime_poll();
 }

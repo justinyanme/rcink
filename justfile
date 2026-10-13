@@ -14,7 +14,7 @@ producer-test:
     cd producer && uv run pytest
 
 native-papercolor:
-    {{ pio }} test -d firmware/papercolor -e native
+    {{ pio-run }} papercolor test -d firmware/papercolor -e native
 
 native-t-amoled:
     {{ pio }} test -d firmware/t-amoled -e native
@@ -37,6 +37,19 @@ test: producer-test native-papercolor native-t-amoled native-c3-x4 native-rlcd n
 
 build-papercolor:
     {{ pio-run }} papercolor run -d firmware/papercolor
+
+flash-papercolor port out: build-papercolor
+    uv run scripts/papercolor_flash.py --port '{{ port }}' --out '{{ out }}'
+
+observe-papercolor port out:
+    uv run scripts/papercolor_observe.py --port '{{ port }}' --out '{{ out }}' --commands pdrp --seconds 50
+
+trial-papercolor port out modes='N':
+    uv run scripts/papercolor_trial.py --port '{{ port }}' --out '{{ out }}' --modes '{{ modes }}'
+
+verify-papercolor port out: native-papercolor build-papercolor
+    uv run scripts/papercolor_flash.py --port '{{ port }}' --out '{{ out }}/flash'
+    uv run scripts/papercolor_observe.py --port '{{ port }}' --out '{{ out }}/observation' --commands pdrp --seconds 50
 
 build-t-amoled:
     {{ pio-run }} t-amoled run -d firmware/t-amoled
