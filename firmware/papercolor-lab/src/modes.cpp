@@ -15,6 +15,15 @@ const uint8_t* g_inks = nullptr;
 uint8_t* g_packed = nullptr;
 uint8_t* g_old = nullptr;
 bool g_old_valid = false;
+uint8_t g_lut[TICKEY_WAVEFORM_BYTES];  // Mode::Custom LUT, edited by the console
+
+const uint8_t* const kTables[] = {
+    tickey_waveform_clear_initial,       tickey_waveform_mono,                tickey_waveform_mono_clear,
+    tickey_waveform_color_fast_phase1,   tickey_waveform_color_fast_phase2,   tickey_waveform_color_fast_cleanup,
+    tickey_waveform_color_quality_phase1, tickey_waveform_color_quality_phase2, tickey_waveform_color_quality_phase3,
+};
+static_assert(sizeof(kTables) / sizeof(kTables[0]) == kLutTableCount, "kLutTables order");
+static_assert(TICKEY_WAVEFORM_BYTES == kLutBytes799, "LUT size");
 
 // sf32rc display.c:50-58 configure_trial(): TICKEY 2.1.0 volatile setup.
 constexpr uint8_t kTickeySetup[][2] = {{0x30, 0x04}, {0x41, 0x00}, {0xE0, 0x02}, {0xE6, 0x19}};
@@ -151,6 +160,24 @@ epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
   return {};
 }
 
+// Custom: RAM LUT over the mono transition frame. No cold clear: a missing
+// history is all-zero (dark); the light plane is kept as history afterwards.
+epd::Result custom(const Knobs& knobs, Reply& ok) {
+  uint32_t busy_ms = 0;
+  TRY(lut(knobs, g_lut));
+  const uint8_t* old = g_old_valid ? g_old : nullptr;
+  if (knobs.pack.bits == 2) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
+  else encode_mono(g_inks, old, kPixels, g_packed);
+  TRY(upload_plane(knobs.pack));
+  TRY(power(knobs));
+  TRY(epd::refresh("custom", busy_ms));
+  TRY(power_down());
+  ok.field("history", long(old != nullptr)).field("busy_ms", long(busy_ms));
+  mono_plane(g_inks, kPixels, g_old);
+  g_old_valid = true;
+  return {};
+}
+
 epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
   const bool fast = mode == Mode::Fast;
   const Palette palette = fast ? Palette::Fast : Palette::Quality;
@@ -198,9 +225,14 @@ void begin(const uint8_t* inks, uint8_t* packed, uint8_t* old_plane) {
   g_packed = packed;
   g_old = old_plane;
   g_old_valid = false;
+  lut_load(1);  // mono
 }
 
 void forget_history() { g_old_valid = false; }
+
+void lut_load(size_t table) { memcpy(g_lut, kTables[table], TICKEY_WAVEFORM_BYTES); }
+void lut_set(size_t offset, const uint8_t* bytes, size_t count) { memcpy(g_lut + offset, bytes, count); }
+void lut_get(size_t offset, uint8_t* out, size_t count) { memcpy(out, g_lut + offset, count); }
 
 epd::Result run(Mode mode, const Knobs& knobs, Reply& ok) {
   if (mode == Mode::Native) {
@@ -222,7 +254,9 @@ epd::Result run(Mode mode, const Knobs& knobs, Reply& ok) {
   if (r.ok()) {
     prologue(knobs);
     knob_fields(knobs, ok);
-    r = (mode == Mode::Mono || mode == Mode::MonoClear) ? mono(mode, knobs, ok) : staged(mode, knobs, ok);
+    if (mode == Mode::Custom) r = custom(knobs, ok);
+    else if (mode == Mode::Mono || mode == Mode::MonoClear) r = mono(mode, knobs, ok);
+    else r = staged(mode, knobs, ok);
     if (mode == Mode::Fast || mode == Mode::Quality) forget_history();
   }
   if (!r.ok()) forget_history();

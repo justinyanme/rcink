@@ -122,6 +122,21 @@ void dispatch(const char* line) {
     case Verb::Reset: return do_reset();
     case Verb::Show: return do_show(cmd);
     case Verb::Cleanup: return do_cleanup();
+    case Verb::Lut: {
+      Reply ok(true);
+      ok.field("lut", cmd.lut_op == LutOp::Load ? "load" : cmd.lut_op == LutOp::Set ? "set" : "get");
+      if (cmd.lut_op == LutOp::Load) {
+        modes::lut_load(cmd.lut_table);
+        return reply(ok.field("table", kLutTables[cmd.lut_table]));
+      }
+      if (cmd.lut_op == LutOp::Set) {
+        modes::lut_set(cmd.lut_offset, cmd.bytes, cmd.count);
+        return reply(ok.field("offset", long(cmd.lut_offset)).field("len", long(cmd.count)));
+      }
+      uint8_t data[kMaxReadBytes];
+      modes::lut_get(cmd.lut_offset, data, cmd.read_count);
+      return reply(ok.field("offset", long(cmd.lut_offset)).hex("data", data, cmd.read_count));
+    }
     case Verb::Raw:
       epd::write(cmd.bytes[0], cmd.bytes + 1, cmd.count - 1);
       return reply(Reply(true).hex("cmd", cmd.bytes, 1).field("len", long(cmd.count - 1)));
@@ -136,9 +151,9 @@ void dispatch(const char* line) {
     case Verb::Help:
       // Values carry no spaces so every reply stays key=value parseable.
       return reply(Reply(true)
-                       .field("verbs", "info,reset,show,cleanup,raw,rawread,trace,help")
+                       .field("verbs", "info,reset,show,cleanup,lut,raw,rawread,trace,help")
                        .field("images", "white,black,chart,text,checker:N,invert")
-                       .field("modes", "native,interrupt,mono,monoclear,fast,quality")
+                       .field("modes", "native,interrupt,mono,monoclear,fast,quality,custom")
                        .field("interrupt_knobs", "cut,cdi")
                        .field("lut_knobs", "setup,psr,booster,tres,win,pack"));
   }

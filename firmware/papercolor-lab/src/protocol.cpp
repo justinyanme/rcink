@@ -66,6 +66,7 @@ bool parse_image(const char* tok, Image& out) {
 constexpr struct { const char* name; Mode mode; } kModes[] = {
     {"native", Mode::Native}, {"interrupt", Mode::Interrupt}, {"mono", Mode::Mono},
     {"monoclear", Mode::MonoClear}, {"fast", Mode::Fast}, {"quality", Mode::Quality},
+    {"custom", Mode::Custom},
 };
 
 bool parse_mode(const char* tok, Mode& out) {
@@ -129,7 +130,7 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
   }
   if (key_is("pack")) {
     if (!once(32)) return false;
-    const bool mono = mode == Mode::Mono || mode == Mode::MonoClear;  // colour selectors need 3 bits
+    const bool mono = mode == Mode::Mono || mode == Mode::MonoClear || mode == Mode::Custom;  // colour needs 3 bits
     if (!parse_pack(value, knobs.pack)) return false;
     return mono || knobs.pack.bits == 4;
   }
@@ -166,7 +167,8 @@ const char* pack_name(Pack pack) {
 }
 
 bool is_lut_mode(Mode mode) {
-  return mode == Mode::Mono || mode == Mode::MonoClear || mode == Mode::Fast || mode == Mode::Quality;
+  return mode == Mode::Mono || mode == Mode::MonoClear || mode == Mode::Fast || mode == Mode::Quality ||
+         mode == Mode::Custom;
 }
 
 bool parse_command(const char* line, Command& out, const char*& why) {
@@ -207,6 +209,38 @@ bool parse_command(const char* line, Command& out, const char*& why) {
       if (!parse_knob(tok[i], out.mode, out.knobs, seen)) { why = "knob"; return false; }
     }
     return true;
+  }
+  if (!strcmp(verb, "lut")) {
+    // lut set reuses bytes/count; lut get reuses read_count.
+    out.verb = Verb::Lut;
+    if (n == 3 && !strcmp(tok[1], "load")) {
+      out.lut_op = LutOp::Load;
+      for (size_t t = 0; t < kLutTableCount; ++t) {
+        if (!strcmp(tok[2], kLutTables[t])) return out.lut_table = t, true;
+      }
+      why = "table";
+      return false;
+    }
+    if (n >= 4 && (!strcmp(tok[1], "set") || !strcmp(tok[1], "get"))) {
+      if (!parse_uint(tok[2], 0, kLutBytes799 - 1, out.lut_offset)) { why = "offset"; return false; }
+      if (tok[1][0] == 'g') {
+        unsigned count = 0;
+        if (n != 4 || !parse_uint(tok[3], 1, kMaxReadBytes, count)) { why = "count"; return false; }
+        if (out.lut_offset + count > kLutBytes799) { why = "range"; return false; }
+        out.lut_op = LutOp::Get;
+        out.read_count = count;
+        return true;
+      }
+      if (n - 3 > kMaxReadBytes || out.lut_offset + (n - 3) > kLutBytes799) { why = "range"; return false; }
+      for (size_t i = 3; i < n; ++i) {
+        if (!parse_hex2(tok[i], out.bytes[i - 3])) { why = "hex"; return false; }
+      }
+      out.lut_op = LutOp::Set;
+      out.count = n - 3;
+      return true;
+    }
+    why = "args";
+    return false;
   }
   if (!strcmp(verb, "raw")) {
     if (n < 2 || n - 1 > kMaxRawBytes) { why = "args"; return false; }

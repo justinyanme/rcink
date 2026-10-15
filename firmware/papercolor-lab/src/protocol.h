@@ -14,10 +14,11 @@ constexpr size_t kMaxLine = 255;
 constexpr size_t kMaxRawBytes = 64;   // raw: command byte + data
 constexpr size_t kMaxReadBytes = 32;  // rawread: bytes returned
 
-enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Raw, RawRead, Trace, Help };
+enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Lut, Raw, RawRead, Trace, Help };
 enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert };
 constexpr unsigned kMaxCheckerSize = 300;
-enum class Mode : uint8_t { Native, Interrupt, Mono, MonoClear, Fast, Quality };
+// Custom: the console-edited RAM LUT (`lut` verb) over the mono transition frame.
+enum class Mode : uint8_t { Native, Interrupt, Mono, MonoClear, Fast, Quality, Custom };
 // LUT-mode plane format: bits per pixel and data rows per image row.
 // Once: one data row; Twice: the row twice; Even/Odd: the row then a filler row
 // of code 0 (Even), or filler then the row (Odd).
@@ -51,6 +52,14 @@ struct Knobs {
 
 bool is_lut_mode(Mode mode);
 
+constexpr size_t kLutBytes799 = 799;
+// RAM LUT edits: `lut load <table>`, `lut set <offset> <hex2...>`, `lut get <offset> <n>`.
+enum class LutOp : uint8_t { Load, Set, Get };
+// Tables `lut load` accepts; index order is modes.cpp's table order.
+constexpr const char* kLutTables[] = {"clear_initial", "mono", "mono_clear", "fast1", "fast2",
+                                      "fast_cleanup", "quality1", "quality2", "quality3"};
+constexpr size_t kLutTableCount = sizeof(kLutTables) / sizeof(kLutTables[0]);
+
 struct Command {
   Verb verb{};
   Image image{};                 // show
@@ -62,6 +71,9 @@ struct Command {
   uint8_t read_cmd{};            // rawread
   size_t read_count{};           // rawread: 1..kMaxReadBytes
   bool trace_on{};               // trace
+  LutOp lut_op{};                // lut
+  size_t lut_table{};            // lut load: index into kLutTables
+  unsigned lut_offset{};         // lut set/get: byte offset, range within kLutBytes799
 };
 
 // Parses one line (trailing CR/LF tolerated). On failure returns false and
