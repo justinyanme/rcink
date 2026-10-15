@@ -186,7 +186,8 @@ bool parse_command(const char* line, Command& out, const char*& why) {
   const char* verb = tok[0];
 
   static constexpr struct { const char* name; Verb verb; } kBare[] = {
-      {"info", Verb::Info}, {"reset", Verb::Reset}, {"cleanup", Verb::Cleanup}, {"help", Verb::Help}};
+      {"info", Verb::Info}, {"reset", Verb::Reset}, {"cleanup", Verb::Cleanup}, {"otp", Verb::Otp},
+      {"help", Verb::Help}};
   for (const auto& bare : kBare) {
     if (strcmp(verb, bare.name)) continue;
     if (n != 1) { why = "args"; return false; }

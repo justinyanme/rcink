@@ -170,9 +170,9 @@ Result power_off() {
 }
 
 // Bit-banged half-duplex read (LGFX Bus_SPI spi_3wire SIO: data returns on
-// MOSI). The hardware SPI releases the pins for the duration.
-void read_register(uint8_t cmd, uint8_t* out, size_t count) {
-  if (trace_on) Serial.printf("# read cmd=%02x len=%u\n", cmd, unsigned(count));
+// MOSI). The hardware SPI releases the pins until read_end().
+void read_begin(uint8_t cmd) {
+  if (trace_on) Serial.printf("# read cmd=%02x\n", cmd);
   SPI.end();
   pinMode(kPinSclk, OUTPUT);
   digitalWrite(kPinSclk, LOW);
@@ -188,20 +188,30 @@ void read_register(uint8_t cmd, uint8_t* out, size_t count) {
   }
   digitalWrite(kPinDc, HIGH);
   pinMode(kPinMosi, INPUT_PULLUP);
-  for (size_t i = 0; i < count; ++i) {
-    uint8_t value = 0;
-    for (int bit = 0; bit < 8; ++bit) {
-      digitalWrite(kPinSclk, HIGH);
-      delayMicroseconds(1);
-      value = uint8_t(value << 1 | digitalRead(kPinMosi));
-      digitalWrite(kPinSclk, LOW);
-      delayMicroseconds(1);
-    }
-    out[i] = value;
+}
+
+uint8_t read_byte() {
+  uint8_t value = 0;
+  for (int bit = 0; bit < 8; ++bit) {
+    digitalWrite(kPinSclk, HIGH);
+    delayMicroseconds(1);
+    value = uint8_t(value << 1 | digitalRead(kPinMosi));
+    digitalWrite(kPinSclk, LOW);
+    delayMicroseconds(1);
   }
+  return value;
+}
+
+void read_end() {
   digitalWrite(kPinCs, HIGH);
   pinMode(kPinMosi, OUTPUT);
   spi_begin();
+}
+
+void read_register(uint8_t cmd, uint8_t* out, size_t count) {
+  read_begin(cmd);
+  for (size_t i = 0; i < count; ++i) out[i] = read_byte();
+  read_end();
 }
 
 }  // namespace rclab::epd

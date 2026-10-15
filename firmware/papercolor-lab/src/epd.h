@@ -49,6 +49,11 @@ Result refresh(const char* stage, uint32_t& busy_ms);
 Result refresh_cut(uint32_t cut_ms, uint32_t& busy_ms);
 // `02 00`, wait for BUSY idle. No settle delay.
 Result power_off();
+// Streaming 3-wire read: read_begin(cmd), read_byte()..., read_end(). CS stays
+// low throughout; SPI writes are unavailable until read_end().
+void read_begin(uint8_t cmd);
+uint8_t read_byte();
+void read_end();
 // 3-wire read: command, then `count` bytes clocked in on MOSI.
 void read_register(uint8_t cmd, uint8_t* out, size_t count);
 // The single controller write path: command byte, then `count` data bytes.

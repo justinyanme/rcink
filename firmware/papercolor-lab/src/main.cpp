@@ -65,6 +65,29 @@ void do_info() {
             .field("uptime_ms", long(millis())));
 }
 
+// OTP dump (PaperColor-Frame epd_probe.c @ 2f376fb: ROTP 92, one dummy byte,
+// then a continuous read in one CS-low frame). The OTP mirrors every 60000 B.
+void do_otp() {
+  constexpr size_t kOtpBytes = 60000, kLine = 64;
+  uint32_t fnv = 2166136261u;
+  uint8_t line[kLine];
+  char hex[2 * kLine + 1];
+  epd::read_begin(0x92);
+  epd::read_byte();  // dummy
+  for (size_t offset = 0; offset < kOtpBytes; offset += kLine) {
+    for (size_t i = 0; i < kLine; ++i) {
+      line[i] = epd::read_byte();
+      fnv = (fnv ^ line[i]) * 16777619u;
+    }
+    for (size_t i = 0; i < kLine; ++i) snprintf(hex + 2 * i, 3, "%02x", line[i]);
+    Serial.printf("# otp %u %s\n", unsigned(offset), hex);
+  }
+  epd::read_end();
+  char digest[9];
+  snprintf(digest, sizeof(digest), "%08lx", (unsigned long)fnv);
+  reply(Reply(true).field("bytes", long(kOtpBytes)).field("fnv1a", digest));
+}
+
 void do_reset() {
   const uint32_t began = millis();
   modes::forget_history();
@@ -122,6 +145,7 @@ void dispatch(const char* line) {
     case Verb::Reset: return do_reset();
     case Verb::Show: return do_show(cmd);
     case Verb::Cleanup: return do_cleanup();
+    case Verb::Otp: return do_otp();
     case Verb::Lut: {
       Reply ok(true);
       ok.field("lut", cmd.lut_op == LutOp::Load ? "load" : cmd.lut_op == LutOp::Set ? "set" : "get");
@@ -151,7 +175,7 @@ void dispatch(const char* line) {
     case Verb::Help:
       // Values carry no spaces so every reply stays key=value parseable.
       return reply(Reply(true)
-                       .field("verbs", "info,reset,show,cleanup,lut,raw,rawread,trace,help")
+                       .field("verbs", "info,reset,show,cleanup,lut,otp,raw,rawread,trace,help")
                        .field("images", "white,black,chart,text,checker:N,invert")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality,custom")
                        .field("interrupt_knobs", "cut,cdi")
