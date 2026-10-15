@@ -144,6 +144,11 @@ whether the old autodetection failure still occurs.
 
 ### Fast-refresh compatibility findings (2026-10-13)
 
+> **Resolved 2026-10-15 in the Lab firmware** (`../papercolor-lab/README.md` Learnings, Synthesis):
+> the dark output below was pixel packing, not booster/order/registers. Under PSR `0F A9` the controller
+> needs 2 bpp transition codes with every row sent twice; with that, TICKEY `monoclear` meets Fast mono
+> (warm 1.17 s, navy on yellow). Staged colour remains open (frame wraps, palette mismatch).
+
 **Status: paused at the user's request on 2026-10-13; root cause unresolved.**
 The user also tried the modes and confirmed quality was substantially below
 expectations. This rejects the current implementation for everyday use; it

@@ -306,6 +306,59 @@ Open hypotheses, each with its next single-variable Trial:
 Trials that need no voltage change. Decision for the operator: keep route C closed until the layout and
 palette Trials are exhausted.
 
+### Photo index by mode
+
+Representative photo per mode (all under `evidence/20261015-*/`):
+
+| Mode / knobs | Trial | Time | What the panel shows |
+| --- | --- | --- | --- |
+| `native` | native-baseline-001, -002 | BUSY ~14.4 s, total ~16 s | six colours, crisp text, true black/white (reference) |
+| `interrupt cut=340` | interrupt-002 | 0.78 s total | navy text on pale yellow-white, all sizes readable |
+| `interrupt cut=250 / 450` | interrupt-001 / -003 | 0.69 / 0.89 s | background yellow-green / pale blue: cut picks the hue |
+| `interrupt cdi=3F` | interrupt-005 | 0.78 s | polarity inverted (pale text on navy) |
+| `interrupt` ×10 invert | interrupt-006 | 0.78 s each | light→yellow, dark→navy, no ghost; Cleanup recovers |
+| `mono` sf32rc as-is (pack 4) | mono-001, -003, -005, -006 | 1–7 s | squeezed to top half, or 2× stretched + striped, grey/pale (= the 10-13 failure) |
+| `mono pack=2x` | mono-010 | cold 3.1 s, warm 0.97 s | full panel, blue on yellow; warm update ghosts |
+| `monoclear pack=2x` | mono-013, -014 | cold 3.3 s, warm 1.17 s (BUSY 317 ms) | crisp navy on yellow, no ghost after 10 updates; Cleanup recovers |
+| `fast` / `quality` `pack=4x` | color-003, -009 | BUSY 1.0 / 10.3 s | right scale but wrapped; red→dark yellow, white→grey |
+| `fast` text | color-010 | BUSY 1.0 s | black on light grey, readable, wrapped |
+
+### Learnings (2026-10-15)
+
+1. The 10-13 "dark output" was **pixel packing**: under PSR `0F xx` (LUT path) this controller takes 2 bpp
+   codes and two data rows per panel row; sf32rc's 4 bpp JD7601 layout gives stretched/striped/pale output.
+2. PSR byte 1 (`5F`→`0F`) switches frame format (4 bpp → 2 bpp); byte 2 (`69`→`A9`) raises contrast.
+3. In LUT mode every panel row consumes two data rows at any bit depth (2x/4x); `61` width does not change it.
+4. Controller frame RAM ~200000 B in this mode: a 4 bpp doubled frame (240000 B) wraps by ~100 rows.
+5. TICKEY setup `30 04, 41 00, E0 02, E6 19` changes timing only (clear 4.9→1.9 s, mono 275→106 ms).
+6. Booster `06 6F 1F 17 27`: no visible effect in any LUT or interrupt Trial.
+7. `mono` LUT ghosts on warm updates; `monoclear` does not.
+8. LUT light colour is yellow, dark is navy (same as sf32rc on JD7601); not black/white.
+9. CDI `50` bits 5:4 = data polarity; FreeInk's interrupted drive needs `0F`.
+10. Interrupted OTP: cut must anchor on observed BUSY assert; cut time selects background hue (250/340/450 ms).
+11. Native BUSY is fixed per temperature (run-to-run ≤2 ms; colder = longer: 14506 ms at `1e00`, 14387 at `1f80`).
+12. TSC `40` read-back likely °C (byte 0) + 0.5 °C (byte 1 bit 7); not thermometer-verified.
+13. The 10-13 interrupt failure was not the method: Lab interrupt (with `83` window, no 400 ms delays) is readable.
+
+### Why TICKEY works on DayoTag but colour does not (yet) here
+
+TICKEY's LUTs and palette were made for DayoTag V2: JD7601 controller, 1.54" 240×240 panel. There
+sf32rc measured 48/55 distinguishable fast-colour slots and multicolour postcards in 3.97 s
+(sf32rc `docs/dayotag-v2-modes.md`); its mono is dark-on-yellow there too — our `monoclear` now matches it.
+Differences on PaperColor (ED2208, 4" EL040EF1 400×600):
+
+| Difference | Effect here | Status |
+| --- | --- | --- |
+| Controller: ED2208 vs JD7601 (TICKEY init is `E9 01` only) | LUT-mode frame format differs (2 bpp, rows twice) | solved for mono, open for 4 bpp colour |
+| Frame size: 28800 B vs 120000–240000 B | 4 bpp doubled frame exceeds controller RAM → wrap | open: next Trial = send only the displayed row of each pair |
+| Panel film / size | LUT voltages+timings tuned to TICKEY's panel; selector→colour slots measured on DayoTag | open: red → dark yellow, white → grey; next Trial = palette grid of all selector pairs |
+| Init context: native ED2208 list + TICKEY setup regs | register meanings unknown on ED2208 | setup = speed only; rest open |
+| Temperature (`E6 19` = 25?) | LUT not compensated | not tested |
+
+So "TICKEY is good" holds for its own controller+panel; on this panel the same bytes need a different frame
+layout (found for mono) and probably a different selector palette (colour). LUT voltages themselves are
+route C (not opened).
+
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 
 Not Lab Trials: driven by `firmware/papercolor` `src/dev/waveform_trial.cpp`
