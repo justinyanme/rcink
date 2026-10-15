@@ -1,0 +1,15 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x42024546
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c9700,len:0xbd8
+load:0x403cc700,len:0x2a0c
+entry 0x403c98d0
+# ready build=9e7f968da28e-dirty mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=246
+OK mac=44:1b:f6:c1:31:90 rev=01010400 build=9e7f968da28e-dirty temp=2080 uptime_ms=328
+OK image=black mode=native busy_ms=14389 total_ms=16137
+OK image=white mode=native busy_ms=14389 total_ms=16137
+OK mac=44:1b:f6:c1:31:90 rev=01010400 build=9e7f968da28e-dirty temp=2100 uptime_ms=40671

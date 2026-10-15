@@ -16,6 +16,9 @@ producer-test:
 native-papercolor:
     {{ pio-run }} papercolor test -d firmware/papercolor -e native
 
+native-papercolor-lab:
+    {{ pio-run }} papercolor-lab test -d firmware/papercolor-lab -e native
+
 native-t-amoled:
     {{ pio }} test -d firmware/t-amoled -e native
 
@@ -33,7 +36,7 @@ tlsr-host-test:
     cmake --build firmware/tlsr/firmware/host_test/build --target host_test
     uv run --directory firmware/tlsr/firmware/host_test pytest
 
-test: producer-test native-papercolor native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
+test: producer-test native-papercolor native-papercolor-lab native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
 
 build-papercolor:
     {{ pio-run }} papercolor run -d firmware/papercolor
@@ -51,6 +54,12 @@ verify-papercolor port out: native-papercolor build-papercolor
     uv run scripts/papercolor_flash.py --port '{{ port }}' --out '{{ out }}/flash'
     uv run scripts/papercolor_observe.py --port '{{ port }}' --out '{{ out }}/observation' --commands pdrp --seconds 50
 
+build-papercolor-lab:
+    {{ pio-run }} papercolor-lab run -d firmware/papercolor-lab
+
+flash-papercolor-lab port out: build-papercolor-lab
+    uv run scripts/papercolor_flash.py --port '{{ port }}' --out '{{ out }}' --build-dir firmware/papercolor-lab/.pio/build/m5stack-papercolor-lab
+
 build-t-amoled:
     {{ pio-run }} t-amoled run -d firmware/t-amoled
 
@@ -63,7 +72,7 @@ build-rlcd:
 build-epd397:
     {{ pio-run }} epd397 run -d firmware/epd397
 
-build: build-papercolor build-t-amoled build-c3-x4 build-rlcd build-epd397
+build: build-papercolor build-papercolor-lab build-t-amoled build-c3-x4 build-rlcd build-epd397
 
 goldens:
     cd producer && uv run rcink-goldens regen

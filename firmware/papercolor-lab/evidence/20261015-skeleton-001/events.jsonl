@@ -1,0 +1,10 @@
+{"t": 626206.142940375, "cmd": "info"}
+{"t": 626206.249772458, "reply": "OK mac=44:1b:f6:c1:31:90 rev=01010400 build=9e7f968da28e-dirty temp=2080 uptime_ms=328"}
+{"t": 626206.249970208, "cmd": "show black native"}
+{"t": 626222.43577475, "reply": "OK image=black mode=native busy_ms=14389 total_ms=16137"}
+{"t": 626226.509350625, "photo": "01-black", "rc": 0, "out": ".cache/papercolor-lab/accept-001/01-black.jpg\n", "err": "warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/labsession-39495320c613dbb7` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead\n3072x3072 563692 B 3776 ms\nsharpness 74.8\n"}
+{"t": 626226.509408041, "cmd": "show white native"}
+{"t": 626242.746529458, "reply": "OK image=white mode=native busy_ms=14389 total_ms=16137"}
+{"t": 626246.486023, "photo": "02-white", "rc": 0, "out": ".cache/papercolor-lab/accept-001/02-white.jpg\n", "err": "warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/labsession-39495320c613dbb7` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead\n3072x3072 601183 B 3433 ms\nsharpness 67.2\n"}
+{"t": 626246.486077958, "cmd": "info"}
+{"t": 626246.589926791, "reply": "OK mac=44:1b:f6:c1:31:90 rev=01010400 build=9e7f968da28e-dirty temp=2100 uptime_ms=40671"}

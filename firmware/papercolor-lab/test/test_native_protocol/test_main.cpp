@@ -1,0 +1,120 @@
+// Console protocol against the fixed table in README "Console protocol" / issue #17.
+#include <unity.h>
+
+#include <cstring>
+
+#include "protocol.h"
+
+using namespace rclab;
+
+struct Row {
+  const char* line;
+  bool ok;
+  Verb verb;
+};
+
+// Oracle: the protocol table. Verb-only rows take no arguments; every other
+// malformed shape is a parse failure.
+static const Row kTable[] = {
+    {"info", true, Verb::Info},
+    {"info\r", true, Verb::Info},
+    {"reset", true, Verb::Reset},
+    {"help", true, Verb::Help},
+    {"show white native", true, Verb::Show},
+    {"show black native", true, Verb::Show},
+    {"  show   black native ", true, Verb::Show},
+    {"raw 12 00", true, Verb::Raw},
+    {"raw 04", true, Verb::Raw},
+    {"rawread 70 4", true, Verb::RawRead},
+    {"rawread 70 32", true, Verb::RawRead},
+    {"trace on", true, Verb::Trace},
+    {"trace off", true, Verb::Trace},
+    {"", false, Verb::Info},
+    {"   ", false, Verb::Info},
+    {"INFO", false, Verb::Info},
+    {"info now", false, Verb::Info},
+    {"show white", false, Verb::Show},
+    {"show chart native", false, Verb::Show},
+    {"show white mono", false, Verb::Show},
+    {"raw", false, Verb::Raw},
+    {"raw 0x12", false, Verb::Raw},
+    {"raw 1", false, Verb::Raw},
+    {"raw zz", false, Verb::Raw},
+    {"rawread 70", false, Verb::RawRead},
+    {"rawread 70 0", false, Verb::RawRead},
+    {"rawread 70 33", false, Verb::RawRead},
+    {"rawread 7 4", false, Verb::RawRead},
+    {"trace", false, Verb::Trace},
+    {"trace maybe", false, Verb::Trace},
+    {"cleanup", false, Verb::Info},
+};
+
+void test_protocol_table() {
+  for (const auto& row : kTable) {
+    Command cmd;
+    const char* why = nullptr;
+    const bool ok = parse_command(row.line, cmd, why);
+    TEST_ASSERT_EQUAL_MESSAGE(row.ok, ok, row.line);
+    if (ok) TEST_ASSERT_EQUAL_MESSAGE(int(row.verb), int(cmd.verb), row.line);
+    else TEST_ASSERT_NOT_NULL_MESSAGE(why, row.line);
+  }
+}
+
+void test_show_arguments() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("show black native", cmd, why));
+  TEST_ASSERT_EQUAL(int(Image::Black), int(cmd.image));
+  TEST_ASSERT_EQUAL(int(Mode::Native), int(cmd.mode));
+  TEST_ASSERT_TRUE(parse_command("show white native", cmd, why));
+  TEST_ASSERT_EQUAL(int(Image::White), int(cmd.image));
+}
+
+void test_raw_bytes() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("raw 06 6F 1f 17 27", cmd, why));
+  TEST_ASSERT_EQUAL(5, cmd.count);
+  const uint8_t expected[] = {0x06, 0x6F, 0x1F, 0x17, 0x27};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, cmd.bytes, 5);
+}
+
+void test_rawread_arguments() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("rawread 70 4", cmd, why));
+  TEST_ASSERT_EQUAL_HEX8(0x70, cmd.read_cmd);
+  TEST_ASSERT_EQUAL(4, cmd.read_count);
+}
+
+void test_trace_flag() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("trace on", cmd, why));
+  TEST_ASSERT_TRUE(cmd.trace_on);
+  TEST_ASSERT_TRUE(parse_command("trace off", cmd, why));
+  TEST_ASSERT_FALSE(cmd.trace_on);
+}
+
+void test_reply_format() {
+  // Reply lines per protocol: status word, then space-separated key=value.
+  TEST_ASSERT_EQUAL_STRING("OK busy_ms=1234 total_ms=16010",
+                           Reply(true).field("busy_ms", 1234L).field("total_ms", 16010L).c_str());
+  TEST_ASSERT_EQUAL_STRING("FAIL stage=drive-release busy=0 ms=25000",
+                           Reply(false).field("stage", "drive-release").field("busy", 0L).field("ms", 25000L).c_str());
+  const uint8_t rev[] = {0x00, 0xA5, 0xFF};
+  TEST_ASSERT_EQUAL_STRING("OK rev=00a5ff", Reply(true).hex("rev", rev, 3).c_str());
+  TEST_ASSERT_EQUAL_STRING("FAIL stage=parse reason=verb",
+                           Reply(false).field("stage", "parse").field("reason", "verb").c_str());
+}
+
+int main() {
+  UNITY_BEGIN();
+  RUN_TEST(test_protocol_table);
+  RUN_TEST(test_show_arguments);
+  RUN_TEST(test_raw_bytes);
+  RUN_TEST(test_rawread_arguments);
+  RUN_TEST(test_trace_flag);
+  RUN_TEST(test_reply_format);
+  return UNITY_END();
+}

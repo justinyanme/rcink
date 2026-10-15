@@ -16,15 +16,19 @@ from esptool.targets.esp32s3 import ESP32S3ROM
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "firmware/papercolor/.pio/build/m5stack-papercolor"
+LAB_BUILD = ROOT / "firmware/papercolor-lab/.pio/build/m5stack-papercolor-lab"
 MAC = "44:1b:f6:c1:31:90"
 
 
 def main(
     port: Annotated[str, typer.Option(help="Exact PaperColor port; never autodiscovered/retried.")],
     out: Annotated[Path, typer.Option(help="New directory for the flash manifest.")],
+    build_dir: Annotated[
+        Path, typer.Option(help=f"PlatformIO build dir holding firmware.bin + partitions.bin; Lab: {LAB_BUILD}")
+    ] = BUILD,
 ) -> None:
-    firmware = BUILD / "firmware.bin"
-    partitions = (BUILD / "partitions.bin").read_bytes()
+    firmware = build_dir / "firmware.bin"
+    partitions = (build_dir / "partitions.bin").read_bytes()
     app = firmware.read_bytes()
     if not app or app[0] != 0xE9 or len(app) > 0x500000:
         raise typer.BadParameter("Missing/invalid/oversized ESP application")
@@ -48,6 +52,7 @@ def main(
         manifest = {
             "mac": mac,
             "port": port,
+            "firmware": str(firmware),
             "firmware_sha256": hashlib.sha256(app).hexdigest(),
             "app_offset": 0x10000,
             "app_size": len(app),

@@ -1,0 +1,19 @@
+# Custom partition table for PaperColor — lower 8MB of 16MB flash (no OTA).
+#
+# The M5PaperColor on hand is an ESP32-S3R8 with 16MB flash. We keep one app
+# slot because a full re-flash over USB is simpler than maintaining OTA slots.
+# `otadata` remains because Arduino-ESP32 references it during boot, but it
+# never points anywhere meaningful with a single app0 slot. The upper 8MB stays
+# unused until a concrete storage need justifies repartitioning.
+#
+# `rcdata` keeps its own 128KB NVS partition — nvs.cpp opens "rcpaper"
+# namespace there via Preferences::begin(name, readOnly, "rcdata") so the
+# pages blob has room (default nvs is 20KB total).
+
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x500000,
+spiffs,   data, spiffs,  0x510000, 0x2C0000,
+rcdata,   data, nvs,     0x7D0000, 0x20000,
+coredump, data, coredump,0x7F0000, 0x10000,
