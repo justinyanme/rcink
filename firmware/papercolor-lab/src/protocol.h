@@ -15,7 +15,7 @@ constexpr size_t kMaxRawBytes = 64;   // raw: command byte + data
 constexpr size_t kMaxReadBytes = 32;  // rawread: bytes returned
 
 enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Lut, Otp, Raw, RawRead, Trace, Help };
-enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert };
+enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert, Bands };
 constexpr unsigned kMaxCheckerSize = 300;
 // Custom: the console-edited RAM LUT (`lut` verb) over the mono transition frame.
 enum class Mode : uint8_t { Native, Interrupt, Mono, MonoClear, Fast, Quality, Custom };
@@ -47,6 +47,7 @@ struct Knobs {
   bool tres_half = false;           // LUT `tres=400|200`: resolution 61 width sent after init (geometry, not power)
   bool window = false;              // LUT `win=0|1`: 83 full-panel window (FreeInk bytes) after init
   Pack pack{};                      // LUT `pack=<4|2><|x|e|o>` (2-bit mono only), default 4
+  bool frame_raw = false;           // custom `frame=transition|raw`: raw = 4 bpp nibble = ink value (LUT row - 1)
   bool booster = true;              // LUT `booster=native|none`: 06 6F 1F 17 27 after 04
 };
 

@@ -54,6 +54,7 @@ bool parse_uint(const char* tok, unsigned lo, unsigned hi, unsigned& out) {
 constexpr struct { const char* name; Image image; } kImages[] = {
     {"white", Image::White}, {"black", Image::Black},     {"chart", Image::Chart},
     {"text", Image::Text},   {"checker", Image::Checker}, {"invert", Image::Invert},
+    {"bands", Image::Bands},
 };
 
 bool parse_image(const char* tok, Image& out) {
@@ -126,6 +127,12 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     if (!once(128)) return false;
     if (!strcmp(value, "0")) return knobs.window = false, true;
     if (!strcmp(value, "1")) return knobs.window = true, true;
+    return false;
+  }
+  if (key_is("frame")) {
+    if (mode != Mode::Custom || !once(256)) return false;
+    if (!strcmp(value, "transition")) return knobs.frame_raw = false, true;
+    if (!strcmp(value, "raw")) return knobs.frame_raw = true, true;
     return false;
   }
   if (key_is("pack")) {

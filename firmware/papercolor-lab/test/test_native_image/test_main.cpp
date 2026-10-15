@@ -100,6 +100,14 @@ void test_text_inverse_band() {
   TEST_ASSERT_EQUAL(InkWhite, at(0, 0));
 }
 
+void test_bands_rows() {
+  render_bands(plane.data());
+  TEST_ASSERT_EQUAL(0, at(0, 0));
+  TEST_ASSERT_EQUAL(0, at(399, 74));
+  TEST_ASSERT_EQUAL(1, at(0, 75));
+  TEST_ASSERT_EQUAL(7, at(200, 599));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_chart_layout);
@@ -107,5 +115,6 @@ int main() {
   RUN_TEST(test_invert_row);
   RUN_TEST(test_vt323_glyph_bits);
   RUN_TEST(test_text_inverse_band);
+  RUN_TEST(test_bands_rows);
   return UNITY_END();
 }

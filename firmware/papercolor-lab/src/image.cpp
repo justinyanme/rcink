@@ -125,6 +125,11 @@ void render_text(uint8_t* inks) {
   draw_fitting(inks, FontSize::Pt16, top + kMargin / 2 + unsigned(ascent), kInverseSample, InkWhite);
 }
 
+void render_bands(uint8_t* inks) {
+  constexpr unsigned kBand = kPanelHeight / 8;
+  for (unsigned y = 0; y < kPanelHeight; ++y) memset(inks + size_t(y) * kPanelWidth, int(y / kBand), kPanelWidth);
+}
+
 void invert(uint8_t* inks, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     if (inks[i] == InkBlack) inks[i] = InkWhite;

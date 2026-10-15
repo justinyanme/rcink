@@ -110,6 +110,7 @@ bool render(const Command& cmd) {
     case Image::Chart: render_chart(g_inks); break;
     case Image::Text: render_text(g_inks); break;
     case Image::Checker: render_checker(g_inks, cmd.checker); break;
+    case Image::Bands: render_bands(g_inks); break;
     case Image::Invert:
       if (!g_have_image) return false;
       invert(g_inks, kPixels);
@@ -176,7 +177,7 @@ void dispatch(const char* line) {
       // Values carry no spaces so every reply stays key=value parseable.
       return reply(Reply(true)
                        .field("verbs", "info,reset,show,cleanup,lut,otp,raw,rawread,trace,help")
-                       .field("images", "white,black,chart,text,checker:N,invert")
+                       .field("images", "white,black,chart,text,checker:N,invert,bands")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality,custom")
                        .field("interrupt_knobs", "cut,cdi")
                        .field("lut_knobs", "setup,psr,booster,tres,win,pack"));

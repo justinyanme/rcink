@@ -22,6 +22,9 @@ void render_checker(uint8_t* inks, unsigned size);
 // One block per VT323 size (13/16/18/24 pt): A-Z a-z 0-9 black on white,
 // wrapped at the 8 px margins; then one 16 pt line white on a black band.
 void render_text(uint8_t* inks);
+// Eight full-width bands of 75 px; band i holds value i (0..7). Values 4 and 7
+// are not panel inks: for custom frame=raw, where the value selects LUT row i+1.
+void render_bands(uint8_t* inks);
 // Black <-> white; chromatic inks unchanged.
 void invert(uint8_t* inks, size_t count);
 

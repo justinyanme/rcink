@@ -96,6 +96,8 @@ static const Row kTable[] = {
     {"lut get 0 33", false, Verb::Lut},
     {"lut", false, Verb::Lut},
     {"otp", true, Verb::Otp},
+    {"show bands custom frame=raw win=1", true, Verb::Show},
+    {"show bands mono frame=raw", false, Verb::Show},
     {"otp 0", false, Verb::Otp},
     {"show chart fast win=2", false, Verb::Show},
     {"show chart fast tres=300", false, Verb::Show},
