@@ -111,15 +111,29 @@ epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
   if (cold) TRY(cold_clear(knobs, clear_ms));
   TRY(lut(knobs, mode == Mode::MonoClear ? tickey_waveform_mono_clear : tickey_waveform_mono));
   const uint8_t* old = cold ? nullptr : g_old;
-  if (knobs.pack2) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
-  else encode_mono(g_inks, old, kPixels, g_packed);
-  TRY(epd::upload_frame(g_packed, knobs.pack2 ? kPixels / 4 : kNativeFrameBytes));
+  size_t bytes = kNativeFrameBytes;
+  if (knobs.pack == 4) {
+    encode_mono(g_inks, old, kPixels, g_packed);
+  } else if (knobs.pack == 2) {
+    encode_mono_2bpp(g_inks, old, kPixels, g_packed);
+    bytes = kPixels / 4;
+  } else {  // 2x: 100-byte rows, each sent twice
+    constexpr size_t row = kPanelWidth / 4;
+    for (unsigned y = 0; y < kPanelHeight; ++y) {
+      const size_t px = size_t(y) * kPanelWidth;
+      uint8_t* out = g_packed + 2 * row * y;
+      encode_mono_2bpp(g_inks + px, old ? old + px / 8 : nullptr, kPanelWidth, out);
+      memcpy(out + row, out, row);
+    }
+  }
+  TRY(epd::upload_frame(g_packed, bytes));
   if (!cold) TRY(power(knobs));  // cold path kept power on (tickey_mono.c:130-133)
   TRY(epd::refresh("mono", busy_ms));
   TRY(power_down());
   mono_plane(g_inks, kPixels, g_old);
   g_old_valid = true;
-  ok.field("pack", knobs.pack2 ? 2L : 4L).field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
+  ok.field("pack", knobs.pack == 0x22 ? "2x" : knobs.pack == 2 ? "2" : "4");
+  ok.field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
   return {};
 }
 

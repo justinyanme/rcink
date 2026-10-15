@@ -130,7 +130,7 @@ void test_knob_defaults_and_values() {
   TEST_ASSERT_FALSE(cmd.knobs.setup_tickey);
   TEST_ASSERT_EQUAL_HEX8(0x5F, cmd.knobs.psr[0]);
   TEST_ASSERT_EQUAL_HEX8(0x69, cmd.knobs.psr[1]);
-  TEST_ASSERT_FALSE(cmd.knobs.pack2);
+  TEST_ASSERT_EQUAL(4, cmd.knobs.pack);
   TEST_ASSERT_TRUE(cmd.knobs.booster);
   TEST_ASSERT_TRUE(parse_command("show chart quality booster=none psr=0FA9 setup=tickey", cmd, why));
   TEST_ASSERT_EQUAL(int(Mode::Quality), int(cmd.mode));
@@ -141,7 +141,7 @@ void test_knob_defaults_and_values() {
   TEST_ASSERT_TRUE(parse_command("show text mono psr=5FA9 pack=2", cmd, why));
   TEST_ASSERT_EQUAL_HEX8(0x5F, cmd.knobs.psr[0]);
   TEST_ASSERT_EQUAL_HEX8(0xA9, cmd.knobs.psr[1]);
-  TEST_ASSERT_TRUE(cmd.knobs.pack2);
+  TEST_ASSERT_EQUAL(2, cmd.knobs.pack);
   TEST_ASSERT_FALSE(parse_command("show text mono cut=340", cmd, why));
   TEST_ASSERT_EQUAL_STRING("knob", why);
 }

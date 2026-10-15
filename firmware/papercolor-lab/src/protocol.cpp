@@ -117,8 +117,9 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
   if (key_is("pack")) {
     if (mode != Mode::Mono && mode != Mode::MonoClear) return false;  // colour selectors need 3 bits
     if (!once(32)) return false;
-    if (!strcmp(value, "4")) return knobs.pack2 = false, true;
-    if (!strcmp(value, "2")) return knobs.pack2 = true, true;
+    if (!strcmp(value, "4")) return knobs.pack = 4, true;
+    if (!strcmp(value, "2")) return knobs.pack = 2, true;
+    if (!strcmp(value, "2x")) return knobs.pack = 0x22, true;
     return false;
   }
   if (key_is("booster")) {
