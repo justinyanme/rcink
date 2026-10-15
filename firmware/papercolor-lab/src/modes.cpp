@@ -50,6 +50,9 @@ epd::Result native(Reply& ok) {
   TRY(epd::power_off());
   delay(200);
   ok.field("busy_ms", long(busy_ms));
+  // The panel now shows exactly g_inks: that is a known mono history.
+  mono_plane(g_inks, kPixels, g_old);
+  g_old_valid = true;
   return {};
 }
 

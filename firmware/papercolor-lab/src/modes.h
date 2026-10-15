@@ -19,8 +19,8 @@ constexpr size_t kPackedBytes = 2 * kNativeFrameBytes;
 // kMonoPlaneBytes mono history.
 void begin(const uint8_t* inks, uint8_t* packed, uint8_t* old_plane);
 
-// The mono old plane no longer describes the panel (boot, reset, cleanup, any
-// non-mono drive, any failed drive).
+// The mono old plane no longer describes the panel (boot, reset, interrupt,
+// colour, any failed drive). A successful native drive sets it to the image.
 void forget_history();
 
 // RAM LUT for Mode::Custom (boot: mono). Tables index protocol.h kLutTables.
