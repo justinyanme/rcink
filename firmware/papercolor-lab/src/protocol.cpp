@@ -105,8 +105,20 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
   }
   if (key_is("psr")) {
     if (!once(8)) return false;
-    if (!strcmp(value, "5F69")) return knobs.psr_tickey = false, true;
-    if (!strcmp(value, "0FA9")) return knobs.psr_tickey = true, true;
+    // Only recombinations of the pinned native (5F 69) and sf32rc (0F A9) bytes.
+    if (strlen(value) != 4) return false;
+    const bool b0 = !strncmp(value, "5F", 2) || !strncmp(value, "0F", 2);
+    const bool b1 = !strcmp(value + 2, "69") || !strcmp(value + 2, "A9");
+    if (!b0 || !b1) return false;
+    knobs.psr[0] = value[0] == '5' ? 0x5F : 0x0F;
+    knobs.psr[1] = value[2] == '6' ? 0x69 : 0xA9;
+    return true;
+  }
+  if (key_is("pack")) {
+    if (mode != Mode::Mono && mode != Mode::MonoClear) return false;  // colour selectors need 3 bits
+    if (!once(32)) return false;
+    if (!strcmp(value, "4")) return knobs.pack2 = false, true;
+    if (!strcmp(value, "2")) return knobs.pack2 = true, true;
     return false;
   }
   if (key_is("booster")) {

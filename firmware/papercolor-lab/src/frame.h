@@ -32,6 +32,9 @@ bool mono_light(uint8_t ink);
 // high (tickey_mono.c:27-33, 64-69). `old_plane` nullptr = all-zero history.
 // `count` pixels from index 0; count is even; writes count/2 bytes.
 void encode_mono(const uint8_t* inks, const uint8_t* old_plane, size_t count, uint8_t* out);
+// Same codes at 2 bits per pixel, four pixels per byte, first pixel in bits
+// 7:6; writes count/4 bytes (count multiple of 4). Lab variable `pack=2`.
+void encode_mono_2bpp(const uint8_t* inks, const uint8_t* old_plane, size_t count, uint8_t* out);
 // The light plane of `inks` (the next drive's old plane); writes count/8 bytes.
 void mono_plane(const uint8_t* inks, size_t count, uint8_t* plane);
 

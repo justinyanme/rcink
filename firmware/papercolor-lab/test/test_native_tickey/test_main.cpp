@@ -37,6 +37,17 @@ void test_mono_inversion_row() {
   TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, 3);
 }
 
+void test_mono_2bpp_packing() {
+  // Lab variable: same transition codes, 4 per byte, first pixel in bits 7:6.
+  // Inversion fixture codes 2,1,2,1,1,1 (+ cold 0,0) -> 10 01 10 01 | 01 01 00 00.
+  const uint8_t inks[] = {InkBlack, InkWhite, InkRed, InkYellow, InkWhite, InkYellow, InkBlack, InkBlack};
+  const uint8_t old_plane[] = {0xA0};
+  uint8_t out[2];
+  encode_mono_2bpp(inks, old_plane, 8, out);
+  const uint8_t expected[] = {0x99, 0x50};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, 2);
+}
+
 void test_mono_light_rule() {
   // tickey_mono.c:21-25: only white and yellow are light.
   TEST_ASSERT_TRUE(mono_light(InkWhite));
@@ -99,6 +110,7 @@ int main() {
   RUN_TEST(test_mono_cold_row);
   RUN_TEST(test_mono_warm_unchanged_row);
   RUN_TEST(test_mono_inversion_row);
+  RUN_TEST(test_mono_2bpp_packing);
   RUN_TEST(test_mono_light_rule);
   RUN_TEST(test_staged_selector_split);
   RUN_TEST(test_staged_black_pins_code3);

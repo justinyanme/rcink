@@ -16,8 +16,6 @@ uint8_t* g_packed = nullptr;
 uint8_t* g_old = nullptr;
 bool g_old_valid = false;
 
-constexpr uint8_t kPsrNative[2] = {0x5F, 0x69};  // Panel_ED2208 list0
-constexpr uint8_t kPsrTickey[2] = {0x0F, 0xA9};  // sf32rc tickey_mono.c:35-42
 // sf32rc display.c:50-58 configure_trial(): TICKEY 2.1.0 volatile setup.
 constexpr uint8_t kTickeySetup[][2] = {{0x30, 0x04}, {0x41, 0x00}, {0xE0, 0x02}, {0xE6, 0x19}};
 // FreeInk Ed2208M5Driver.cpp:196-209: partial window covering the whole panel.
@@ -68,7 +66,7 @@ epd::Result interrupt(const Knobs& knobs, Reply& ok) {
 // --- TICKEY LUT modes: sf32rc tickey_mono.c / tickey_color.c ---
 
 epd::Result lut(const Knobs& knobs, const uint8_t* table) {
-  return epd::upload_lut(knobs.psr_tickey ? kPsrTickey : kPsrNative, table, TICKEY_WAVEFORM_BYTES);
+  return epd::upload_lut(knobs.psr, table, TICKEY_WAVEFORM_BYTES);
 }
 
 // sf32rc color_power(1): 04 + 10 ms; booster=native adds _turn_on_display's
@@ -112,14 +110,16 @@ epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
   uint32_t clear_ms = 0, busy_ms = 0;
   if (cold) TRY(cold_clear(knobs, clear_ms));
   TRY(lut(knobs, mode == Mode::MonoClear ? tickey_waveform_mono_clear : tickey_waveform_mono));
-  encode_mono(g_inks, cold ? nullptr : g_old, kPixels, g_packed);
-  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  const uint8_t* old = cold ? nullptr : g_old;
+  if (knobs.pack2) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
+  else encode_mono(g_inks, old, kPixels, g_packed);
+  TRY(epd::upload_frame(g_packed, knobs.pack2 ? kPixels / 4 : kNativeFrameBytes));
   if (!cold) TRY(power(knobs));  // cold path kept power on (tickey_mono.c:130-133)
   TRY(epd::refresh("mono", busy_ms));
   TRY(power_down());
   mono_plane(g_inks, kPixels, g_old);
   g_old_valid = true;
-  ok.field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
+  ok.field("pack", knobs.pack2 ? 2L : 4L).field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
   return {};
 }
 
@@ -154,7 +154,7 @@ epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
 
 void knob_fields(const Knobs& knobs, Reply& ok) {
   ok.field("setup", knobs.setup_tickey ? "tickey" : "native")
-      .field("psr", knobs.psr_tickey ? "0FA9" : "5F69")
+      .hex("psr", knobs.psr, 2)
       .field("booster", knobs.booster ? "native" : "none");
 }
 

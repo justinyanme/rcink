@@ -30,7 +30,8 @@ struct Knobs {
   unsigned cut_ms = kDefaultCutMs;  // interrupt `cut=`: RST cut after BUSY assert
   uint8_t cdi = 0x0F;               // interrupt `cdi=0F|3F`: 50 <cdi> (FreeInk 0F, native 3F)
   bool setup_tickey = false;        // LUT `setup=native|tickey`: 30 04, 41 00, E0 02, E6 19
-  bool psr_tickey = false;          // LUT `psr=5F69|0FA9`: PSR sent before each LUT
+  uint8_t psr[2] = {0x5F, 0x69};    // LUT `psr=<5F|0F><69|A9>`: PSR sent before each LUT
+  bool pack2 = false;               // mono `pack=4|2`: transition codes per pixel, 4 or 2 bits
   bool booster = true;              // LUT `booster=native|none`: 06 6F 1F 17 27 after 04
 };
 

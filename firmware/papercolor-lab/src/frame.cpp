@@ -24,6 +24,18 @@ void encode_mono(const uint8_t* inks, const uint8_t* old_plane, size_t count, ui
   for (size_t i = 0; i < count; i += 2) out[i / 2] = uint8_t(nibble(i) << 4 | nibble(i + 1));
 }
 
+void encode_mono_2bpp(const uint8_t* inks, const uint8_t* old_plane, size_t count, uint8_t* out) {
+  for (size_t i = 0; i < count; i += 4) {
+    uint8_t byte = 0;
+    for (size_t k = 0; k < 4; ++k) {
+      const size_t p = i + k;
+      const unsigned old = old_plane ? (old_plane[p / 8] >> (7 - p % 8)) & 1 : 0;
+      byte = uint8_t(byte << 2 | old << 1 | (mono_light(inks[p]) ? 1 : 0));
+    }
+    out[i / 4] = byte;
+  }
+}
+
 void mono_plane(const uint8_t* inks, size_t count, uint8_t* plane) {
   for (size_t i = 0; i < count; i += 8) {
     uint8_t bits = 0;
