@@ -23,7 +23,8 @@ constexpr size_t kRevisionBytes = 4;
 constexpr uint8_t kCmdTemperature = 0x40;  // TSC: reads 2 bytes
 constexpr size_t kTemperatureBytes = 2;
 
-uint8_t* g_inks = nullptr;    // kPixels ink codes (PSRAM)
+uint8_t* g_inks = nullptr;    // kPixels ink codes (PSRAM): the current image
+bool g_have_image = false;    // g_inks holds a rendered image (any show since boot)
 uint8_t* g_packed = nullptr;  // kNativeFrameBytes (PSRAM)
 char g_line[kMaxLine + 1];
 size_t g_line_len = 0;
@@ -68,20 +69,28 @@ void do_reset() {
   reply(Reply(true).field("total_ms", long(millis() - began)));
 }
 
-void do_show(const Command& cmd) {
-  const uint32_t began = millis();
-  memset(g_inks, cmd.image == Image::White ? InkWhite : InkBlack, kPixels);
+// Native refresh of g_inks: upload, power on, OTP drive, power off.
+void native_refresh(Reply ok, uint32_t began) {
   encode_native_frame(g_inks, g_packed);
   if (auto r = epd::upload_frame(g_packed, kNativeFrameBytes); !r.ok()) return reply_fail(r);
   if (auto r = epd::power_on(); !r.ok()) return reply_fail(r);
   uint32_t busy_ms = 0;
   if (auto r = epd::drive(epd::Mode::Native, busy_ms); !r.ok()) return reply_fail(r);
   if (auto r = epd::power_off(); !r.ok()) return reply_fail(r);
-  reply(Reply(true)
-            .field("image", image_name(cmd.image))
-            .field("mode", mode_name(cmd.mode))
-            .field("busy_ms", long(busy_ms))
-            .field("total_ms", long(millis() - began)));
+  reply(ok.field("busy_ms", long(busy_ms)).field("total_ms", long(millis() - began)));
+}
+
+void do_show(const Command& cmd) {
+  const uint32_t began = millis();
+  memset(g_inks, cmd.image == Image::White ? InkWhite : InkBlack, kPixels);
+  g_have_image = true;
+  native_refresh(Reply(true).field("image", image_name(cmd.image)).field("mode", mode_name(cmd.mode)), began);
+}
+
+// Cleanup: Native refresh of the current image; refused before any show.
+void do_cleanup() {
+  if (!g_have_image) return reply(Reply(false).field("stage", "state").field("reason", "no-image"));
+  native_refresh(Reply(true).field("mode", "native"), millis());
 }
 
 void dispatch(const char* line) {
@@ -94,6 +103,7 @@ void dispatch(const char* line) {
     case Verb::Info: return do_info();
     case Verb::Reset: return do_reset();
     case Verb::Show: return do_show(cmd);
+    case Verb::Cleanup: return do_cleanup();
     case Verb::Raw:
       epd::write(cmd.bytes[0], cmd.bytes + 1, cmd.count - 1);
       return reply(Reply(true).hex("cmd", cmd.bytes, 1).field("len", long(cmd.count - 1)));
@@ -107,7 +117,7 @@ void dispatch(const char* line) {
       return reply(Reply(true).field("trace", cmd.trace_on ? "on" : "off"));
     case Verb::Help:
       return reply(Reply(true)
-                       .field("verbs", "info,reset,show,raw,rawread,trace,help")
+                       .field("verbs", "info,reset,show,cleanup,raw,rawread,trace,help")
                        .field("show", "<white|black> native")
                        .field("raw", "<cmd> [data...] hex2")
                        .field("rawread", "<cmd> <1..32>")

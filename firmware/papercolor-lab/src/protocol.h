@@ -14,7 +14,7 @@ constexpr size_t kMaxLine = 255;
 constexpr size_t kMaxRawBytes = 64;   // raw: command byte + data
 constexpr size_t kMaxReadBytes = 32;  // rawread: bytes returned
 
-enum class Verb : uint8_t { Info, Reset, Show, Raw, RawRead, Trace, Help };
+enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Raw, RawRead, Trace, Help };
 enum class Image : uint8_t { White, Black };
 enum class Mode : uint8_t { Native };
 

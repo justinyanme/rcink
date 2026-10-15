@@ -19,6 +19,9 @@ native-papercolor:
 native-papercolor-lab:
     {{ pio-run }} papercolor-lab test -d firmware/papercolor-lab -e native
 
+lab-host-test:
+    uv run firmware/papercolor-lab/test_lab.py
+
 native-t-amoled:
     {{ pio }} test -d firmware/t-amoled -e native
 
@@ -36,7 +39,7 @@ tlsr-host-test:
     cmake --build firmware/tlsr/firmware/host_test/build --target host_test
     uv run --directory firmware/tlsr/firmware/host_test pytest
 
-test: producer-test native-papercolor native-papercolor-lab native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
+test: producer-test native-papercolor native-papercolor-lab lab-host-test native-t-amoled native-c3-x4 native-rlcd native-epd397 tlsr-host-test
 
 build-papercolor:
     {{ pio-run }} papercolor run -d firmware/papercolor
@@ -58,7 +61,11 @@ build-papercolor-lab:
     {{ pio-run }} papercolor-lab run -d firmware/papercolor-lab
 
 flash-papercolor-lab port out: build-papercolor-lab
-    uv run scripts/papercolor_flash.py --port '{{ port }}' --out '{{ out }}' --build-dir firmware/papercolor-lab/.pio/build/m5stack-papercolor-lab
+    uv run firmware/papercolor-lab/lab.py flash '{{ out }}' --port '{{ port }}'
+
+# One Lab Trial: just lab-trial PORT android:SERIAL .cache/papercolor-lab/NAME "show text native,photo"
+lab-trial port camera out steps:
+    uv run firmware/papercolor-lab/lab.py trial '{{ out }}' --port '{{ port }}' --camera '{{ camera }}' --steps '{{ steps }}'
 
 build-t-amoled:
     {{ pio-run }} t-amoled run -d firmware/t-amoled

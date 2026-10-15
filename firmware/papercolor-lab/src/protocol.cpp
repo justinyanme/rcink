@@ -65,9 +65,12 @@ bool parse_command(const char* line, Command& out, const char*& why) {
   out = Command{};
   const char* verb = tok[0];
 
-  if (!strcmp(verb, "info") || !strcmp(verb, "reset") || !strcmp(verb, "help")) {
+  static constexpr struct { const char* name; Verb verb; } kBare[] = {
+      {"info", Verb::Info}, {"reset", Verb::Reset}, {"cleanup", Verb::Cleanup}, {"help", Verb::Help}};
+  for (const auto& bare : kBare) {
+    if (strcmp(verb, bare.name)) continue;
     if (n != 1) { why = "args"; return false; }
-    out.verb = verb[0] == 'i' ? Verb::Info : verb[0] == 'r' ? Verb::Reset : Verb::Help;
+    out.verb = bare.verb;
     return true;
   }
   if (!strcmp(verb, "show")) {

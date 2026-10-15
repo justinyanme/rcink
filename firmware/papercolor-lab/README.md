@@ -6,9 +6,11 @@ Boots to an idle console in ~250 ms and paints nothing until told to. Spec and
 vocabulary: issue #15, `CONTEXT.md` (Native refresh, Trial, Lab firmware).
 
 ```bash
-just native-papercolor-lab                       # host tests (protocol, encoder, init table)
+just native-papercolor-lab                       # firmware host tests (protocol, encoder, init table)
+just lab-host-test                               # lab.py against recorded transcripts
 just build-papercolor-lab
 just flash-papercolor-lab /dev/cu.usbmodem83301 .cache/papercolor-lab/flash-NNN
+just lab-trial /dev/cu.usbmodem83301 android:3B161600Z2U00000 .cache/papercolor-lab/NAME "show black native,photo"
 ```
 
 Flashing uses `scripts/papercolor_flash.py --build-dir …`: same MAC check,
@@ -50,6 +52,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | --- | --- |
 | `info` | `OK mac= rev=<0x70, 4 bytes> build= temp=<0x40, 2 bytes raw> uptime_ms=` |
 | `reset` | hard reset + native init, no paint → `OK total_ms=` |
+| `cleanup` | Native refresh of the current image → `OK mode=native busy_ms= total_ms=`; before any `show`: `FAIL stage=state reason=no-image` |
 | `show <white\|black> native` | full field, native OTP → `OK image= mode= busy_ms= total_ms=` |
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
@@ -65,6 +68,34 @@ decoding is not established (cold `20 80`, after two drives `21 00`).
 The console flushes USB CDC only while the host handshake reports connected
 (Arduino 2.0.17 HWCDC discards the queue otherwise). Images other than
 `white`/`black`, and modes other than `native`, arrive with #19–#22.
+
+## Host script `lab.py`
+
+PEP 723 typer CLI (`uv run firmware/papercolor-lab/lab.py --help`):
+
+- `trial OUT --port P --camera android:SERIAL --steps "show black native,photo,…" [--no-restore] [--step-timeout 60] [--flash]`
+  — opens `P` once (DTR/RTS inactive, exclusive), waits for `# ready` (opening
+  resets the unit; 5 s), sends each step and waits for its one `OK`/`FAIL`
+  line. `photo` runs `uv run --project ../rceye eye --eye CAMERA photo --out
+  OUT/NN-<previous step>.jpg`. If anything was shown, ends with `cleanup` +
+  photo unless `--no-restore`. `--flash` first runs `flash OUT-flash`.
+- `flash OUT --port P` — wraps `scripts/papercolor_flash.py` with the Lab build dir.
+- `curate SRC DEST` — Trial dir → evidence dir: `serial.log`, `events.jsonl`
+  verbatim, JPEGs ≤1600 px long edge and ≤200 KB.
+
+Fail loud, no retry: absent port, existing `OUT`, missing banner, `[boot]
+fatal:`/Guru/abort, short write, no result within the step timeout, a `FAIL`
+result, or the port vanishing each stop the session. After a failure on a live
+port with something shown, exactly one best-effort `cleanup` + photo
+(`NN-cleanup-after-failure.jpg`); the original error is still raised.
+
+Trial directory (`OUT`, must not exist):
+
+| File | Content |
+| --- | --- |
+| `serial.log` | raw bytes from open to close |
+| `events.jsonl` | `{t_ns, clock: host-monotonic, event, …}`; events `open`, `boot`, `write` (line), `result` (line, ok, fields), `photo` (file, camera, stdout), `error` (message) |
+| `NN-<step-slug>.jpg` | camera originals, numbered in capture order |
 
 ## Module layout
 

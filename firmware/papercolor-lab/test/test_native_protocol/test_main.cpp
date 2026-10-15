@@ -46,7 +46,8 @@ static const Row kTable[] = {
     {"rawread 7 4", false, Verb::RawRead},
     {"trace", false, Verb::Trace},
     {"trace maybe", false, Verb::Trace},
-    {"cleanup", false, Verb::Info},
+    {"cleanup", true, Verb::Cleanup},
+    {"cleanup now", false, Verb::Cleanup},
 };
 
 void test_protocol_table() {
