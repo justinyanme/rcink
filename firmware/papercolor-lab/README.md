@@ -87,12 +87,12 @@ The console flushes USB CDC only while the host handshake reports connected
 | `native` | `10` frame, `04`, 200 ms, `06 6F1F1727`, 200 ms, `12 00`, 200 ms, `02 00`, 200 ms (Panel_ED2208 `_turn_on_display`) | — | `busy_ms` |
 | `interrupt` | `50 cdi`, `10` frame (native codes), `04`, 20 ms, `06 6F1F1727`, `83 00 00 01 8F 00 00 02 57 01`, `50 cdi`, `12 00`, BUSY assert, `cut` ms, RST low 2 ms / high 10 ms, native init (no `02`) | `cut=340` (50–5000), `cdi=0F\|3F` (0F) | `cut_ms cdi busy_ms` (assert→cut) |
 | `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=<5F\|0F><69\|A9>`, `booster=native\|none`, `pack=4\|2\|2x` (native values, pack 4) | `setup psr booster pack cold clear_ms busy_ms` |
-| `fast`, `quality` | reset+init, [setup], cold clear (always), PSR+`20` phase1, `10` high selectors, `12`; quality: PSR+`20` phase2, `12` (plane reused); PSR+`20` fast_phase2\|quality_phase3, `10` low selectors, `12`; `02`; fast: `10` high plane post-seed; reset+init | as mono | `setup psr booster clear_ms p1_ms [p2_ms] final_ms busy_ms` (= phases, without clear) |
+| `fast`, `quality` | reset+init, [setup], [tres], cold clear (always), PSR+`20` phase1, `10` high selectors, `12`; quality: PSR+`20` phase2, `12` (plane reused); PSR+`20` fast_phase2\|quality_phase3, `10` low selectors, `12`; `02`; fast: `10` high plane post-seed; reset+init | as mono, `pack=4\|4x` only | `setup psr booster tres pack clear_ms p1_ms [p2_ms] final_ms busy_ms` (= phases, without clear) |
 
 `pack`: transition code (old<<1\|new) per pixel at 4 bits (sf32rc), 2 bits (4 px/byte, 60000 B), or `2x`
 = 2 bits with each 100-byte row sent twice (120000 B) — the format this panel needs under PSR `0F xx`
 (series 3a). `power` = `04` + BUSY; `booster=native` adds 200 ms, `06 6F 1F 17 27`, 200 ms; `none` 10 ms (sf32rc).
-`setup=tickey` = `30 04`, `41 00`, `E0 02`, `E6 19` after init. `psr` = bytes sent with `00` before each LUT.
+`setup=tickey` = `30 04`, `41 00`, `E0 02`, `E6 19` after init. `tres=200` = `61 00 C8 02 58` after init (no effect, series 3b). `psr` = bytes sent with `00` before each LUT.
 LUT tables: unmodified sf32rc `ce0a01a` `tickey_waveforms_{mono,color}.inc` (`waveforms.h`). Mono old plane
 (1 bpp, light = white\|yellow) lives in PSRAM; invalidated by boot, `reset`, `cleanup`, any native/interrupt/
 colour drive and any failure. Experimental modes leave the controller reset + natively initialised.
@@ -256,6 +256,55 @@ recovers). Light is yellow and dark navy, not white/black (as sf32rc's JD7601 "d
 | reset + native list | `07 A5` deep sleep | Lab restores native state |
 
 Warm: `30…E6` setup, `00 0F A9`, `20`, `10`, `04`, `12 00`, `02 00` — same order as sf32rc.
+
+### Series 3b — TICKEY staged colour audit (#22)
+
+Each Trial: `show white native`, one `show chart|text fast|quality …`, photo, restore cleanup + photo.
+
+| Trial | Variable | BUSY / total (ms) | Result |
+| --- | --- | --- | --- |
+| [color-001](evidence/20261015-color-001/observations.md) | baseline (native knobs) | 2532 / 9634 | squeezed to top half, dark pink-brown; 0/6 colours |
+| [color-002](evidence/20261015-color-002/observations.md) | setup+`psr=0FA9`+no booster+`pack=4x` | 999 / 5673 | 2 bpp read: stretched, striped, dark |
+| [color-003](evidence/20261015-color-003/observations.md) | setup+`psr=5FA9`+no booster+`pack=4x` | 999 / 5672 | right scale, **wrapped at ~200000 B**; yellow, dark-yellow (red), light blue, olive |
+| [color-004](evidence/20261015-color-004/observations.md) | `pack=4` (vs 003) | 999 / 4652 | squeezed to top half; same colours |
+| [color-005](evidence/20261015-color-005/observations.md) | `tres=200` (vs 004) | 1001 / 4652 | identical to 004: 0x61 width ruled out |
+| [color-006](evidence/20261015-color-006/observations.md) | `setup=tickey` (vs 001) | 977 / 5006 | as 001, faster |
+| [color-007](evidence/20261015-color-007/observations.md) | `psr=0FA9` (vs 001) | 2597 / 9730 | stretched + striped |
+| [color-008](evidence/20261015-color-008/observations.md) | `booster=none` (vs 001) | 2534 / 9243 | as 001 |
+| [color-009](evidence/20261015-color-009/observations.md) | `quality` with 003 knobs | 10271 / 14404 | wrapped; more saturated, still no red |
+| [color-010](evidence/20261015-color-010/observations.md) | `text fast` with 003 knobs | 1001 / 5598 | wrapped; black on light grey, 16–24 pt readable |
+| [mono-016](evidence/20261015-mono-016/observations.md), [mono-017](evidence/20261015-mono-017/observations.md) | mono regression; `tres=200` | 294 / 3318; 295 / 3065 | regression pass; `tres` ruled out for mono too |
+
+Every Cleanup photo restores the native chart/text. Draft color verdict: **not met** — layout (wrap) and
+palette (no red; white→light grey) both fail; quality BUSY 10.3 s also exceeds 6 s.
+
+## Synthesis (routes A/B, 2026-10-15)
+
+| Series | Best configuration | vs thresholds |
+| --- | --- | --- |
+| 1 Native | `native` | reference: 14.4 s BUSY, six colours, all text |
+| 2 Interrupted OTP (route A, FreeInk) | `interrupt cut=340 cdi=0F` | Fast mono numbers met (0.78 s, 13 pt, Cleanup recovers); light = pale yellow; unbalanced waveform (community reports darkening) → reference only |
+| 3a TICKEY mono (route B) | `monoclear setup=tickey psr=0FA9 pack=2x booster=none` | **Fast mono met**: warm BUSY 317 ms, 1.17 s incl. reset/init, 13 pt readable, 10 updates clean, Cleanup recovers; light = yellow, dark = navy |
+| 3b TICKEY colour (route B) | `fast setup=tickey psr=5FA9 pack=4x booster=none` | **Draft color not met**: frame wraps, no red, grey white |
+
+Promising: TICKEY `monoclear` with the corrected packing is a balanced-LUT Fast mono candidate for
+integration (later spec), pending a long-run darkening check. Ruled out as causes of the 10-13 failure:
+booster, command order, plane preparation, setup registers (they set speed), resolution width.
+
+Open hypotheses, each with its next single-variable Trial:
+
+| Hypothesis | Next Trial |
+| --- | --- |
+| LUT-mode layout: which of the two data rows per panel row is displayed (gate pairing) | mono `pack=2` variant sending row y then a white row (vs `2x`); then the reverse |
+| 4 bpp colour frame exceeds controller RAM (~200000 B observed) | `fast` sending only the displayed row of each pair as 4 bpp (120000 B) once the pairing is known |
+| Colour selector → ink mapping differs on EL040EF1 (red patch renders dark yellow) | palette-grid image: one patch per legal selector pair, `fast psr=5FA9`, identify which codes give red/white |
+| PSR byte 2 (`69` vs `A9`) role in colour | `fast psr=5F69 pack=4x` vs 003 |
+| Long-term DC balance of `monoclear` | 200 warm updates loop with photos every 50, then Cleanup |
+
+**Route C (voltage/register tuning): not justified yet.** Every failure so far traced to data format
+(packing, line pairing, RAM size) rather than drive strength; the open items above are all format/palette
+Trials that need no voltage change. Decision for the operator: keep route C closed until the layout and
+palette Trials are exhausted.
 
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 

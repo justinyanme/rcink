@@ -1,0 +1,10 @@
+{"t_ns": 630943096370083, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["show white native", "show text fast setup=tickey psr=5FA9 booster=none pack=4x", "photo"], "restore": true}
+{"t_ns": 630943409553750, "clock": "host-monotonic", "event": "boot", "line": "# ready build=f7dbb71169e3 mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=250"}
+{"t_ns": 630943409760333, "clock": "host-monotonic", "event": "write", "line": "show white native"}
+{"t_ns": 630959370959750, "clock": "host-monotonic", "event": "result", "line": "OK image=white mode=native busy_ms=14391 total_ms=15939", "ok": true, "fields": {"image": "white", "mode": "native", "busy_ms": "14391", "total_ms": "15939"}}
+{"t_ns": 630959371177500, "clock": "host-monotonic", "event": "write", "line": "show text fast setup=tickey psr=5FA9 booster=none pack=4x"}
+{"t_ns": 630964983160958, "clock": "host-monotonic", "event": "result", "line": "OK image=text mode=fast setup=tickey psr=5fa9 booster=none tres=400 pack=4x clear_ms=1927 p1_ms=894 final_ms=107 busy_ms=1001 total_ms=5598", "ok": true, "fields": {"image": "text", "mode": "fast", "setup": "tickey", "psr": "5fa9", "booster": "none", "tres": "400", "pack": "4x", "clear_ms": "1927", "p1_ms": "894", "final_ms": "107", "busy_ms": "1001", "total_ms": "5598"}}
+{"t_ns": 630968677727500, "clock": "host-monotonic", "event": "photo", "file": "01-show-text-fast-setuptickey-psr5FA9-boosternone-pack4x.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/color-010/01-show-text-fast-setuptickey-psr5FA9-boosternone-pack4x.jpg"}
+{"t_ns": 630968677868708, "clock": "host-monotonic", "event": "write", "line": "cleanup"}
+{"t_ns": 630984668990875, "clock": "host-monotonic", "event": "result", "line": "OK mode=native busy_ms=14389 total_ms=15930", "ok": true, "fields": {"mode": "native", "busy_ms": "14389", "total_ms": "15930"}}
+{"t_ns": 630988897636375, "clock": "host-monotonic", "event": "photo", "file": "02-cleanup.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/color-010/02-cleanup.jpg"}
