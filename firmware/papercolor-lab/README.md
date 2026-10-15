@@ -115,6 +115,7 @@ JPEGs ≤1600 px / ≈≤200 KB and `observations.md`. Originals stay in gitigno
 | Trial | Verdict |
 | --- | --- |
 | [20261015-skeleton-001](evidence/20261015-skeleton-001/observations.md) | **Pass.** Raw driver: `show black native` then `show white native`, each 14389 ms BUSY / 16137 ms total, whole panel uniform in both photos; 0x70 = `01010400`. |
+| [20261015-hostscript-001](evidence/20261015-hostscript-001/observations.md) | **Pass.** `lab.py trial` end to end: one open, banner, 5 results, 2 photos, restore cleanup; black field, `busy_ms` 14389 again. |
 
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 
