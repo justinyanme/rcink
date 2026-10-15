@@ -121,6 +121,12 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     if (!strcmp(value, "200")) return knobs.tres_half = true, true;
     return false;
   }
+  if (key_is("win")) {
+    if (!once(128)) return false;
+    if (!strcmp(value, "0")) return knobs.window = false, true;
+    if (!strcmp(value, "1")) return knobs.window = true, true;
+    return false;
+  }
   if (key_is("pack")) {
     if (!once(32)) return false;
     const bool mono = mode == Mode::Mono || mode == Mode::MonoClear;  // colour selectors need 3 bits

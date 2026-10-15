@@ -83,6 +83,8 @@ static const Row kTable[] = {
     {"show text mono pack=4x", true, Verb::Show},
     {"show text mono pack=8", false, Verb::Show},
     {"show chart fast tres=200", true, Verb::Show},
+    {"show chart fast win=1", true, Verb::Show},
+    {"show chart fast win=2", false, Verb::Show},
     {"show chart fast tres=300", false, Verb::Show},
     {"show text interrupt tres=200", false, Verb::Show},
     {"raw", false, Verb::Raw},

@@ -139,8 +139,8 @@ void dispatch(const char* line) {
                        .field("verbs", "info,reset,show,cleanup,raw,rawread,trace,help")
                        .field("images", "white,black,chart,text,checker:N,invert")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality")
-                       .field("interrupt", "cut=50..5000,cdi=0F|3F")
-                       .field("lut", "setup=native|tickey,psr=5F|0F+69|A9,booster=native|none,tres=400|200,pack=4|2+x|e|o"));
+                       .field("interrupt_knobs", "cut,cdi")
+                       .field("lut_knobs", "setup,psr,booster,tres,win,pack"));
   }
 }
 

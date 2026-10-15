@@ -114,6 +114,7 @@ void prologue(const Knobs& knobs) {
   // tres=200: resolution 200x600 instead of the pinned 400x600 (01 90 02 58).
   static constexpr uint8_t kHalfWidth[] = {0x00, 0xC8, 0x02, 0x58};
   if (knobs.tres_half) epd::write(kCmdResolution, kHalfWidth, sizeof(kHalfWidth));
+  if (knobs.window) epd::write(kCmdWindow, kFullWindow, sizeof(kFullWindow));
 }
 
 // Cold prepare (tickey_mono.c:88-96): clear_initial over an all-zero frame,
@@ -184,6 +185,7 @@ void knob_fields(const Knobs& knobs, Reply& ok) {
       .hex("psr", knobs.psr, 2)
       .field("booster", knobs.booster ? "native" : "none")
       .field("tres", knobs.tres_half ? 200L : 400L)
+      .field("win", long(knobs.window))
       .field("pack", pack_name(knobs.pack));
 }
 
