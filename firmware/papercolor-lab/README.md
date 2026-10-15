@@ -53,7 +53,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | `info` | `OK mac= rev=<0x70, 4 bytes> build= temp=<0x40, 2 bytes raw> uptime_ms=` |
 | `reset` | hard reset + native init, no paint → `OK total_ms=` |
 | `cleanup` | Native refresh of the current image → `OK mode=native busy_ms= total_ms=`; before any `show`: `FAIL stage=state reason=no-image` |
-| `show <image> native` | render image, Native refresh → `OK image= [size=] mode= busy_ms= total_ms=` |
+| `show <image> [N] <mode> [knob=v…]` | render image, drive in mode → `OK image= [size=] mode= <mode fields> busy_ms= total_ms=` (see Modes) |
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
 | `trace <on\|off>` | echo every controller write as `# write cmd=XX len=N` → `OK trace=` |
@@ -79,6 +79,32 @@ Images (`image.{h,cpp}`, 400×600 ink plane, one byte per pixel):
 
 The console flushes USB CDC only while the host handshake reports connected
 (Arduino 2.0.17 HWCDC discards the queue otherwise).
+
+## Modes (`modes.cpp`)
+
+| Mode | Sequence | Knobs (default) | Fields |
+| --- | --- | --- | --- |
+| `native` | `10` frame, `04`, 200 ms, `06 6F1F1727`, 200 ms, `12 00`, 200 ms, `02 00`, 200 ms (Panel_ED2208 `_turn_on_display`) | — | `busy_ms` |
+| `interrupt` | `50 cdi`, `10` frame (native codes), `04`, 20 ms, `06 6F1F1727`, `83 00 00 01 8F 00 00 02 57 01`, `50 cdi`, `12 00`, BUSY assert, `cut` ms, RST low 2 ms / high 10 ms, native init (no `02`) | `cut=340` (50–5000), `cdi=0F\|3F` (0F) | `cut_ms cdi busy_ms` (assert→cut) |
+| `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=5F69\|0FA9`, `booster=native\|none` (native values) | `setup psr booster cold clear_ms busy_ms` |
+| `fast`, `quality` | reset+init, [setup], cold clear (always), PSR+`20` phase1, `10` high selectors, `12`; quality: PSR+`20` phase2, `12` (plane reused); PSR+`20` fast_phase2\|quality_phase3, `10` low selectors, `12`; `02`; fast: `10` high plane post-seed; reset+init | as mono | `setup psr booster clear_ms p1_ms [p2_ms] final_ms busy_ms` (= phases, without clear) |
+
+`power` = `04` + BUSY; `booster=native` adds 200 ms, `06 6F 1F 17 27`, 200 ms; `none` 10 ms (sf32rc).
+`setup=tickey` = `30 04`, `41 00`, `E0 02`, `E6 19` after init. `psr` = bytes sent with `00` before each LUT.
+LUT tables: unmodified sf32rc `ce0a01a` `tickey_waveforms_{mono,color}.inc` (`waveforms.h`). Mono old plane
+(1 bpp, light = white\|yellow) lives in PSRAM; invalidated by boot, `reset`, `cleanup`, any native/interrupt/
+colour drive and any failure. Experimental modes leave the controller reset + natively initialised.
+
+### Interrupt: semantics (FreeInk `Free-Ink/freeink-sdk` e91e34e = 3af4166, `libs/display/FreeInkDisplay/src/driver/Ed2208M5Driver.cpp`)
+
+- Plane: one `10` frame, full 400×600 (no window narrowing; `83` covers the whole panel), 4 bpp native codes,
+  left pixel high nibble; white `1`, black `0` (`.cpp:136-137`); chromatic inks are not used by FreeInk's
+  fast path. Cut anchored on the observed BUSY assertion, not the command send (`.cpp:238-257`).
+- CDI `50 0F` (FreeInk "dark hack") vs native `3F`: bits 5:4 set data polarity for this drive
+  (`20261015-interrupt-005`).
+- Community observation (FreeInk README.md:213-221): interrupted waveforms are not DC-balanced; over hours of
+  interrupted-only use the panel darkens and colours fade; FreeInk promotes a complete waveform about hourly.
+  Not reproduced here (Trials are minutes long).
 
 ## Acceptance thresholds
 
@@ -151,6 +177,26 @@ JPEGs ≤1600 px / ≈≤200 KB and `observations.md`. Originals stay in gitigno
 | [20261015-native-baseline-001](evidence/20261015-native-baseline-001/observations.md) | **Reference.** `chart`: BUSY 14506 / total 16333 ms; six colours distinguishable, ramps and checker crisp; layout matches 10-13. |
 | [20261015-native-baseline-002](evidence/20261015-native-baseline-002/observations.md) | **Reference.** `text`: BUSY 14387 / 16142 ms; 13–24 pt and white-on-black 16 pt readable. |
 | [20261015-native-baseline-003](evidence/20261015-native-baseline-003/observations.md) | **Reference.** `text` repeat: BUSY 14387 / 16142 ms; run-to-run ≤2 ms. |
+
+### Series 2 — interrupted-OTP mono reference (#20)
+
+Each Trial: `show white native`, one interrupted drive, photo, restore cleanup. Build `edd95fbd3537`.
+
+| Trial | Verdict |
+| --- | --- |
+| [20261015-interrupt-001](evidence/20261015-interrupt-001/observations.md) | `text cut=250`: 685 ms; navy on yellow-green; all sizes readable. |
+| [20261015-interrupt-002](evidence/20261015-interrupt-002/observations.md) | **Pass.** `text cut=340`: 775 ms; navy on pale yellow-white; all sizes readable. |
+| [20261015-interrupt-003](evidence/20261015-interrupt-003/observations.md) | `text cut=450`: 885 ms; navy on pale blue-white; all readable. Cut selects background hue. |
+| [20261015-interrupt-004](evidence/20261015-interrupt-004/observations.md) | `checker 40`: 772 ms; blue/cream squares, uniform, no seam. |
+| [20261015-interrupt-005](evidence/20261015-interrupt-005/observations.md) | `cdi=3F`: polarity inverted (pale text on navy). CDI 0F required. |
+| [20261015-interrupt-006](evidence/20261015-interrupt-006/observations.md) | **Pass.** 10 × `invert`: light → yellow, dark → navy, no ghosting; Cleanup fully recovers. |
+
+**Series verdict vs Fast mono thresholds**: ≤2 s ✓ (0.69–0.89 s total, no separate warm path); 16 px
+readable ✓ (13 pt too); 10 updates then Cleanup recovers ✓. Not white: light is pale yellow/blue by cut,
+dark is navy, not black. **This mode is the same-panel reference, not a product candidate**: it relies on
+an unbalanced, cut waveform (FreeInk reports long-term darkening). The 10-13 port's "almost unreadable"
+result (prior-trial-interrupted-001) is not a property of the method; candidates for the difference: the
+`83` full window, 400 ms of power-on delays, CDI handling, and the dashboard history.
 
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 

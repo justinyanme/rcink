@@ -1,0 +1,10 @@
+{"t_ns": 628892464889750, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["show white native", "show text interrupt cut=450", "photo"], "restore": true}
+{"t_ns": 628892778191833, "clock": "host-monotonic", "event": "boot", "line": "# ready build=edd95fbd3537 mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=250"}
+{"t_ns": 628892778280041, "clock": "host-monotonic", "event": "write", "line": "show white native"}
+{"t_ns": 628908739057625, "clock": "host-monotonic", "event": "result", "line": "OK image=white mode=native busy_ms=14387 total_ms=15935", "ok": true, "fields": {"image": "white", "mode": "native", "busy_ms": "14387", "total_ms": "15935"}}
+{"t_ns": 628908739198875, "clock": "host-monotonic", "event": "write", "line": "show text interrupt cut=450"}
+{"t_ns": 628909705640666, "clock": "host-monotonic", "event": "result", "line": "OK image=text mode=interrupt cut_ms=450 cdi=0f busy_ms=450 total_ms=885", "ok": true, "fields": {"image": "text", "mode": "interrupt", "cut_ms": "450", "cdi": "0f", "busy_ms": "450", "total_ms": "885"}}
+{"t_ns": 628913432705041, "clock": "host-monotonic", "event": "photo", "file": "01-show-text-interrupt-cut450.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/interrupt-003/01-show-text-interrupt-cut450.jpg"}
+{"t_ns": 628913432840291, "clock": "host-monotonic", "event": "write", "line": "cleanup"}
+{"t_ns": 628929406091416, "clock": "host-monotonic", "event": "result", "line": "OK mode=native busy_ms=14387 total_ms=15928", "ok": true, "fields": {"mode": "native", "busy_ms": "14387", "total_ms": "15928"}}
+{"t_ns": 628933122653291, "clock": "host-monotonic", "event": "photo", "file": "02-cleanup.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/interrupt-003/02-cleanup.jpg"}
