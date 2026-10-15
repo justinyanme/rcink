@@ -29,12 +29,14 @@ Two halves of one repo:
    ```
 
 4. This unit is MAC `44:1B:F6:C1:31:90`; the current operator-authorized port is
-   `/dev/cu.usbmodem20111401`. No autodiscovery, alternative ports or reconnect
-   loops. If absent, explicitly wake the board with a button before starting.
+   `/dev/cu.usbmodem83301`. The name follows the USB path (hub/socket) and
+   changes when re-cabled (was `/dev/cu.usbmodem20111401` on 2026-10-13); the MAC
+   is the identity, checked by every flash. No autodiscovery, alternative ports
+   or reconnect loops. If absent, explicitly wake the board with a button before starting.
 
    ```bash
-   just flash-papercolor /dev/cu.usbmodem20111401 .cache/papercolor/flash-001
-   just observe-papercolor /dev/cu.usbmodem20111401 .cache/papercolor/observe-001
+   just flash-papercolor /dev/cu.usbmodem83301 .cache/papercolor/flash-001
+   just observe-papercolor /dev/cu.usbmodem83301 .cache/papercolor/observe-001
    ```
 
 `flash-papercolor` builds, opens exactly the named port, checks MAC and reads
@@ -75,7 +77,7 @@ One firmware replaces the former separate no-sleep dev environment:
 
 ```bash
 uv run --project producer dev-cli session ps \
-  --port /dev/cu.usbmodem20111401 --timeout 10 \
+  --port /dev/cu.usbmodem83301 --timeout 10 \
   --save .cache/papercolor/state.log
 ```
 
@@ -157,8 +159,10 @@ Resume hardware experiments only when the user requests further debugging.
 - Last agent-verified application: `flash-015`; last inspected dashboard:
   `final-native-001/01-restored.jpg`. The user subsequently ran manual tests;
   no new device inspection or flashing was performed during this wrap-up.
-- Evidence root: `.cache/papercolor/2026-10-13/`. It is local, Git-ignored
-  evidence, **not included in the commit**. Preserve it for later comparison.
+- Evidence root: `.cache/papercolor/2026-10-13/` on rmbp; on the working Mac the
+  full copy is `.cache/papercolor/rmbp-2026-10-13/2026-10-13/` (Git-ignored).
+  Four key Trials are curated, downsized, into
+  `../papercolor-lab/evidence/20261013-prior-*` as the Lab's prior baseline.
   `flash-014/firmware.bin` retains the temporary interrupted-diagnostics build;
   production diagnostics no longer have that experimental canvas path.
 - Confirmed: native transport produces readable color output; all four sf32rc
@@ -218,7 +222,7 @@ The sibling `../rceye` project must have its P4 connection configured. Run from
 the rcink root; use a new output directory on every run:
 
 ```bash
-just trial-papercolor /dev/cu.usbmodem20111401 .cache/papercolor/manual-01 FQMC
+just trial-papercolor /dev/cu.usbmodem83301 .cache/papercolor/manual-01 FQMC
 ```
 
 Sequence: F=color-fast, Q=color-quality, M=mono, C=mono-clear. Each paints a

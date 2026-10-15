@@ -1,0 +1,47 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x420c924a
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c9700,len:0xbd8
+load:0x403cc700,len:0x2a0c
+entry 0x403c98d0
+[   608][I][esp32-hal-psram.c:96] psramInit(): PSRAM enabled
+[   687][I][M5GFX.cpp:805] init_impl(): [M5GFX] [Autodetect] load from NVS : board:28
+[   696][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[   705][I][M5GFX.cpp:1848] autodetect(): [M5GFX] [Autodetect] board_M5PaperColor
+[   843][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[   862][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[boot] PaperColor 400x600 build=Oct 13 2026 22:46:13
+[led] ready pin=21 count=2
+[led] state=launch
+[sense] batt=85% (4020 mV) ok=1  env=31.8C 67% ok=1
+[main] wake reason = 0
+[nvs] load opened=1 idx=0 view=0 last=1791896564 fp=5d83fcd4 unch=0 blob_len=12491 rid=overview rts=1791896530
+[render] skip — id=overview data_ts=1791896530 unchanged
+[led] state=idle_disconnected
+[power] flags=0x05 (external) vin_mv=4600 battery_mv=4020 uptime_ms=945 next_fetch_ms=1799999
+[console] ready; external power keeps USB awake; type h
+[power] flags=0x05 (external) vin_mv=4600 battery_mv=4020 uptime_ms=1030 next_fetch_ms=1799914
+[console] done p uptime_ms=1031
+[led] state=refreshing
+[trial] START mode=N width=400 height=600 LUT_bytes=799
+[trial] frame=1 bytes=120000 frame_ms=487 result=0
+[trial] phase=native-on drive_ms=131 result=0
+[trial] phase=native-refresh drive_ms=14519 result=0
+[trial] phase=native-off drive_ms=172 busy_asserted=1 result=0
+[trial] phase=restore-off drive_ms=40 busy_asserted=0 result=0
+[trial] DONE mode=N total_ms=16013 native_restored=1 off=1
+[trial] complete mode=N
+[led] state=idle_disconnected
+[console] done N uptime_ms=17151
+[console] r → re-render current
+[led] state=refreshing
+[render] page=overview stale=1 mode=quality W=400 H=600 draw begin
+[render] draw=468ms push=16914ms display=0ms total=17382ms
+[led] state=idle_disconnected
+[console] done r uptime_ms=34888
+[power] flags=0x05 (external) vin_mv=4596 battery_mv=4022 uptime_ms=35333 next_fetch_ms=1765611
+[console] done p uptime_ms=35334

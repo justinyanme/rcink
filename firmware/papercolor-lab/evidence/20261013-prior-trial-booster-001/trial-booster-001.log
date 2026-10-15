@@ -1,0 +1,157 @@
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 319415 B 341 ms
+sharpness 187.5
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/before.jpg
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x420c92c6
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c9700,len:0xbd8
+load:0x403cc700,len:0x2a0c
+entry 0x403c98d0
+[   608][I][esp32-hal-psram.c:96] psramInit(): PSRAM enabled
+[   687][I][M5GFX.cpp:805] init_impl(): [M5GFX] [Autodetect] load from NVS : board:28
+[   696][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[   705][I][M5GFX.cpp:1848] autodetect(): [M5GFX] [Autodetect] board_M5PaperColor
+[   843][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[   862][I][esp32-hal-i2c.c:75] i2cInit(): Initialising I2C Master: sda=3 scl=2 freq=100000
+[boot] PaperColor 400x600 build=Oct 13 2026 22:46:13
+[led] ready pin=21 count=2
+[led] state=launch
+[sense] batt=91% (4076 mV) ok=1  env=31.6C 66% ok=1
+[main] wake reason = 0
+[nvs] load opened=1 idx=0 view=0 last=1791896564 fp=5d83fcd4 unch=0 blob_len=12491 rid=overview rts=1791896530
+[render] skip — id=overview data_ts=1791896530 unchanged
+[led] state=idle_disconnected
+[power] flags=0x05 (external) vin_mv=4600 battery_mv=4076 uptime_ms=945 next_fetch_ms=1799999
+[console] ready; external power keeps USB awake; type h
+[power] flags=0x05 (external) vin_mv=4598 battery_mv=4074 uptime_ms=1070 next_fetch_ms=1799874
+[console] done p uptime_ms=1071
+[led] state=refreshing
+[trial] START mode=F width=400 height=600 LUT_bytes=799
+[trial] configure=sf32rc regs=30:04,41:00,E0:02,E6:19
+[trial] frame=0 bytes=120000 frame_ms=375 result=0
+[trial] phase=clear-on drive_ms=132 result=0
+[trial] booster=papercolor command=06 data=6F,1F,17,27
+[trial] phase=clear-initial drive_ms=1929 result=0
+[trial] frame=2 bytes=120000 frame_ms=1095 result=0
+[trial] phase=color-phase1 drive_ms=895 result=0
+[trial] frame=3 bytes=120000 frame_ms=1085 result=0
+[trial] phase=color-final drive_ms=107 result=0
+[trial] phase=color-off drive_ms=171 busy_asserted=1 result=0
+[trial] frame=2 bytes=120000 frame_ms=1094 result=0
+[trial] phase=restore-off drive_ms=40 busy_asserted=0 result=0
+[trial] DONE mode=F total_ms=7408 native_restored=1 off=1
+[trial] complete mode=F
+[led] state=idle_disconnected
+[console] done F uptime_ms=8587
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 310913 B 37 ms
+sharpness 165.0
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/00-F.jpg
+[console] r → re-render current
+[led] state=refreshing
+[render] page=overview stale=1 mode=quality W=400 H=600 draw begin
+[render] draw=468ms push=16905ms display=0ms total=17373ms
+[led] state=idle_disconnected
+[console] done r uptime_ms=26337
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 322251 B 62 ms
+sharpness 199.2
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/00-restored.jpg
+[led] state=refreshing
+[trial] START mode=Q width=400 height=600 LUT_bytes=799
+[trial] configure=sf32rc regs=30:04,41:00,E0:02,E6:19
+[trial] frame=0 bytes=120000 frame_ms=375 result=0
+[trial] phase=clear-on drive_ms=132 result=0
+[trial] booster=papercolor command=06 data=6F,1F,17,27
+[trial] phase=clear-initial drive_ms=1930 result=0
+[trial] frame=2 bytes=120000 frame_ms=996 result=0
+[trial] phase=color-phase1 drive_ms=4532 result=0
+[trial] phase=color-phase2 drive_ms=5651 result=0
+[trial] frame=3 bytes=120000 frame_ms=996 result=0
+[trial] phase=color-final drive_ms=107 result=0
+[trial] phase=color-off drive_ms=172 busy_asserted=1 result=0
+[trial] phase=restore-off drive_ms=40 busy_asserted=0 result=0
+[trial] DONE mode=Q total_ms=15417 native_restored=1 off=1
+[trial] complete mode=Q
+[led] state=idle_disconnected
+[console] done Q uptime_ms=42143
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 315787 B 47 ms
+sharpness 164.1
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/01-Q.jpg
+[console] r → re-render current
+[led] state=refreshing
+[render] page=overview stale=1 mode=quality W=400 H=600 draw begin
+[render] draw=468ms push=16914ms display=0ms total=17382ms
+[led] state=idle_disconnected
+[console] done r uptime_ms=59962
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 320355 B 57 ms
+sharpness 197.7
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/01-restored.jpg
+[led] state=refreshing
+[trial] START mode=M width=400 height=600 LUT_bytes=799
+[trial] configure=sf32rc regs=30:04,41:00,E0:02,E6:19
+[trial] frame=0 bytes=120000 frame_ms=375 result=0
+[trial] phase=clear-on drive_ms=132 result=0
+[trial] booster=papercolor command=06 data=6F,1F,17,27
+[trial] phase=clear-initial drive_ms=1930 result=0
+[trial] frame=4 bytes=120000 frame_ms=376 result=0
+[trial] phase=mono drive_ms=107 result=0
+[trial] phase=mono-off drive_ms=172 busy_asserted=1 result=0
+[trial] phase=restore-off drive_ms=40 busy_asserted=0 result=0
+[trial] DONE mode=M total_ms=3616 native_restored=1 off=1
+[trial] complete mode=M
+[led] state=idle_disconnected
+[console] done M uptime_ms=64026
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 309261 B 45 ms
+sharpness 160.5
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/02-M.jpg
+[console] r → re-render current
+[led] state=refreshing
+[render] page=overview stale=1 mode=quality W=400 H=600 draw begin
+[render] draw=468ms push=16914ms display=0ms total=17382ms
+[led] state=idle_disconnected
+[console] done r uptime_ms=81765
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 319159 B 32 ms
+sharpness 198.7
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/02-restored.jpg
+[led] state=refreshing
+[trial] START mode=C width=400 height=600 LUT_bytes=799
+[trial] configure=sf32rc regs=30:04,41:00,E0:02,E6:19
+[trial] frame=0 bytes=120000 frame_ms=375 result=0
+[trial] phase=clear-on drive_ms=132 result=0
+[trial] booster=papercolor command=06 data=6F,1F,17,27
+[trial] phase=clear-initial drive_ms=1930 result=0
+[trial] frame=4 bytes=120000 frame_ms=376 result=0
+[trial] phase=mono-clear drive_ms=295 result=0
+[trial] phase=mono-off drive_ms=172 busy_asserted=1 result=0
+[trial] phase=restore-off drive_ms=40 busy_asserted=0 result=0
+[trial] DONE mode=C total_ms=3804 native_restored=1 off=1
+[trial] complete mode=C
+[led] state=idle_disconnected
+[console] done C uptime_ms=85857
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 319816 B 39 ms
+sharpness 163.9
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/03-C.jpg
+[console] r → re-render current
+[led] state=refreshing
+[render] page=overview stale=1 mode=quality W=400 H=600 draw begin
+[render] draw=468ms push=16914ms display=0ms total=17382ms
+[led] state=idle_disconnected
+[console] done r uptime_ms=103616
+warning: `VIRTUAL_ENV=/Users/rocry/.cache/uv/environments-v2/papercolor-trial-e5ebe0e93b475ca0` does not match the project environment path `/Users/rocry/w/_hw/rceye/.venv` and will be ignored; use `--active` to target the active environment instead
+1920x1080 322254 B 57 ms
+sharpness 200.2
+/Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001/03-restored.jpg
+[power] flags=0x05 (external) vin_mv=4602 battery_mv=4086 uptime_ms=103981 next_fetch_ms=1696963
+[console] done p uptime_ms=103982
+Evidence: /Users/rocry/w/_hw/rcink/.cache/papercolor/2026-10-13/trial-booster-001

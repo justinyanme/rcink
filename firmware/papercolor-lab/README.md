@@ -84,3 +84,18 @@ JPEGs ≤1600 px / ≈≤200 KB and `observations.md`. Originals stay in gitigno
 | Trial | Verdict |
 | --- | --- |
 | [20261015-skeleton-001](evidence/20261015-skeleton-001/observations.md) | **Pass.** Raw driver: `show black native` then `show white native`, each 14389 ms BUSY / 16137 ms total, whole panel uniform in both photos; 0x70 = `01010400`. |
+
+### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
+
+Not Lab Trials: driven by `firmware/papercolor` `src/dev/waveform_trial.cpp`
+(M5GFX bus, PaperColor booster `06 6F 1F 17 27`) via `just trial-papercolor`.
+Times are cold transactions (reset/init, clear, frame, drive, restore), not
+Lab `busy_ms`. Verdicts quoted from `../papercolor/README.md` findings. Full
+archive (from rmbp): gitignored `.cache/papercolor/rmbp-2026-10-13/`.
+
+| Trial | Verdict |
+| --- | --- |
+| [20261013-prior-trial-native-001](evidence/20261013-prior-trial-native-001/observations.md) | **Reference.** Native chart 16.01 s (refresh phase 14519 ms); six-colour patches and checker visible. |
+| [20261013-prior-trial-booster-001](evidence/20261013-prior-trial-booster-001/observations.md) | **Fail.** sf32rc LUTs: F 7.41 s / Q 15.42 s very dark, colours unusable; M 3.62 s / C 3.80 s checker visible, yellowish background. |
+| [20261013-prior-trial-interrupted-001](evidence/20261013-prior-trial-interrupted-001/observations.md) | **Fail.** 340 ms interrupted native: chart 1.39 s dark checker + strong residue; diagnostics 2.28 s almost unreadable on dark field. |
+| [20261013-prior-final-native-001](evidence/20261013-prior-final-native-001/observations.md) | **Pass.** Final app `flash-015`: native chart 16.01 s, dashboard 17.373 s, diagnostics 17.365 s, all readable; uptime 970→70636 ms. |
