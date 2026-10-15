@@ -75,7 +75,15 @@ void hard_reset() {
 }
 
 void write(uint8_t cmd, const uint8_t* data, size_t count) {
-  if (trace_on) Serial.printf("# write cmd=%02x len=%u\n", cmd, unsigned(count));
+  if (trace_on) {
+    // Short writes carry their bytes; frames and LUTs only their length.
+    Serial.printf("# write cmd=%02x len=%u", cmd, unsigned(count));
+    if (count && count <= 16) {
+      Serial.print(" data=");
+      for (size_t i = 0; i < count; ++i) Serial.printf("%02x", data[i]);
+    }
+    Serial.println();
+  }
   SPI.beginTransaction(SPISettings(kSpiWriteHz, MSBFIRST, SPI_MODE0));
   digitalWrite(kPinCs, LOW);
   digitalWrite(kPinDc, LOW);
@@ -106,42 +114,59 @@ Result upload_frame(const uint8_t* packed, size_t bytes) {
   return Result{};
 }
 
-Result upload_lut(const uint8_t* lut, size_t bytes) {
+Result upload_lut(const uint8_t psr[2], const uint8_t* lut, size_t bytes) {
   if (auto r = wait_idle("lut-idle"); !r.ok()) return r;
+  write(kCmdPsr, psr, 2);
   write(kCmdLut, lut, bytes);
   return Result{};
 }
 
-// Panel_ED2208::_turn_on_display first half: 04, wait, 200 ms, booster, 200 ms.
 Result power_on() {
   write(kCmdPowerOn, nullptr, 0);
   if (auto r = wait_level(LOW, kBusyAssertTimeoutMs, "power-on-assert"); !r.ok()) return r;
-  if (auto r = wait_idle("power-on-release"); !r.ok()) return r;
-  delay(200);
-  write(kCmdBooster, kBoosterAfterPowerOn, sizeof(kBoosterAfterPowerOn));
-  delay(200);
-  return Result{};
+  return wait_level(HIGH, kBusyReleaseTimeoutMs, "power-on-release");
 }
 
-Result drive(Mode mode, uint32_t& busy_ms) {
-  (void)mode;  // Native is the only mode in this stage.
+void booster() { write(kCmdBooster, kBoosterAfterPowerOn, sizeof(kBoosterAfterPowerOn)); }
+
+namespace {
+// Stage strings outlive the call: "<stage>-assert" / "<stage>-release".
+const char* stage_name(const char* stage, const char* suffix) {
+  static char names[2][48];
+  char* out = names[suffix[0] == 'a' ? 0 : 1];
+  snprintf(out, sizeof(names[0]), "%s-%s", stage, suffix);
+  return out;
+}
+}  // namespace
+
+Result refresh(const char* stage, uint32_t& busy_ms) {
   static constexpr uint8_t zero = 0x00;
   write(kCmdRefresh, &zero, 1);
-  if (auto r = wait_level(LOW, kBusyAssertTimeoutMs, "drive-assert"); !r.ok()) return r;
+  if (auto r = wait_level(LOW, kBusyAssertTimeoutMs, stage_name(stage, "assert")); !r.ok()) return r;
   const uint32_t asserted = millis();
-  if (auto r = wait_level(HIGH, kBusyReleaseTimeoutMs, "drive-release"); !r.ok()) return r;
+  if (auto r = wait_level(HIGH, kBusyReleaseTimeoutMs, stage_name(stage, "release")); !r.ok()) return r;
   busy_ms = millis() - asserted;
-  delay(200);  // _wait_busy settle
   return Result{};
 }
 
-// Panel_ED2208::_turn_on_display tail: 02 00, wait, 200 ms.
+Result refresh_cut(uint32_t cut_ms, uint32_t& busy_ms) {
+  static constexpr uint8_t zero = 0x00;
+  write(kCmdRefresh, &zero, 1);
+  if (auto r = wait_level(LOW, kBusyAssertTimeoutMs, "cut-assert"); !r.ok()) return r;
+  const uint32_t asserted = millis();
+  delay(cut_ms);
+  digitalWrite(kPinRst, LOW);
+  busy_ms = millis() - asserted;
+  delay(2);
+  digitalWrite(kPinRst, HIGH);
+  delay(10);
+  return Result{};
+}
+
 Result power_off() {
   static constexpr uint8_t zero = 0x00;
   write(kCmdPowerOff, &zero, 1);
-  if (auto r = wait_idle("power-off-release"); !r.ok()) return r;
-  delay(200);
-  return Result{};
+  return wait_idle("power-off-release");
 }
 
 // Bit-banged half-duplex read (LGFX Bus_SPI spi_3wire SIO: data returns on

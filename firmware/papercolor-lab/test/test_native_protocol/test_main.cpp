@@ -47,7 +47,26 @@ static const Row kTable[] = {
     {"show text 40 native", false, Verb::Show},
     {"show text native extra", false, Verb::Show},
     {"show nope native", false, Verb::Show},
-    {"show white mono", false, Verb::Show},
+    {"show white mono", true, Verb::Show},
+    {"show text interrupt", true, Verb::Show},
+    {"show text interrupt cut=250", true, Verb::Show},
+    {"show text interrupt cut=250 cdi=3F", true, Verb::Show},
+    {"show text interrupt cut=49", false, Verb::Show},
+    {"show text interrupt cut=5001", false, Verb::Show},
+    {"show text interrupt cut=250 cut=340", false, Verb::Show},
+    {"show text interrupt cdi=0f", false, Verb::Show},
+    {"show text interrupt setup=tickey", false, Verb::Show},
+    {"show text mono setup=tickey psr=0FA9 booster=none", true, Verb::Show},
+    {"show checker 40 monoclear psr=0FA9", true, Verb::Show},
+    {"show chart fast", true, Verb::Show},
+    {"show chart quality booster=none", true, Verb::Show},
+    {"show text mono psr=0FA9 psr=5F69", false, Verb::Show},
+    {"show text mono cut=340", false, Verb::Show},
+    {"show text mono setup", false, Verb::Show},
+    {"show text mono =tickey", false, Verb::Show},
+    {"show text mono setup=", false, Verb::Show},
+    {"show text native cut=340", false, Verb::Show},
+    {"show text slow", false, Verb::Show},
     {"raw", false, Verb::Raw},
     {"raw 0x12", false, Verb::Raw},
     {"raw 1", false, Verb::Raw},
@@ -90,6 +109,30 @@ void test_show_arguments() {
   TEST_ASSERT_EQUAL_STRING("image", why);
 }
 
+void test_knob_defaults_and_values() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("show text interrupt", cmd, why));
+  TEST_ASSERT_EQUAL(int(Mode::Interrupt), int(cmd.mode));
+  TEST_ASSERT_EQUAL(340, cmd.knobs.cut_ms);  // FreeInk REFRESH_CUTOFF_MS
+  TEST_ASSERT_EQUAL_HEX8(0x0F, cmd.knobs.cdi);
+  TEST_ASSERT_TRUE(parse_command("show text interrupt cdi=3F cut=450", cmd, why));
+  TEST_ASSERT_EQUAL(450, cmd.knobs.cut_ms);
+  TEST_ASSERT_EQUAL_HEX8(0x3F, cmd.knobs.cdi);
+  // LUT modes default to native values.
+  TEST_ASSERT_TRUE(parse_command("show text mono", cmd, why));
+  TEST_ASSERT_FALSE(cmd.knobs.setup_tickey);
+  TEST_ASSERT_FALSE(cmd.knobs.psr_tickey);
+  TEST_ASSERT_TRUE(cmd.knobs.booster);
+  TEST_ASSERT_TRUE(parse_command("show chart quality booster=none psr=0FA9 setup=tickey", cmd, why));
+  TEST_ASSERT_EQUAL(int(Mode::Quality), int(cmd.mode));
+  TEST_ASSERT_TRUE(cmd.knobs.setup_tickey);
+  TEST_ASSERT_TRUE(cmd.knobs.psr_tickey);
+  TEST_ASSERT_FALSE(cmd.knobs.booster);
+  TEST_ASSERT_FALSE(parse_command("show text mono cut=340", cmd, why));
+  TEST_ASSERT_EQUAL_STRING("knob", why);
+}
+
 void test_raw_bytes() {
   Command cmd;
   const char* why = nullptr;
@@ -126,12 +169,17 @@ void test_reply_format() {
   TEST_ASSERT_EQUAL_STRING("OK rev=00a5ff", Reply(true).hex("rev", rev, 3).c_str());
   TEST_ASSERT_EQUAL_STRING("FAIL stage=parse reason=verb",
                            Reply(false).field("stage", "parse").field("reason", "verb").c_str());
+  // Over one line: never truncated, the whole reply becomes a FAIL.
+  Reply long_reply(true);
+  for (int i = 0; i < 30; ++i) long_reply.field("key", "value");
+  TEST_ASSERT_EQUAL_STRING("FAIL stage=reply reason=length", long_reply.c_str());
 }
 
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_protocol_table);
   RUN_TEST(test_show_arguments);
+  RUN_TEST(test_knob_defaults_and_values);
   RUN_TEST(test_raw_bytes);
   RUN_TEST(test_rawread_arguments);
   RUN_TEST(test_trace_flag);

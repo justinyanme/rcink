@@ -9,6 +9,7 @@
 #include "fatal.h"
 #include "frame.h"
 #include "image.h"
+#include "modes.h"
 #include "protocol.h"
 
 #ifndef RCLAB_BUILD
@@ -27,6 +28,7 @@ constexpr size_t kTemperatureBytes = 2;
 uint8_t* g_inks = nullptr;    // kPixels ink codes (PSRAM): the current image
 bool g_have_image = false;    // g_inks holds a rendered image (any show since boot)
 uint8_t* g_packed = nullptr;  // kNativeFrameBytes (PSRAM)
+uint8_t* g_old = nullptr;     // kMonoPlaneBytes mono history (PSRAM), owned by modes
 char g_line[kMaxLine + 1];
 size_t g_line_len = 0;
 char g_mac[18];
@@ -65,20 +67,16 @@ void do_info() {
 
 void do_reset() {
   const uint32_t began = millis();
+  modes::forget_history();
   epd::hard_reset();
   if (auto r = epd::init_native(); !r.ok()) return reply_fail(r);
   reply(Reply(true).field("total_ms", long(millis() - began)));
 }
 
-// Native refresh of g_inks: upload, power on, OTP drive, power off.
-void native_refresh(Reply ok, uint32_t began) {
-  encode_native_frame(g_inks, g_packed);
-  if (auto r = epd::upload_frame(g_packed, kNativeFrameBytes); !r.ok()) return reply_fail(r);
-  if (auto r = epd::power_on(); !r.ok()) return reply_fail(r);
-  uint32_t busy_ms = 0;
-  if (auto r = epd::drive(epd::Mode::Native, busy_ms); !r.ok()) return reply_fail(r);
-  if (auto r = epd::power_off(); !r.ok()) return reply_fail(r);
-  reply(ok.field("busy_ms", long(busy_ms)).field("total_ms", long(millis() - began)));
+// Drives g_inks in `mode`; `ok` already carries the request's identifying fields.
+void drive(Mode mode, const Knobs& knobs, Reply ok, uint32_t began) {
+  if (auto r = modes::run(mode, knobs, ok); !r.ok()) return reply_fail(r);
+  reply(ok.field("total_ms", long(millis() - began)));
 }
 
 // Renders the requested image into g_inks; false when it needs a current image.
@@ -104,13 +102,13 @@ void do_show(const Command& cmd) {
   Reply ok(true);
   ok.field("image", image_name(cmd.image));
   if (cmd.image == Image::Checker) ok.field("size", long(cmd.checker));
-  native_refresh(ok.field("mode", mode_name(cmd.mode)), began);
+  drive(cmd.mode, cmd.knobs, ok.field("mode", mode_name(cmd.mode)), began);
 }
 
 // Cleanup: Native refresh of the current image; refused before any show.
 void do_cleanup() {
   if (!g_have_image) return reply(Reply(false).field("stage", "state").field("reason", "no-image"));
-  native_refresh(Reply(true).field("mode", "native"), millis());
+  drive(Mode::Native, Knobs{}, Reply(true).field("mode", "native"), millis());
 }
 
 void dispatch(const char* line) {
@@ -136,12 +134,13 @@ void dispatch(const char* line) {
       epd::set_trace(cmd.trace_on);
       return reply(Reply(true).field("trace", cmd.trace_on ? "on" : "off"));
     case Verb::Help:
+      // Values carry no spaces so every reply stays key=value parseable.
       return reply(Reply(true)
                        .field("verbs", "info,reset,show,cleanup,raw,rawread,trace,help")
-                       .field("show", "<white|black|chart|text|checker N|invert> native")
-                       .field("raw", "<cmd> [data...] hex2")
-                       .field("rawread", "<cmd> <1..32>")
-                       .field("trace", "<on|off>"));
+                       .field("images", "white,black,chart,text,checker:N,invert")
+                       .field("modes", "native,interrupt,mono,monoclear,fast,quality")
+                       .field("interrupt", "cut=50..5000,cdi=0F|3F")
+                       .field("lut", "setup=native|tickey,psr=5F69|0FA9,booster=native|none"));
   }
 }
 
@@ -161,7 +160,9 @@ void setup() {
   }
   g_inks = static_cast<uint8_t*>(ps_malloc(kPixels));
   g_packed = static_cast<uint8_t*>(ps_malloc(kNativeFrameBytes));
-  if (!g_inks || !g_packed) fatal("psram alloc failed");
+  g_old = static_cast<uint8_t*>(ps_malloc(kMonoPlaneBytes));
+  if (!g_inks || !g_packed || !g_old) fatal("psram alloc failed");
+  modes::begin(g_inks, g_packed, g_old);
   Serial.printf("# ready build=%s mac=%s rev=%02x%02x%02x%02x supply=0x%02x uptime_ms=%u\n",
                 RCLAB_BUILD, g_mac, rev[0], rev[1], rev[2], rev[3], supply, unsigned(millis()));
 }

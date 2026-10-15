@@ -34,6 +34,9 @@ constexpr uint8_t kCmdPowerOff = 0x02;
 constexpr uint8_t kCmdFrame = 0x10;
 constexpr uint8_t kCmdRefresh = 0x12;
 constexpr uint8_t kCmdLut = 0x20;
+constexpr uint8_t kCmdPsr = 0x00;
+constexpr uint8_t kCmdCdi = 0x50;
+constexpr uint8_t kCmdWindow = 0x83;
 constexpr uint8_t kCmdBooster = 0x06;
 constexpr size_t kLutBytes = 799;
 

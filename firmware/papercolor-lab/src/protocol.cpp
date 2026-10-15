@@ -62,7 +62,67 @@ bool parse_image(const char* tok, Image& out) {
   return false;
 }
 
+constexpr struct { const char* name; Mode mode; } kModes[] = {
+    {"native", Mode::Native}, {"interrupt", Mode::Interrupt}, {"mono", Mode::Mono},
+    {"monoclear", Mode::MonoClear}, {"fast", Mode::Fast}, {"quality", Mode::Quality},
+};
+
+bool parse_mode(const char* tok, Mode& out) {
+  for (const auto& entry : kModes) {
+    if (!strcmp(tok, entry.name)) return out = entry.mode, true;
+  }
+  return false;
+}
+
+// One `key=value` token valid for `mode`; `seen` rejects repeated keys.
+bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
+  const char* eq = strchr(tok, '=');
+  if (!eq) return false;
+  const size_t key_len = size_t(eq - tok);
+  const char* value = eq + 1;
+  auto key_is = [&](const char* key) { return strlen(key) == key_len && !strncmp(tok, key, key_len); };
+  auto once = [&](unsigned bit) {
+    if (seen & bit) return false;
+    seen |= bit;
+    return true;
+  };
+  if (mode == Mode::Interrupt) {
+    if (key_is("cut")) return once(1) && parse_uint(value, kMinCutMs, kMaxCutMs, knobs.cut_ms);
+    if (key_is("cdi")) {
+      if (!once(2)) return false;
+      if (!strcmp(value, "0F")) return knobs.cdi = 0x0F, true;
+      if (!strcmp(value, "3F")) return knobs.cdi = 0x3F, true;
+      return false;
+    }
+    return false;
+  }
+  if (!is_lut_mode(mode)) return false;
+  if (key_is("setup")) {
+    if (!once(4)) return false;
+    if (!strcmp(value, "native")) return knobs.setup_tickey = false, true;
+    if (!strcmp(value, "tickey")) return knobs.setup_tickey = true, true;
+    return false;
+  }
+  if (key_is("psr")) {
+    if (!once(8)) return false;
+    if (!strcmp(value, "5F69")) return knobs.psr_tickey = false, true;
+    if (!strcmp(value, "0FA9")) return knobs.psr_tickey = true, true;
+    return false;
+  }
+  if (key_is("booster")) {
+    if (!once(16)) return false;
+    if (!strcmp(value, "native")) return knobs.booster = true, true;
+    if (!strcmp(value, "none")) return knobs.booster = false, true;
+    return false;
+  }
+  return false;
+}
+
 }  // namespace
+
+bool is_lut_mode(Mode mode) {
+  return mode == Mode::Mono || mode == Mode::MonoClear || mode == Mode::Fast || mode == Mode::Quality;
+}
 
 bool parse_command(const char* line, Command& out, const char*& why) {
   char buf[kMaxLine + 1];
@@ -87,7 +147,7 @@ bool parse_command(const char* line, Command& out, const char*& why) {
     return true;
   }
   if (!strcmp(verb, "show")) {
-    // show <image> [N] <mode>: only `checker` takes N.
+    // show <image> [N] <mode> [key=value...]: only `checker` takes N.
     out.verb = Verb::Show;
     size_t i = 1;
     if (n < 3) { why = "args"; return false; }
@@ -96,9 +156,11 @@ bool parse_command(const char* line, Command& out, const char*& why) {
       if (!parse_uint(tok[i++], 1, kMaxCheckerSize, out.checker)) { why = "size"; return false; }
     }
     if (i >= n) { why = "args"; return false; }
-    if (!strcmp(tok[i++], "native")) out.mode = Mode::Native;
-    else { why = "mode"; return false; }
-    if (i != n) { why = "args"; return false; }
+    if (!parse_mode(tok[i++], out.mode)) { why = "mode"; return false; }
+    unsigned seen = 0;
+    for (; i < n; ++i) {
+      if (!parse_knob(tok[i], out.mode, out.knobs, seen)) { why = "knob"; return false; }
+    }
     return true;
   }
   if (!strcmp(verb, "raw")) {
@@ -139,8 +201,10 @@ const char* image_name(Image image) {
 }
 
 const char* mode_name(Mode mode) {
-  (void)mode;
-  return "native";
+  for (const auto& entry : kModes) {
+    if (entry.mode == mode) return entry.name;
+  }
+  return "?";
 }
 
 Reply::Reply(bool ok) {
@@ -150,7 +214,10 @@ Reply::Reply(bool ok) {
 
 void Reply::append(const char* text) {
   const size_t add = strlen(text);
-  if (len_ + add > kMaxLine) return;  // a reply never exceeds one line
+  if (len_ + add > kMaxLine) {
+    overflow_ = true;
+    return;
+  }
   memcpy(buf_ + len_, text, add + 1);
   len_ += add;
 }

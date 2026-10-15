@@ -19,8 +19,6 @@ constexpr uint32_t kSpiWriteHz = 4000000;
 constexpr uint32_t kBusyAssertTimeoutMs = 1000;
 constexpr uint32_t kBusyReleaseTimeoutMs = 25000;
 
-enum class Mode : uint8_t { Native };
-
 struct Result {
   const char* stage = nullptr;  // nullptr: ok
   int busy = -1;                // BUSY level at failure
@@ -30,12 +28,26 @@ struct Result {
 
 void begin();  // SPI bus, pin modes; CS/RST idle high
 void set_trace(bool on);
+// M5GFX _pin_reset: RST high 1 ms, low 2 ms, high 10 ms.
 void hard_reset();
+// Pinned Panel_ED2208 init list + resolution (epd_init.h).
 Result init_native();
+// Waits for BUSY idle, then `10` + plane.
 Result upload_frame(const uint8_t* packed, size_t bytes);
-Result upload_lut(const uint8_t* lut, size_t bytes);
+// Waits for BUSY idle, then PSR `00 <psr0 psr1>` and `20` + LUT (sf32rc tickey_mono.c:35-42).
+Result upload_lut(const uint8_t psr[2], const uint8_t* lut, size_t bytes);
+// `04`; BUSY must assert within 1 s and release within 25 s. No settle delay.
 Result power_on();
-Result drive(Mode mode, uint32_t& busy_ms);
+// `06 6F 1F 17 27`: the booster Panel_ED2208::_turn_on_display sends after 04.
+void booster();
+// `12 00`; BUSY must assert within 1 s and release within 25 s.
+// busy_ms = asserted duration. Stage names: <stage>-assert, <stage>-release.
+Result refresh(const char* stage, uint32_t& busy_ms);
+// `12 00`, wait for BUSY assert, then RST low `cut_ms` after the observed
+// assertion (FreeInk Ed2208M5Driver.cpp:238-257); RST high again after 2 ms
+// + 10 ms settle. busy_ms = assert -> cut, measured.
+Result refresh_cut(uint32_t cut_ms, uint32_t& busy_ms);
+// `02 00`, wait for BUSY idle. No settle delay.
 Result power_off();
 // 3-wire read: command, then `count` bytes clocked in on MOSI.
 void read_register(uint8_t cmd, uint8_t* out, size_t count);

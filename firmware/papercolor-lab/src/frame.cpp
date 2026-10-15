@@ -14,4 +14,47 @@ void encode_native_frame(const uint8_t* inks, uint8_t* out) {
   }
 }
 
+bool mono_light(uint8_t ink) { return ink == InkWhite || ink == InkYellow; }
+
+void encode_mono(const uint8_t* inks, const uint8_t* old_plane, size_t count, uint8_t* out) {
+  auto nibble = [&](size_t i) {
+    const unsigned old = old_plane ? (old_plane[i / 8] >> (7 - i % 8)) & 1 : 0;
+    return uint8_t(old << 1 | (mono_light(inks[i]) ? 1 : 0));
+  };
+  for (size_t i = 0; i < count; i += 2) out[i / 2] = uint8_t(nibble(i) << 4 | nibble(i + 1));
+}
+
+void mono_plane(const uint8_t* inks, size_t count, uint8_t* plane) {
+  for (size_t i = 0; i < count; i += 8) {
+    uint8_t bits = 0;
+    for (size_t b = 0; b < 8; ++b) bits = uint8_t(bits << 1 | (mono_light(inks[i + b]) ? 1 : 0));
+    plane[i / 8] = bits;
+  }
+}
+
+uint8_t staged_code(uint8_t ink, Palette palette) {
+  // Computed with sf32rc ce0a01a encode() on uniform PALETTE fills:
+  //   fast    black 03 white 15 yellow 3F red 2F blue 22 green 31
+  //   quality black 03 white 0B yellow 3B red 27 blue 19 green 32
+  const bool fast = palette == Palette::Fast;
+  switch (ink) {
+    case InkBlack: return 0x03;
+    case InkWhite: return fast ? 0x15 : 0x0B;
+    case InkYellow: return fast ? 0x3F : 0x3B;
+    case InkRed: return fast ? 0x2F : 0x27;
+    case InkBlue: return fast ? 0x22 : 0x19;
+    case InkGreen: return fast ? 0x31 : 0x32;
+  }
+  return 0x03;  // unreachable for panel inks
+}
+
+uint8_t staged_selector(uint8_t code, bool high) { return high ? uint8_t(code >> 3) : uint8_t(code & 7); }
+
+void encode_staged(const uint8_t* inks, size_t count, Palette palette, bool high, uint8_t* out) {
+  for (size_t i = 0; i < count; i += 2) {
+    out[i / 2] = uint8_t(staged_selector(staged_code(inks[i], palette), high) << 4 |
+                         staged_selector(staged_code(inks[i + 1], palette), high));
+  }
+}
+
 }  // namespace rclab

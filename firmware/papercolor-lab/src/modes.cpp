@@ -1,0 +1,203 @@
+#include "modes.h"
+
+#include <Arduino.h>
+
+#include <cstring>
+
+#include "epd_init.h"
+#include "frame.h"
+#include "waveforms.h"
+
+namespace rclab::modes {
+namespace {
+
+const uint8_t* g_inks = nullptr;
+uint8_t* g_packed = nullptr;
+uint8_t* g_old = nullptr;
+bool g_old_valid = false;
+
+constexpr uint8_t kPsrNative[2] = {0x5F, 0x69};  // Panel_ED2208 list0
+constexpr uint8_t kPsrTickey[2] = {0x0F, 0xA9};  // sf32rc tickey_mono.c:35-42
+// sf32rc display.c:50-58 configure_trial(): TICKEY 2.1.0 volatile setup.
+constexpr uint8_t kTickeySetup[][2] = {{0x30, 0x04}, {0x41, 0x00}, {0xE0, 0x02}, {0xE6, 0x19}};
+// FreeInk Ed2208M5Driver.cpp:196-209: partial window covering the whole panel.
+constexpr uint8_t kFullWindow[] = {0x00, 0x00, 0x01, 0x8F, 0x00, 0x00, 0x02, 0x57, 0x01};
+
+#define TRY(expr)                    \
+  if (auto r_ = (expr); !r_.ok()) { \
+    return r_;                       \
+  }
+
+// --- native: Panel_ED2208::_turn_on_display ---
+
+epd::Result native(Reply& ok) {
+  encode_native_frame(g_inks, g_packed);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(epd::power_on());
+  delay(200);
+  epd::booster();
+  delay(200);
+  uint32_t busy_ms = 0;
+  TRY(epd::refresh("drive", busy_ms));
+  delay(200);
+  TRY(epd::power_off());
+  delay(200);
+  ok.field("busy_ms", long(busy_ms));
+  return {};
+}
+
+// --- interrupt: FreeInk e91e34e Ed2208M5Driver.cpp refresh()/interruptRefresh() ---
+
+epd::Result interrupt(const Knobs& knobs, Reply& ok) {
+  const uint8_t cdi = knobs.cdi;
+  epd::write(kCmdCdi, &cdi, 1);  // FreeInk init list carries CDI 0F
+  encode_native_frame(g_inks, g_packed);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(epd::power_on());
+  delay(20);  // FreeInk waitBusy BUSY_SETTLE_MS
+  epd::booster();
+  epd::write(kCmdWindow, kFullWindow, sizeof(kFullWindow));
+  epd::write(kCmdCdi, &cdi, 1);
+  uint32_t busy_ms = 0;
+  TRY(epd::refresh_cut(knobs.cut_ms, busy_ms));
+  TRY(epd::init_native());
+  ok.field("cut_ms", long(knobs.cut_ms)).hex("cdi", &cdi, 1).field("busy_ms", long(busy_ms));
+  return {};
+}
+
+// --- TICKEY LUT modes: sf32rc tickey_mono.c / tickey_color.c ---
+
+epd::Result lut(const Knobs& knobs, const uint8_t* table) {
+  return epd::upload_lut(knobs.psr_tickey ? kPsrTickey : kPsrNative, table, TICKEY_WAVEFORM_BYTES);
+}
+
+// sf32rc color_power(1): 04 + 10 ms; booster=native adds _turn_on_display's
+// 200 ms / booster / 200 ms instead.
+epd::Result power(const Knobs& knobs) {
+  TRY(epd::power_on());
+  if (knobs.booster) {
+    delay(200);
+    epd::booster();
+    delay(200);
+  } else {
+    delay(10);
+  }
+  return {};
+}
+
+void prologue(const Knobs& knobs) {
+  for (const auto& pair : kTickeySetup) {
+    if (knobs.setup_tickey) epd::write(pair[0], pair + 1, 1);
+  }
+}
+
+// Cold prepare (tickey_mono.c:88-96): clear_initial over an all-zero frame,
+// power retained afterwards.
+epd::Result cold_clear(const Knobs& knobs, uint32_t& clear_ms) {
+  TRY(lut(knobs, tickey_waveform_clear_initial));
+  memset(g_packed, 0, kNativeFrameBytes);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(power(knobs));
+  return epd::refresh("clear", clear_ms);
+}
+
+epd::Result power_down() {
+  TRY(epd::power_off());
+  delay(20);  // sf32rc color_power(0)
+  return {};
+}
+
+epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
+  const bool cold = !g_old_valid;
+  uint32_t clear_ms = 0, busy_ms = 0;
+  if (cold) TRY(cold_clear(knobs, clear_ms));
+  TRY(lut(knobs, mode == Mode::MonoClear ? tickey_waveform_mono_clear : tickey_waveform_mono));
+  encode_mono(g_inks, cold ? nullptr : g_old, kPixels, g_packed);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  if (!cold) TRY(power(knobs));  // cold path kept power on (tickey_mono.c:130-133)
+  TRY(epd::refresh("mono", busy_ms));
+  TRY(power_down());
+  mono_plane(g_inks, kPixels, g_old);
+  g_old_valid = true;
+  ok.field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
+  return {};
+}
+
+epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
+  const bool fast = mode == Mode::Fast;
+  const Palette palette = fast ? Palette::Fast : Palette::Quality;
+  uint32_t clear_ms = 0, p1_ms = 0, p2_ms = 0, final_ms = 0;
+  // Always cold: nothing here leaves sf32rc's "mono clear known" state.
+  TRY(cold_clear(knobs, clear_ms));
+  TRY(lut(knobs, fast ? tickey_waveform_color_fast_phase1 : tickey_waveform_color_quality_phase1));
+  encode_staged(g_inks, kPixels, palette, true, g_packed);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(epd::refresh("phase1", p1_ms));
+  if (!fast) {  // quality phase 2 reuses the resident high plane
+    TRY(lut(knobs, tickey_waveform_color_quality_phase2));
+    TRY(epd::refresh("phase2", p2_ms));
+  }
+  TRY(lut(knobs, fast ? tickey_waveform_color_fast_phase2 : tickey_waveform_color_quality_phase3));
+  encode_staged(g_inks, kPixels, palette, false, g_packed);
+  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(epd::refresh("final", final_ms));
+  TRY(power_down());
+  if (fast) {  // post-seed: high plane resident, no refresh (tickey_color.c:102-108)
+    encode_staged(g_inks, kPixels, palette, true, g_packed);
+    TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  }
+  ok.field("clear_ms", long(clear_ms)).field("p1_ms", long(p1_ms));
+  if (!fast) ok.field("p2_ms", long(p2_ms));
+  ok.field("final_ms", long(final_ms)).field("busy_ms", long(p1_ms + p2_ms + final_ms));
+  return {};
+}
+
+void knob_fields(const Knobs& knobs, Reply& ok) {
+  ok.field("setup", knobs.setup_tickey ? "tickey" : "native")
+      .field("psr", knobs.psr_tickey ? "0FA9" : "5F69")
+      .field("booster", knobs.booster ? "native" : "none");
+}
+
+#undef TRY
+
+}  // namespace
+
+void begin(const uint8_t* inks, uint8_t* packed, uint8_t* old_plane) {
+  g_inks = inks;
+  g_packed = packed;
+  g_old = old_plane;
+  g_old_valid = false;
+}
+
+void forget_history() { g_old_valid = false; }
+
+epd::Result run(Mode mode, const Knobs& knobs, Reply& ok) {
+  if (mode == Mode::Native) {
+    forget_history();
+    return native(ok);
+  }
+  if (mode == Mode::Interrupt) {
+    forget_history();
+    auto r = interrupt(knobs, ok);
+    if (!r.ok()) {
+      epd::hard_reset();
+      epd::init_native();
+    }
+    return r;
+  }
+  // LUT modes: start from a known controller, end native whatever happens.
+  epd::hard_reset();
+  epd::Result r = epd::init_native();
+  if (r.ok()) {
+    prologue(knobs);
+    knob_fields(knobs, ok);
+    r = (mode == Mode::Mono || mode == Mode::MonoClear) ? mono(mode, knobs, ok) : staged(mode, knobs, ok);
+    if (mode == Mode::Fast || mode == Mode::Quality) forget_history();
+  }
+  if (!r.ok()) forget_history();
+  epd::hard_reset();
+  if (auto restored = epd::init_native(); r.ok() && !restored.ok()) return restored;
+  return r;
+}
+
+}  // namespace rclab::modes
