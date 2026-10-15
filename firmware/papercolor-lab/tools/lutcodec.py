@@ -31,7 +31,16 @@ DRIVE_YELLOW = 1
 DRIVE_BLACK = 2
 DRIVE_WHITE = 8
 
-Step = tuple[int, int]  # (drive code, frames 1..255)
+# (drive code, frames 1..255) on phase t0, or (code, frames, phase) with phase 1/2 using
+# that phase's 2-bit code (raw level bits 1:0 / 7:6).
+Step = tuple[int, int] | tuple[int, int, int]
+# A repeated pair: (repeat 1..255, step A, step B) occupies one group.
+Repeat = tuple[int, Step, Step]
+Item = Step | Repeat
+
+
+def _is_repeat(item: Item) -> bool:
+    return isinstance(item[1], tuple)
 
 
 def decode(wire: int) -> int:
@@ -46,31 +55,86 @@ def encode(value: int) -> int:
     return ~inv & 0xFF
 
 
-def level(drive: int) -> int:
-    """Decoded value of a level byte driving `drive` during t0."""
-    if not 0 <= drive <= 15:
-        raise ValueError(f"drive code {drive}")
-    return decode(~(drive << 2) & 0xFF)
+RAW_SHIFT = {0: 2, 1: 0, 2: 6}  # phase -> raw inverted bit offset of its code
+CODE_MAX = {0: 15, 1: 3, 2: 3}
 
 
-def row_values(steps: list[Step]) -> list[int]:
-    """Steps -> decoded row values: two steps per group (sets A, B), phase t0 only."""
-    if len(steps) > 2 * GROUPS:
-        raise ValueError(f"{len(steps)} steps > {2 * GROUPS}")
+def level(drive: int, phase: int = 0) -> int:
+    """Decoded value of a level byte driving `drive` during phase t<phase>."""
+    if not 0 <= drive <= CODE_MAX[phase]:
+        raise ValueError(f"drive code {drive} for phase {phase}")
+    return decode(~(drive << RAW_SHIFT[phase]) & 0xFF)
+
+
+def _groups(items: list[Item]) -> list[tuple[int, Step, Step | None]]:
+    out: list[tuple[int, Step, Step | None]] = []
+    pending: list[Step] = []
+    for item in items:
+        if _is_repeat(item):
+            if pending:
+                out.append((1, pending[0], None))
+                pending = []
+            out.append(item)  # type: ignore[arg-type]
+        else:
+            pending.append(item)  # type: ignore[arg-type]
+            if len(pending) == 2:
+                out.append((1, pending[0], pending[1]))
+                pending = []
+    if pending:
+        out.append((1, pending[0], None))
+    return out
+
+
+def row_values(items: list[Item]) -> list[int]:
+    """Items -> decoded row values: each group = two steps (sets A, B) times a repeat."""
+    groups = _groups(items)
+    if len(groups) > GROUPS:
+        raise ValueError(f"{len(groups)} groups > {GROUPS}")
     values: list[int] = []
-    for i in range(0, len(steps), 2):
-        (da, na), (db, nb) = steps[i], steps[i + 1] if i + 1 < len(steps) else (DRIVE_NONE, 0)
-        if not (1 <= na <= 255 and 0 <= nb <= 255):
-            raise ValueError(f"frames out of range: {steps[i : i + 2]}")
-        values += [1, level(da), level(db), na, 0, 0, 1, nb, 0, 0, 1 if nb else 0]
+
+    def half(step: Step) -> tuple[int, list[int]]:
+        drive, n, phase = (*step, 0)[:3]
+        if not 0 <= n <= 255:
+            raise ValueError(f"frames out of range: {step}")
+        counts = [0, 0, 0]
+        counts[phase] = n
+        return level(drive, phase), counts
+
+    for repeat, a, b in groups:
+        la, ca = half(a)
+        lb, cb = half(b) if b else (level(DRIVE_NONE), [0, 0, 0])
+        if not sum(ca) or not 1 <= repeat <= 255:
+            raise ValueError(f"empty step or repeat out of range: {(repeat, a, b)}")
+        values += [repeat, la, lb, *ca, 1, *cb, 1 if sum(cb) else 0]
     return values + [0] * (ROW - len(values))
 
 
-def frames(steps: list[Step]) -> int:
-    return sum(n for _, n in steps)
+def frames(items: list[Item]) -> int:
+    total = 0
+    for item in items:
+        if _is_repeat(item):
+            repeat, a, b = item  # type: ignore[misc]
+            total += repeat * (a[1] + (b[1] if b else 0))
+        else:
+            total += item[1]  # type: ignore[index]
+    return total
 
 
-def build(rows: list[list[Step]]) -> bytes:
+def right_align(rows: list[list[Item] | None]) -> list[list[Item]]:
+    """Pad every row with leading idle frames so all rows end together on their own
+    last drive. Idle after a drive lets the state relax (black 80 + idle 40 -> L 99)."""
+    n = max(frames(r) for r in rows if r)
+    out: list[list[Item]] = []
+    for r in rows:
+        left, pad = n - frames(r or []), []
+        while left > 0:
+            pad.append((DRIVE_NONE, min(255, left)))
+            left -= min(255, left)
+        out.append(pad + list(r or []))
+    return out
+
+
+def build(rows: list[list[Item]]) -> bytes:
     """Nine step lists (row 0 = VCOM) -> 799 wire bytes. All rows must last equally long."""
     if len(rows) != ROWS:
         raise ValueError(f"need {ROWS} rows, got {len(rows)}")
