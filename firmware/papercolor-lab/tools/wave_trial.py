@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PORT = "/dev/cu.usbmodem83301"
 CAMERA = "android:3B161600Z2U00000"
 KNOBS = "setup=tickey psr=0FA9 booster=none win=1 pack=2"
+BAND_KNOBS = "setup=tickey psr=5FA9 booster=none win=1 pack=4 frame=raw"
 
 
 def item(text: str) -> lc.Step:
@@ -76,6 +77,8 @@ def main(out: str, specs: str, flow: str) -> None:
             steps += lc.lut_steps(luts[s[2:]])
         elif s.startswith("C "):
             steps.append(f"show {s[2:]} custom {KNOBS}")
+        elif s.startswith("B "):  # 4 bpp raw frame: value i -> LUT row i+1 (e.g. 'B bands')
+            steps.append(f"show {s[2:]} custom {BAND_KNOBS}")
         else:
             steps.append(s)
     proc = subprocess.run(

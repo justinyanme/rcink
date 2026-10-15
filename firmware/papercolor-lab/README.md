@@ -123,6 +123,53 @@ Native baseline (series 1, temp `1e00`–`2000`): BUSY 14387–14509 ms, total
 16128–16333 ms per drive; run-to-run ≤2 ms at a given image; chart six colours
 distinguishable; all text sizes incl. 13 pt readable.
 
+## Own waveforms (route C, from 2026-10-16)
+
+Goal (operator, 2026-10-16): our own waveforms — borrow methods, not TICKEY LUT bytes — first
+near black/white mono without ghosting or long-term darkening, then fast colour with six
+distinguishable colours, then a 48-colour attempt. Tools: `tools/lutcodec.py` (codec/builder),
+`tools/wave_trial.py` (named LUT flows + centre colour), console `lut load|set|get`, mode
+`custom` (RAM LUT), image `bands` + `frame=raw` (8 LUT rows side by side), verb `otp`.
+
+### Frame format in LUT mode (decoded)
+
+- `83 00 00 01 8F 00 00 02 57 01` window (knob `win=1`) makes the controller take one data row
+  per panel row: mono 2 bpp = 60000 B (`pack=2`), raw 4 bpp = 120000 B (`pack=4`).
+- Without the window every panel row consumes two data rows and shows the first
+  (`pack=2e` shows the image, `2o` only filler): hence `2x` worked and plain packing squeezed.
+- PSR byte 1 selects bit depth: `0F` = 2 bpp, `5F` = 4 bpp. 4 bpp LUT frames cover only the top
+  ~491 rows (controller RAM ~96 KiB): full-screen colour must use 2 bpp passes.
+
+### 799-byte LUT format (decoded by BUSY timing + photos)
+
+- Wire byte = bit-inverted value with bits permuted (`lutcodec.SRC`); 19 BUSY timings fit to
+  1-2 %. Codec reproduces TICKEY tables byte for byte.
+- 7 prefix bytes, 9 rows × 88 B. Row 0 = VCOM (global), row r = pixel code r-1.
+- Row = up to 8 groups × 11 B: `[group repeat][level A][level B][A t0 t1 t2][A repeat][B t0 t1 t2][B repeat]`;
+  a group without frames ends the row. Frame ≈ 11.7 ms with `setup=tickey` (`30 04`).
+- Level byte (raw inverted bits): 5:2 = 4-bit code during t0, 1:0 = code during t1, 7:6 during t2.
+- Measured t0 codes (80 frames from native white/black): `1` yellow, `2` black, `8`/`12` white,
+  `10` = white+black cancel, `4` none. t1: `1` weak white, `2` yellow, `3` weak white.
+  t2: `2`,`3` weak white. Pixel minus VCOM: VCOM `8` with pixel `0` = black (polarity inverted).
+- Idle after a drive lets the state relax (black 80 + idle 40 → L 99): rows are right-aligned
+  (`lutcodec.right_align`), idle first, every row ends on its own last drive.
+
+### Own mono waveform (2026-10-16)
+
+`tools/wave_trial.py` rows (code×frames): to-white `8x60,1x5,8x20,2x1,8x5` (white, 5-frame yellow
+flick, white, 1-frame black, white), to-black `2x85` (charge-balanced with the white frames),
+unchanged pixels idle. Own clear: every pixel `opposite, 0x30 rest, target`.
+
+| Measure (centre crop L, camera) | Own fast mono | Native |
+| --- | --- | --- |
+| white / black | 166–168 / 60–62 | 175 / 55 |
+| BUSY / total per update | 1.21 s / ~1.9 s | 14.4 s / 16 s |
+| 120 updates (balanced) | white 167, black 61 at 2, 40, 80, 120: no drift | — |
+| own clear (ghost removal) | 2.6 s BUSY, removes text ghost | 14.4 s |
+
+Text is black on white (TICKEY tables: navy on yellow). Evidence: `.cache/papercolor-lab/`
+`mono-own-001..003`, `long-002`, `rest-001`, `kdur-001`, `white-00x`, `drift-*` (curation pending).
+
 ## Host script `lab.py`
 
 PEP 723 typer CLI (`uv run firmware/papercolor-lab/lab.py --help`):
