@@ -18,8 +18,17 @@ enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Raw, RawRead, Trace, Hel
 enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert };
 constexpr unsigned kMaxCheckerSize = 300;
 enum class Mode : uint8_t { Native, Interrupt, Mono, MonoClear, Fast, Quality };
-// LUT-mode plane format: bits per pixel, and whether every row is sent twice.
-enum class Pack : uint8_t { Bits4, Bits2, Bits2Twice, Bits4Twice };
+// LUT-mode plane format: bits per pixel and data rows per image row.
+// Once: one data row; Twice: the row twice; Even/Odd: the row then a filler row
+// of code 0 (Even), or filler then the row (Odd).
+enum class Rows : uint8_t { Once, Twice, Even, Odd };
+struct Pack {
+  uint8_t bits = 4;  // 4 or 2
+  Rows rows = Rows::Once;
+  bool operator==(const Pack& o) const { return bits == o.bits && rows == o.rows; }
+};
+// "4" "4x" "4e" "4o" "2" "2x" "2e" "2o"; false for anything else.
+bool parse_pack(const char* text, Pack& out);
 const char* pack_name(Pack pack);
 
 constexpr unsigned kDefaultCutMs = 340;  // FreeInk e91e34e Ed2208M5Driver.cpp:29 REFRESH_CUTOFF_MS
@@ -35,7 +44,7 @@ struct Knobs {
   bool setup_tickey = false;        // LUT `setup=native|tickey`: 30 04, 41 00, E0 02, E6 19
   uint8_t psr[2] = {0x5F, 0x69};    // LUT `psr=<5F|0F><69|A9>`: PSR sent before each LUT
   bool tres_half = false;           // LUT `tres=400|200`: resolution 61 width sent after init (geometry, not power)
-  Pack pack = Pack::Bits4;          // LUT `pack=4|4x|2|2x` (2, 2x mono only): x = each row sent twice
+  Pack pack{};                      // LUT `pack=<4|2><|x|e|o>` (2-bit mono only), default 4
   bool booster = true;              // LUT `booster=native|none`: 06 6F 1F 17 27 after 04
 };
 

@@ -69,18 +69,25 @@ epd::Result lut(const Knobs& knobs, const uint8_t* table) {
   return epd::upload_lut(knobs.psr, table, TICKEY_WAVEFORM_BYTES);
 }
 
-bool twice(Pack pack) { return pack == Pack::Bits2Twice || pack == Pack::Bits4Twice; }
-size_t row_bytes(Pack pack) { return pack == Pack::Bits2 || pack == Pack::Bits2Twice ? kPanelWidth / 4 : kPanelWidth / 2; }
-size_t plane_bytes(Pack pack) { return row_bytes(pack) * kPanelHeight * (twice(pack) ? 2 : 1); }
+size_t row_bytes(Pack pack) { return kPanelWidth * pack.bits / 8; }
+size_t plane_bytes(Pack pack) { return row_bytes(pack) * kPanelHeight * (pack.rows == Rows::Once ? 1 : 2); }
 
-// g_packed holds kPanelHeight encoded rows; for the x formats repeat each row
-// in place (back to front, so no row is overwritten before it is copied), then upload.
+// g_packed holds kPanelHeight encoded rows. For two-row layouts spread them
+// in place back to front (row y lands at 2y, never before it is read), adding
+// the copy (Twice) or a code-0 filler row (Even/Odd); then upload.
 epd::Result upload_plane(Pack pack) {
-  if (twice(pack)) {
+  if (pack.rows != Rows::Once) {
     const size_t rb = row_bytes(pack);
     for (size_t y = kPanelHeight; y-- > 0;) {
-      memmove(g_packed + 2 * y * rb, g_packed + y * rb, rb);
-      memcpy(g_packed + (2 * y + 1) * rb, g_packed + 2 * y * rb, rb);
+      uint8_t* first = g_packed + 2 * y * rb;
+      uint8_t* second = first + rb;
+      memmove(first, g_packed + y * rb, rb);
+      switch (pack.rows) {
+        case Rows::Twice: memcpy(second, first, rb); break;
+        case Rows::Even: memset(second, 0, rb); break;
+        case Rows::Odd: memcpy(second, first, rb), memset(first, 0, rb); break;
+        case Rows::Once: break;
+      }
     }
   }
   return epd::upload_frame(g_packed, plane_bytes(pack));
@@ -131,7 +138,7 @@ epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
   if (cold) TRY(cold_clear(knobs, clear_ms));
   TRY(lut(knobs, mode == Mode::MonoClear ? tickey_waveform_mono_clear : tickey_waveform_mono));
   const uint8_t* old = cold ? nullptr : g_old;
-  if (knobs.pack == Pack::Bits2 || knobs.pack == Pack::Bits2Twice) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
+  if (knobs.pack.bits == 2) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
   else encode_mono(g_inks, old, kPixels, g_packed);
   TRY(upload_plane(knobs.pack));
   if (!cold) TRY(power(knobs));  // cold path kept power on (tickey_mono.c:130-133)

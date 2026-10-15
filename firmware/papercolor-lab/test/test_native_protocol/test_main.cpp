@@ -75,6 +75,11 @@ static const Row kTable[] = {
     {"show chart fast pack=2", false, Verb::Show},
     {"show chart fast pack=2x", false, Verb::Show},
     {"show chart fast pack=4x", true, Verb::Show},
+    {"show chart fast pack=4e", true, Verb::Show},
+    {"show chart fast pack=2e", false, Verb::Show},
+    {"show text mono pack=2e", true, Verb::Show},
+    {"show text mono pack=4o", true, Verb::Show},
+    {"show text mono pack=2z", false, Verb::Show},
     {"show text mono pack=4x", true, Verb::Show},
     {"show text mono pack=8", false, Verb::Show},
     {"show chart fast tres=200", true, Verb::Show},
@@ -137,7 +142,7 @@ void test_knob_defaults_and_values() {
   TEST_ASSERT_FALSE(cmd.knobs.setup_tickey);
   TEST_ASSERT_EQUAL_HEX8(0x5F, cmd.knobs.psr[0]);
   TEST_ASSERT_EQUAL_HEX8(0x69, cmd.knobs.psr[1]);
-  TEST_ASSERT_EQUAL(int(Pack::Bits4), int(cmd.knobs.pack));
+  TEST_ASSERT_TRUE((cmd.knobs.pack == Pack{4, Rows::Once}));
   TEST_ASSERT_TRUE(cmd.knobs.booster);
   TEST_ASSERT_TRUE(parse_command("show chart quality booster=none psr=0FA9 setup=tickey", cmd, why));
   TEST_ASSERT_EQUAL(int(Mode::Quality), int(cmd.mode));
@@ -148,7 +153,10 @@ void test_knob_defaults_and_values() {
   TEST_ASSERT_TRUE(parse_command("show text mono psr=5FA9 pack=2", cmd, why));
   TEST_ASSERT_EQUAL_HEX8(0x5F, cmd.knobs.psr[0]);
   TEST_ASSERT_EQUAL_HEX8(0xA9, cmd.knobs.psr[1]);
-  TEST_ASSERT_EQUAL(int(Pack::Bits2), int(cmd.knobs.pack));
+  TEST_ASSERT_TRUE((cmd.knobs.pack == Pack{2, Rows::Once}));
+  TEST_ASSERT_TRUE(parse_command("show text mono pack=2o", cmd, why));
+  TEST_ASSERT_TRUE((cmd.knobs.pack == Pack{2, Rows::Odd}));
+  TEST_ASSERT_EQUAL_STRING("2o", pack_name(cmd.knobs.pack));
   TEST_ASSERT_FALSE(parse_command("show text mono cut=340", cmd, why));
   TEST_ASSERT_EQUAL_STRING("knob", why);
 }

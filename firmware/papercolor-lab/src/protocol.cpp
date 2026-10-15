@@ -124,12 +124,8 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
   if (key_is("pack")) {
     if (!once(32)) return false;
     const bool mono = mode == Mode::Mono || mode == Mode::MonoClear;  // colour selectors need 3 bits
-    for (Pack pack : {Pack::Bits4, Pack::Bits4Twice, Pack::Bits2, Pack::Bits2Twice}) {
-      if (strcmp(value, pack_name(pack))) continue;
-      if (!mono && (pack == Pack::Bits2 || pack == Pack::Bits2Twice)) return false;
-      return knobs.pack = pack, true;
-    }
-    return false;
+    if (!parse_pack(value, knobs.pack)) return false;
+    return mono || knobs.pack.bits == 4;
   }
   if (key_is("booster")) {
     if (!once(16)) return false;
@@ -142,12 +138,23 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
 
 }  // namespace
 
+namespace {
+constexpr struct { const char* name; Pack pack; } kPacks[] = {
+    {"4", {4, Rows::Once}}, {"4x", {4, Rows::Twice}}, {"4e", {4, Rows::Even}}, {"4o", {4, Rows::Odd}},
+    {"2", {2, Rows::Once}}, {"2x", {2, Rows::Twice}}, {"2e", {2, Rows::Even}}, {"2o", {2, Rows::Odd}},
+};
+}  // namespace
+
+bool parse_pack(const char* text, Pack& out) {
+  for (const auto& entry : kPacks) {
+    if (!strcmp(text, entry.name)) return out = entry.pack, true;
+  }
+  return false;
+}
+
 const char* pack_name(Pack pack) {
-  switch (pack) {
-    case Pack::Bits4: return "4";
-    case Pack::Bits2: return "2";
-    case Pack::Bits2Twice: return "2x";
-    case Pack::Bits4Twice: return "4x";
+  for (const auto& entry : kPacks) {
+    if (entry.pack == pack) return entry.name;
   }
   return "?";
 }
