@@ -1,0 +1,13 @@
+{"t_ns": 629676465166875, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["show white native", "show text mono psr=5FA9", "photo", "show checker 40 mono psr=5FA9", "photo"], "restore": true}
+{"t_ns": 629676785993166, "clock": "host-monotonic", "event": "boot", "line": "# ready build=b311fdfa0102 mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=250"}
+{"t_ns": 629676786203291, "clock": "host-monotonic", "event": "write", "line": "show white native"}
+{"t_ns": 629692818186500, "clock": "host-monotonic", "event": "result", "line": "OK image=white mode=native busy_ms=14389 total_ms=15936", "ok": true, "fields": {"image": "white", "mode": "native", "busy_ms": "14389", "total_ms": "15936"}}
+{"t_ns": 629692818446958, "clock": "host-monotonic", "event": "write", "line": "show text mono psr=5FA9"}
+{"t_ns": 629699695978000, "clock": "host-monotonic", "event": "result", "line": "OK image=text mode=mono setup=native psr=5fa9 booster=native pack=4 cold=1 clear_ms=4966 busy_ms=275 total_ms=6789", "ok": true, "fields": {"image": "text", "mode": "mono", "setup": "native", "psr": "5fa9", "booster": "native", "pack": "4", "cold": "1", "clear_ms": "4966", "busy_ms": "275", "total_ms": "6789"}}
+{"t_ns": 629703773505708, "clock": "host-monotonic", "event": "photo", "file": "01-show-text-mono-psr5FA9.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-009/01-show-text-mono-psr5FA9.jpg"}
+{"t_ns": 629703773646125, "clock": "host-monotonic", "event": "write", "line": "show checker 40 mono psr=5FA9"}
+{"t_ns": 629705377923291, "clock": "host-monotonic", "event": "result", "line": "OK image=checker size=40 mode=mono setup=native psr=5fa9 booster=native pack=4 cold=0 clear_ms=0 busy_ms=298 total_ms=1598", "ok": true, "fields": {"image": "checker", "size": "40", "mode": "mono", "setup": "native", "psr": "5fa9", "booster": "native", "pack": "4", "cold": "0", "clear_ms": "0", "busy_ms": "298", "total_ms": "1598"}}
+{"t_ns": 629709106532750, "clock": "host-monotonic", "event": "photo", "file": "02-show-checker-40-mono-psr5FA9.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-009/02-show-checker-40-mono-psr5FA9.jpg"}
+{"t_ns": 629709106658000, "clock": "host-monotonic", "event": "write", "line": "cleanup"}
+{"t_ns": 629725073234000, "clock": "host-monotonic", "event": "result", "line": "OK mode=native busy_ms=14387 total_ms=15928", "ok": true, "fields": {"mode": "native", "busy_ms": "14387", "total_ms": "15928"}}
+{"t_ns": 629728665935750, "clock": "host-monotonic", "event": "photo", "file": "03-cleanup.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-009/03-cleanup.jpg"}

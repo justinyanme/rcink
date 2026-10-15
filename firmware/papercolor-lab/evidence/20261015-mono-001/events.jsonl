@@ -1,0 +1,17 @@
+{"t_ns": 629162230485458, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["show white native", "trace on", "show text mono", "trace off", "photo", "show checker 40 mono", "photo"], "restore": true}
+{"t_ns": 629162554940375, "clock": "host-monotonic", "event": "boot", "line": "# ready build=edd95fbd3537 mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=250"}
+{"t_ns": 629162555329291, "clock": "host-monotonic", "event": "write", "line": "show white native"}
+{"t_ns": 629178674048708, "clock": "host-monotonic", "event": "result", "line": "OK image=white mode=native busy_ms=14505 total_ms=16053", "ok": true, "fields": {"image": "white", "mode": "native", "busy_ms": "14505", "total_ms": "16053"}}
+{"t_ns": 629178674128791, "clock": "host-monotonic", "event": "write", "line": "trace on"}
+{"t_ns": 629178780771416, "clock": "host-monotonic", "event": "result", "line": "OK trace=on", "ok": true, "fields": {"trace": "on"}}
+{"t_ns": 629178780843833, "clock": "host-monotonic", "event": "write", "line": "show text mono"}
+{"t_ns": 629185536361291, "clock": "host-monotonic", "event": "result", "line": "OK image=text mode=mono setup=native psr=5F69 booster=native cold=1 clear_ms=4933 busy_ms=244 total_ms=6728", "ok": true, "fields": {"image": "text", "mode": "mono", "setup": "native", "psr": "5F69", "booster": "native", "cold": "1", "clear_ms": "4933", "busy_ms": "244", "total_ms": "6728"}}
+{"t_ns": 629185536462291, "clock": "host-monotonic", "event": "write", "line": "trace off"}
+{"t_ns": 629185645585583, "clock": "host-monotonic", "event": "result", "line": "OK trace=off", "ok": true, "fields": {"trace": "off"}}
+{"t_ns": 629189508515250, "clock": "host-monotonic", "event": "photo", "file": "01-trace-off.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-001/01-trace-off.jpg"}
+{"t_ns": 629189508665083, "clock": "host-monotonic", "event": "write", "line": "show checker 40 mono"}
+{"t_ns": 629191120433000, "clock": "host-monotonic", "event": "result", "line": "OK image=checker size=40 mode=mono setup=native psr=5F69 booster=native cold=0 clear_ms=0 busy_ms=267 total_ms=1568", "ok": true, "fields": {"image": "checker", "size": "40", "mode": "mono", "setup": "native", "psr": "5F69", "booster": "native", "cold": "0", "clear_ms": "0", "busy_ms": "267", "total_ms": "1568"}}
+{"t_ns": 629194605846375, "clock": "host-monotonic", "event": "photo", "file": "02-show-checker-40-mono.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-001/02-show-checker-40-mono.jpg"}
+{"t_ns": 629194605959250, "clock": "host-monotonic", "event": "write", "line": "cleanup"}
+{"t_ns": 629210635935208, "clock": "host-monotonic", "event": "result", "line": "OK mode=native busy_ms=14385 total_ms=15926", "ok": true, "fields": {"mode": "native", "busy_ms": "14385", "total_ms": "15926"}}
+{"t_ns": 629214343836416, "clock": "host-monotonic", "event": "photo", "file": "03-cleanup.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/mono-001/03-cleanup.jpg"}

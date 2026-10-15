@@ -86,10 +86,12 @@ The console flushes USB CDC only while the host handshake reports connected
 | --- | --- | --- | --- |
 | `native` | `10` frame, `04`, 200 ms, `06 6F1F1727`, 200 ms, `12 00`, 200 ms, `02 00`, 200 ms (Panel_ED2208 `_turn_on_display`) | — | `busy_ms` |
 | `interrupt` | `50 cdi`, `10` frame (native codes), `04`, 20 ms, `06 6F1F1727`, `83 00 00 01 8F 00 00 02 57 01`, `50 cdi`, `12 00`, BUSY assert, `cut` ms, RST low 2 ms / high 10 ms, native init (no `02`) | `cut=340` (50–5000), `cdi=0F\|3F` (0F) | `cut_ms cdi busy_ms` (assert→cut) |
-| `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=5F69\|0FA9`, `booster=native\|none` (native values) | `setup psr booster cold clear_ms busy_ms` |
+| `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=<5F\|0F><69\|A9>`, `booster=native\|none`, `pack=4\|2\|2x` (native values, pack 4) | `setup psr booster pack cold clear_ms busy_ms` |
 | `fast`, `quality` | reset+init, [setup], cold clear (always), PSR+`20` phase1, `10` high selectors, `12`; quality: PSR+`20` phase2, `12` (plane reused); PSR+`20` fast_phase2\|quality_phase3, `10` low selectors, `12`; `02`; fast: `10` high plane post-seed; reset+init | as mono | `setup psr booster clear_ms p1_ms [p2_ms] final_ms busy_ms` (= phases, without clear) |
 
-`power` = `04` + BUSY; `booster=native` adds 200 ms, `06 6F 1F 17 27`, 200 ms; `none` 10 ms (sf32rc).
+`pack`: transition code (old<<1\|new) per pixel at 4 bits (sf32rc), 2 bits (4 px/byte, 60000 B), or `2x`
+= 2 bits with each 100-byte row sent twice (120000 B) — the format this panel needs under PSR `0F xx`
+(series 3a). `power` = `04` + BUSY; `booster=native` adds 200 ms, `06 6F 1F 17 27`, 200 ms; `none` 10 ms (sf32rc).
 `setup=tickey` = `30 04`, `41 00`, `E0 02`, `E6 19` after init. `psr` = bytes sent with `00` before each LUT.
 LUT tables: unmodified sf32rc `ce0a01a` `tickey_waveforms_{mono,color}.inc` (`waveforms.h`). Mono old plane
 (1 bpp, light = white\|yellow) lives in PSRAM; invalidated by boot, `reset`, `cleanup`, any native/interrupt/
@@ -197,6 +199,63 @@ dark is navy, not black. **This mode is the same-panel reference, not a product 
 an unbalanced, cut waveform (FreeInk reports long-term darkening). The 10-13 port's "almost unreadable"
 result (prior-trial-interrupted-001) is not a property of the method; candidates for the difference: the
 `83` full window, 400 ms of power-on delays, CDI handling, and the dashboard history.
+
+### Series 3a — TICKEY mono port audit (#21)
+
+Each Trial: `show white native`, cold `show text mono…`, photo, warm `show checker 40 mono…`, photo, cleanup.
+Times: cold clear / mono BUSY / total; warm BUSY / total (total includes the reset + native init around
+every LUT drive).
+
+| Trial | Variable | Times (ms) | Result |
+| --- | --- | --- | --- |
+| [mono-001](evidence/20261015-mono-001/observations.md) | baseline (native knobs) | 4933/244/6728; 267/1568 | squeezed to top half, pinkish |
+| [mono-002](evidence/20261015-mono-002/observations.md) | `setup=tickey` | 1915/94/3507; 117/1367 | same geometry; 2.6× faster frames |
+| [mono-003](evidence/20261015-mono-003/observations.md) | `psr=0FA9` | 4966/275/6789; 298/1599 | 2× horizontal stretch, striped columns |
+| [mono-004](evidence/20261015-mono-004/observations.md) | `booster=none` | 4935/244/6337; 267/1178 | identical to 001 |
+| [mono-005](evidence/20261015-mono-005/observations.md) | sf32rc set (setup+psr, no booster) | 1927/106/3140; 129/988 | stretched + striped, pale |
+| [mono-006](evidence/20261015-mono-006/observations.md) | 10-13 port set (setup+psr+booster) | 1927/106/3530; 129/1378 | as 005: the 10-13 "dark" class |
+| [mono-007](evidence/20261015-mono-007/observations.md) | `pack=2` (vs 005) | 1927/106/3002; 129/850 | stripes gone; image in top half, 40×20 squares |
+| [mono-008](evidence/20261015-mono-008/observations.md) | `psr=0F69` | 4936/244/6728; 267/1567 | stretched + striped: PSR byte 1 sets format |
+| [mono-009](evidence/20261015-mono-009/observations.md) | `psr=5FA9` | 4966/275/6789; 298/1598 | squeezed, but navy on yellow: byte 2 = contrast |
+| [mono-010](evidence/20261015-mono-010/observations.md) | `pack=2x` (vs 007) | 1927/106/3126; 129/974 | **correct geometry**, readable; warm ghost |
+| [mono-011](evidence/20261015-mono-011/observations.md) | `booster=native` (vs 010) | 1927/106/3516; 129/1364 | same as 010 |
+| [mono-012](evidence/20261015-mono-012/observations.md) | `setup=native` (vs 010) | 4967/275/6386; 298/1194 | darker, slower; warm ghost |
+| [mono-013](evidence/20261015-mono-013/observations.md) | `monoclear` (vs 010) | 1927/294/3314; 317/1162 | **crisp navy on yellow, no warm ghost** |
+| [mono-014](evidence/20261015-mono-014/observations.md) | 013 + 10 × invert | warm 317/1166–1169 each | **pass**: clean after 1/5/10; Cleanup recovers |
+| [mono-015](evidence/20261015-mono-015/observations.md) | `trace on`, cold + warm | 294/3315; 316/1172 | transcript below |
+
+**Verdict per hypothesis** (the 10-13 "dark output"):
+
+| Hypothesis | Verdict | Decided by |
+| --- | --- | --- |
+| Pixel packing / plane format | **Confirmed cause.** Under PSR `0F xx` the controller reads 2 bits per pixel and two data rows per panel row; sf32rc's 4-bit JD7601 packing gives stretched, striped, pale output | 003, 007, 008, 010 |
+| PSR bytes | Byte 1 (`5F`→`0F`) switches the frame format (needed for the LUT path's geometry with `pack=2x`); byte 2 (`69`→`A9`) raises contrast | 003, 008, 009 |
+| Booster sequence | Ruled out (no visible change, +390 ms) | 004, 011 |
+| Volatile setup (`30 04, 41 00, E0 02, E6 19`) | Not the cause; sets frame timing (clear 4.9→1.9 s, mono 275→106 ms) and darkness | 002, 012 |
+| Command order | Ruled out: LUT→frame→`04`→`12`→`02` as sf32rc; correct output once packing fixed | 010, 015 |
+| Old/new plane preparation | Ruled out: cold all-zero history and warm old plane both give correct transitions (014 clean after 10 inversions); `mono` (vs `monoclear`) LUT ghosts on warm updates — a LUT property | 010, 013, 014 |
+| Why 2 rows per panel row | **Open.** Matches a dual-gate / 800-source controller layout; `2x` is an empirical format. Next Trial: send alternate rows (row y, then a white row) to see which copy the panel shows | — |
+
+**Fast mono status**: `monoclear setup=tickey psr=0FA9 pack=2x booster=none` meets the Fast mono thresholds
+(warm BUSY 317 ms, 1.17 s total incl. reset/init; 16 px readable incl. 13 pt; 10 updates then Cleanup fully
+recovers). Light is yellow and dark navy, not white/black (as sf32rc's JD7601 "dark-on-yellow").
+
+`trace on` transcript (mono-015, cold `monoclear`) vs sf32rc `tickey_mono.c` cold path:
+
+| Lab | sf32rc | Difference |
+| --- | --- | --- |
+| RST 1/2/10 ms, native list (`AA…`, `00 5F 69`, booster `06…17`, `30 08`, `50 3F`, `61 01 90 02 58`) | RST 20/20 ms + idle, `E9 01` | JD7601 vs ED2208 init: kept native |
+| `30 04`, `41 00`, `E0 02`, `E6 19` | same | — |
+| `00 0F A9`, `20` ×799 clear_initial | same | — |
+| `10` ×120000 zeros | `10` ×28800 zeros | panel size |
+| `04` (+10 ms) | `04` (+10 ms) | — |
+| `12 00` | `12 00` | — |
+| `00 0F A9`, `20` ×799 mono_clear | same | — |
+| `10` ×120000 transition, **2 bpp, rows twice** | `10` ×28800, 4 bpp | **packing (the cause)** |
+| `12 00`, `02 00` | `12 00`, `02 00` | — |
+| reset + native list | `07 A5` deep sleep | Lab restores native state |
+
+Warm: `30…E6` setup, `00 0F A9`, `20`, `10`, `04`, `12 00`, `02 00` — same order as sf32rc.
 
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 
