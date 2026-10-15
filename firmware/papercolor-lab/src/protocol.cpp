@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 namespace rclab {
 namespace {
@@ -115,11 +116,13 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     return true;
   }
   if (key_is("pack")) {
-    if (mode != Mode::Mono && mode != Mode::MonoClear) return false;  // colour selectors need 3 bits
     if (!once(32)) return false;
-    if (!strcmp(value, "4")) return knobs.pack = 4, true;
-    if (!strcmp(value, "2")) return knobs.pack = 2, true;
-    if (!strcmp(value, "2x")) return knobs.pack = 0x22, true;
+    const bool mono = mode == Mode::Mono || mode == Mode::MonoClear;  // colour selectors need 3 bits
+    for (Pack pack : {Pack::Bits4, Pack::Bits4Twice, Pack::Bits2, Pack::Bits2Twice}) {
+      if (strcmp(value, pack_name(pack))) continue;
+      if (!mono && (pack == Pack::Bits2 || pack == Pack::Bits2Twice)) return false;
+      return knobs.pack = pack, true;
+    }
     return false;
   }
   if (key_is("booster")) {
@@ -132,6 +135,16 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
 }
 
 }  // namespace
+
+const char* pack_name(Pack pack) {
+  switch (pack) {
+    case Pack::Bits4: return "4";
+    case Pack::Bits2: return "2";
+    case Pack::Bits2Twice: return "2x";
+    case Pack::Bits4Twice: return "4x";
+  }
+  return "?";
+}
 
 bool is_lut_mode(Mode mode) {
   return mode == Mode::Mono || mode == Mode::MonoClear || mode == Mode::Fast || mode == Mode::Quality;

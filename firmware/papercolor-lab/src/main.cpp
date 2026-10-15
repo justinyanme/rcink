@@ -27,7 +27,7 @@ constexpr size_t kTemperatureBytes = 2;
 
 uint8_t* g_inks = nullptr;    // kPixels ink codes (PSRAM): the current image
 bool g_have_image = false;    // g_inks holds a rendered image (any show since boot)
-uint8_t* g_packed = nullptr;  // kNativeFrameBytes (PSRAM)
+uint8_t* g_packed = nullptr;  // modes::kPackedBytes (PSRAM)
 uint8_t* g_old = nullptr;     // kMonoPlaneBytes mono history (PSRAM), owned by modes
 char g_line[kMaxLine + 1];
 size_t g_line_len = 0;
@@ -140,7 +140,7 @@ void dispatch(const char* line) {
                        .field("images", "white,black,chart,text,checker:N,invert")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality")
                        .field("interrupt", "cut=50..5000,cdi=0F|3F")
-                       .field("lut", "setup=native|tickey,psr=5F|0F+69|A9,booster=native|none,pack=4|2|2x"));
+                       .field("lut", "setup=native|tickey,psr=5F|0F+69|A9,booster=native|none,pack=4|4x|2|2x"));
   }
 }
 
@@ -159,7 +159,7 @@ void setup() {
     fatal("panel absent: register 0x70 = %02x%02x%02x%02x", rev[0], rev[1], rev[2], rev[3]);
   }
   g_inks = static_cast<uint8_t*>(ps_malloc(kPixels));
-  g_packed = static_cast<uint8_t*>(ps_malloc(kNativeFrameBytes));
+  g_packed = static_cast<uint8_t*>(ps_malloc(modes::kPackedBytes));
   g_old = static_cast<uint8_t*>(ps_malloc(kMonoPlaneBytes));
   if (!g_inks || !g_packed || !g_old) fatal("psram alloc failed");
   modes::begin(g_inks, g_packed, g_old);

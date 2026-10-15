@@ -7,11 +7,15 @@
 #include <cstdint>
 
 #include "epd.h"
+#include "frame.h"
 #include "protocol.h"
 
 namespace rclab::modes {
 
-// PSRAM buffers owned by main: kPixels inks, kNativeFrameBytes packed plane,
+// Largest plane: 4 bpp with every row sent twice (pack=4x).
+constexpr size_t kPackedBytes = 2 * kNativeFrameBytes;
+
+// PSRAM buffers owned by main: kPixels inks, kPackedBytes packed plane,
 // kMonoPlaneBytes mono history.
 void begin(const uint8_t* inks, uint8_t* packed, uint8_t* old_plane);
 

@@ -69,6 +69,23 @@ epd::Result lut(const Knobs& knobs, const uint8_t* table) {
   return epd::upload_lut(knobs.psr, table, TICKEY_WAVEFORM_BYTES);
 }
 
+bool twice(Pack pack) { return pack == Pack::Bits2Twice || pack == Pack::Bits4Twice; }
+size_t row_bytes(Pack pack) { return pack == Pack::Bits2 || pack == Pack::Bits2Twice ? kPanelWidth / 4 : kPanelWidth / 2; }
+size_t plane_bytes(Pack pack) { return row_bytes(pack) * kPanelHeight * (twice(pack) ? 2 : 1); }
+
+// g_packed holds kPanelHeight encoded rows; for the x formats repeat each row
+// in place (back to front, so no row is overwritten before it is copied), then upload.
+epd::Result upload_plane(Pack pack) {
+  if (twice(pack)) {
+    const size_t rb = row_bytes(pack);
+    for (size_t y = kPanelHeight; y-- > 0;) {
+      memmove(g_packed + 2 * y * rb, g_packed + y * rb, rb);
+      memcpy(g_packed + (2 * y + 1) * rb, g_packed + 2 * y * rb, rb);
+    }
+  }
+  return epd::upload_frame(g_packed, plane_bytes(pack));
+}
+
 // sf32rc color_power(1): 04 + 10 ms; booster=native adds _turn_on_display's
 // 200 ms / booster / 200 ms instead.
 epd::Result power(const Knobs& knobs) {
@@ -93,8 +110,8 @@ void prologue(const Knobs& knobs) {
 // power retained afterwards.
 epd::Result cold_clear(const Knobs& knobs, uint32_t& clear_ms) {
   TRY(lut(knobs, tickey_waveform_clear_initial));
-  memset(g_packed, 0, kNativeFrameBytes);
-  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  memset(g_packed, 0, plane_bytes(knobs.pack));
+  TRY(epd::upload_frame(g_packed, plane_bytes(knobs.pack)));
   TRY(power(knobs));
   return epd::refresh("clear", clear_ms);
 }
@@ -111,28 +128,14 @@ epd::Result mono(Mode mode, const Knobs& knobs, Reply& ok) {
   if (cold) TRY(cold_clear(knobs, clear_ms));
   TRY(lut(knobs, mode == Mode::MonoClear ? tickey_waveform_mono_clear : tickey_waveform_mono));
   const uint8_t* old = cold ? nullptr : g_old;
-  size_t bytes = kNativeFrameBytes;
-  if (knobs.pack == 4) {
-    encode_mono(g_inks, old, kPixels, g_packed);
-  } else if (knobs.pack == 2) {
-    encode_mono_2bpp(g_inks, old, kPixels, g_packed);
-    bytes = kPixels / 4;
-  } else {  // 2x: 100-byte rows, each sent twice
-    constexpr size_t row = kPanelWidth / 4;
-    for (unsigned y = 0; y < kPanelHeight; ++y) {
-      const size_t px = size_t(y) * kPanelWidth;
-      uint8_t* out = g_packed + 2 * row * y;
-      encode_mono_2bpp(g_inks + px, old ? old + px / 8 : nullptr, kPanelWidth, out);
-      memcpy(out + row, out, row);
-    }
-  }
-  TRY(epd::upload_frame(g_packed, bytes));
+  if (knobs.pack == Pack::Bits2 || knobs.pack == Pack::Bits2Twice) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
+  else encode_mono(g_inks, old, kPixels, g_packed);
+  TRY(upload_plane(knobs.pack));
   if (!cold) TRY(power(knobs));  // cold path kept power on (tickey_mono.c:130-133)
   TRY(epd::refresh("mono", busy_ms));
   TRY(power_down());
   mono_plane(g_inks, kPixels, g_old);
   g_old_valid = true;
-  ok.field("pack", knobs.pack == 0x22 ? "2x" : knobs.pack == 2 ? "2" : "4");
   ok.field("cold", long(cold)).field("clear_ms", long(clear_ms)).field("busy_ms", long(busy_ms));
   return {};
 }
@@ -145,7 +148,7 @@ epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
   TRY(cold_clear(knobs, clear_ms));
   TRY(lut(knobs, fast ? tickey_waveform_color_fast_phase1 : tickey_waveform_color_quality_phase1));
   encode_staged(g_inks, kPixels, palette, true, g_packed);
-  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(upload_plane(knobs.pack));
   TRY(epd::refresh("phase1", p1_ms));
   if (!fast) {  // quality phase 2 reuses the resident high plane
     TRY(lut(knobs, tickey_waveform_color_quality_phase2));
@@ -153,12 +156,12 @@ epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
   }
   TRY(lut(knobs, fast ? tickey_waveform_color_fast_phase2 : tickey_waveform_color_quality_phase3));
   encode_staged(g_inks, kPixels, palette, false, g_packed);
-  TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+  TRY(upload_plane(knobs.pack));
   TRY(epd::refresh("final", final_ms));
   TRY(power_down());
   if (fast) {  // post-seed: high plane resident, no refresh (tickey_color.c:102-108)
     encode_staged(g_inks, kPixels, palette, true, g_packed);
-    TRY(epd::upload_frame(g_packed, kNativeFrameBytes));
+    TRY(upload_plane(knobs.pack));
   }
   ok.field("clear_ms", long(clear_ms)).field("p1_ms", long(p1_ms));
   if (!fast) ok.field("p2_ms", long(p2_ms));
@@ -169,7 +172,8 @@ epd::Result staged(Mode mode, const Knobs& knobs, Reply& ok) {
 void knob_fields(const Knobs& knobs, Reply& ok) {
   ok.field("setup", knobs.setup_tickey ? "tickey" : "native")
       .hex("psr", knobs.psr, 2)
-      .field("booster", knobs.booster ? "native" : "none");
+      .field("booster", knobs.booster ? "native" : "none")
+      .field("pack", pack_name(knobs.pack));
 }
 
 #undef TRY

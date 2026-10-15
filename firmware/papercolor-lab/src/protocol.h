@@ -18,6 +18,9 @@ enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Raw, RawRead, Trace, Hel
 enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert };
 constexpr unsigned kMaxCheckerSize = 300;
 enum class Mode : uint8_t { Native, Interrupt, Mono, MonoClear, Fast, Quality };
+// LUT-mode plane format: bits per pixel, and whether every row is sent twice.
+enum class Pack : uint8_t { Bits4, Bits2, Bits2Twice, Bits4Twice };
+const char* pack_name(Pack pack);
 
 constexpr unsigned kDefaultCutMs = 340;  // FreeInk e91e34e Ed2208M5Driver.cpp:29 REFRESH_CUTOFF_MS
 constexpr unsigned kMinCutMs = 50;
@@ -31,7 +34,7 @@ struct Knobs {
   uint8_t cdi = 0x0F;               // interrupt `cdi=0F|3F`: 50 <cdi> (FreeInk 0F, native 3F)
   bool setup_tickey = false;        // LUT `setup=native|tickey`: 30 04, 41 00, E0 02, E6 19
   uint8_t psr[2] = {0x5F, 0x69};    // LUT `psr=<5F|0F><69|A9>`: PSR sent before each LUT
-  uint8_t pack = 4;                 // mono `pack=4|2|2x`: 4 or 2 bits per code; 2x = 2 bits, each row sent twice (stored 0x22)
+  Pack pack = Pack::Bits4;          // LUT `pack=4|4x|2|2x` (2, 2x mono only): x = each row sent twice
   bool booster = true;              // LUT `booster=native|none`: 06 6F 1F 17 27 after 04
 };
 
