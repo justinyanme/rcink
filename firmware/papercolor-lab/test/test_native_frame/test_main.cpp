@@ -39,10 +39,36 @@ void test_native_frame_size_and_full_fields() {
   TEST_ASSERT_EQUAL_HEX8(0x00, out[kNativeFrameBytes / 2]);
 }
 
+void test_mapped_two_and_four_bits() {
+  // map: black->1, white->0, yellow->3, red->2; hand-packed bytes.
+  const uint8_t map[8] = {1, 0, 3, 2, 0, 0, 0, 0};
+  const uint8_t inks[] = {InkBlack, InkWhite, InkYellow, InkRed};
+  uint8_t out[2] = {0xEE, 0xEE};
+  encode_mapped(inks, map, 4, 2, out);  // 01 00 11 10
+  TEST_ASSERT_EQUAL_HEX8(0x4E, out[0]);
+  encode_mapped(inks, map, 4, 4, out);
+  const uint8_t expected[] = {0x10, 0x32};
+  TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, 2);
+}
+
+void test_digit_selects_base4_digit() {
+  // values 0x1B (digits 3,2,1,0 high..low = 0,1,2,3), 0x3F, 0x00, 0x24; hand-packed.
+  const uint8_t v[] = {0x1B, 0x3F, 0x00, 0x24};
+  uint8_t out = 0;
+  encode_digit(v, 0, 4, &out);  // 3 3 0 0
+  TEST_ASSERT_EQUAL_HEX8(0xF0, out);
+  encode_digit(v, 1, 4, &out);  // 2 3 0 1
+  TEST_ASSERT_EQUAL_HEX8(0xB1, out);
+  encode_digit(v, 2, 4, &out);  // 1 3 0 2
+  TEST_ASSERT_EQUAL_HEX8(0x72, out);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_native_row_four_pixels);
   RUN_TEST(test_native_row_yellow_blue_order);
   RUN_TEST(test_native_frame_size_and_full_fields);
+  RUN_TEST(test_mapped_two_and_four_bits);
+  RUN_TEST(test_digit_selects_base4_digit);
   return UNITY_END();
 }

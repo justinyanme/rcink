@@ -54,7 +54,8 @@ bool parse_uint(const char* tok, unsigned lo, unsigned hi, unsigned& out) {
 constexpr struct { const char* name; Image image; } kImages[] = {
     {"white", Image::White}, {"black", Image::Black},     {"chart", Image::Chart},
     {"text", Image::Text},   {"checker", Image::Checker}, {"invert", Image::Invert},
-    {"bands", Image::Bands},
+    {"bands", Image::Bands}, {"yellow", Image::Yellow}, {"red", Image::Red},  {"blue", Image::Blue},
+    {"green", Image::Green}, {"grid", Image::Grid},
 };
 
 bool parse_image(const char* tok, Image& out) {
@@ -129,11 +130,19 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     if (!strcmp(value, "1")) return knobs.window = true, true;
     return false;
   }
-  if (key_is("frame")) {
-    if (mode != Mode::Custom || !once(256)) return false;
-    if (!strcmp(value, "transition")) return knobs.frame_raw = false, true;
-    if (!strcmp(value, "raw")) return knobs.frame_raw = true, true;
-    return false;
+  if (key_is("map")) {
+    if (mode != Mode::Custom || !once(256) || strlen(value) != 8) return false;
+    for (size_t i = 0; i < 8; ++i) {
+      const char c = value[i];
+      if (c >= '0' && c <= '9') knobs.map[i] = uint8_t(c - '0');
+      else if (c >= 'A' && c <= 'F') knobs.map[i] = uint8_t(c - 'A' + 10);
+      else return false;
+    }
+    return knobs.mapped = true;
+  }
+  if (key_is("digit")) {
+    if (mode != Mode::Custom || !once(512) || strlen(value) != 1 || value[0] < '0' || value[0] > '2') return false;
+    return knobs.digit = int8_t(value[0] - '0'), true;
   }
   if (key_is("pack")) {
     if (!once(32)) return false;
@@ -216,6 +225,12 @@ bool parse_command(const char* line, Command& out, const char*& why) {
     for (; i < n; ++i) {
       if (!parse_knob(tok[i], out.mode, out.knobs, seen)) { why = "knob"; return false; }
     }
+    if (out.knobs.mapped) {  // every mapped value must fit the pack's pixel bits
+      for (uint8_t v : out.knobs.map) {
+        if (v >> out.knobs.pack.bits) { why = "map"; return false; }
+      }
+    }
+    if (out.knobs.digit >= 0 && (out.knobs.mapped || out.knobs.pack.bits != 2)) { why = "digit"; return false; }
     return true;
   }
   if (!strcmp(verb, "lut")) {

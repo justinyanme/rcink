@@ -169,7 +169,8 @@ epd::Result custom(const Knobs& knobs, Reply& ok) {
   uint32_t busy_ms = 0;
   TRY(lut(knobs, g_lut));
   const uint8_t* old = g_old_valid ? g_old : nullptr;
-  if (knobs.frame_raw) encode_native_frame(g_inks, g_packed);  // nibble = value = LUT row - 1
+  if (knobs.mapped) encode_mapped(g_inks, knobs.map, kPixels, knobs.pack.bits, g_packed);
+  else if (knobs.digit >= 0) encode_digit(g_inks, unsigned(knobs.digit), kPixels, g_packed);
   else if (knobs.pack.bits == 2) encode_mono_2bpp(g_inks, old, kPixels, g_packed);
   else encode_mono(g_inks, old, kPixels, g_packed);
   TRY(upload_plane(knobs.pack));

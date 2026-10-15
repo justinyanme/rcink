@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PORT = "/dev/cu.usbmodem83301"
 CAMERA = "android:3B161600Z2U00000"
 KNOBS = "setup=tickey psr=0FA9 booster=none win=1 pack=2"
-BAND_KNOBS = "setup=tickey psr=5FA9 booster=none win=1 pack=4 frame=raw"
+BAND_KNOBS = "setup=tickey psr=5FA9 booster=none win=1 pack=4 map=01234567"
 
 
 def item(text: str) -> lc.Step:

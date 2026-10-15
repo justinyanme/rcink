@@ -129,7 +129,8 @@ Goal (operator, 2026-10-16): our own waveforms — borrow methods, not TICKEY LU
 near black/white mono without ghosting or long-term darkening, then fast colour with six
 distinguishable colours, then a 48-colour attempt. Tools: `tools/lutcodec.py` (codec/builder),
 `tools/wave_trial.py` (named LUT flows + centre colour), console `lut load|set|get`, mode
-`custom` (RAM LUT), image `bands` + `frame=raw` (8 LUT rows side by side), verb `otp`.
+`custom` (RAM LUT), image `bands` + `map=01234567` (8 LUT rows side by side; `map` = per-ink LUT row, 2 or 4 bpp), image `grid` + `digit=0|1|2`
+(8×8 patches, value 0..63; pass N uses base-4 digit N, pack 2), fills `yellow red blue green`, verb `otp`.
 
 ### Frame format in LUT mode (decoded)
 
@@ -169,6 +170,41 @@ unchanged pixels idle. Own clear: every pixel `opposite, 0x30 rest, target`.
 
 Text is black on white (TICKEY tables: navy on yellow). Evidence: `.cache/papercolor-lab/`
 `mono-own-001..003`, `long-002`, `rest-001`, `kdur-001`, `white-00x`, `drift-*` (curation pending).
+
+### Own six-colour waveform (2026-10-16)
+
+`tools/own_color.py OUT IMAGE`: two 2 bpp `custom` passes, `map=` picks each ink's LUT row.
+Method borrowed from TICKEY quality phase 2 (structure only): repeated short AC pairs.
+
+| Ink | Train (`N x [code:frames, code:frames]`, t0 codes) | Pass |
+| --- | --- | --- |
+| white | shake `4x[8:6,2:10]` + white tail `8x60,1x5,8x20,2x1,8x5` | 1 |
+| blue | `12x[1:10,2:6]` (ends on black ≥4 frames) | 1 |
+| yellow | shake + `4x[1:10,9:4]` | 1 |
+| black | `8x[8:6,2:10]` | 1 and 2 |
+| green | `8x[1:10,2:1]` (ends on 1-frame black) | 2 |
+| red | `8x[2:10,9:5]` (black-heavy duty) | 2 |
+
+Learnings (bands + chart, camera ΔE76 to native inks):
+- Yellow/black trains: the last pulse decides — ends on yellow → yellow; ends on black 1 frame →
+  green, 2 → teal, 4–6 → blue. Black/code-9 trains end on 9 → red. 4–8 cycles suffice.
+- Trains reset by themselves: no black prep needed; a long prep in the same row made red pink.
+- Multi-bit t0 codes (9, 11, 13) are load-dependent: code 11 gives red only while other pixels
+  drive code 8 in the same frames, black otherwise (also when the code-8 LUT row has no pixels).
+  Single-bit codes 1/2/8 are stable. `booster`, PSR byte 1 and VCOM codes 4/12 do not change this.
+- Idle pixels are not frozen: during pass 2 idle black drifted maroon and idle red paled. Fix:
+  red in pass 2, black re-driven in pass 2; code 4 as "hold" does not help.
+- `2x85` black keeps colour history (red/blue ghosts); the `8:6/2:10` shake erases it.
+
+| Measure | Own (color-own-002) | Native |
+| --- | --- | --- |
+| chart ΔE K / W / Y / R / B / G | 11 / 9 / 6 / 11 / 6 / 15 | 0 |
+| min pairwise ΔE of the six | > 20 | 31 |
+| BUSY / total per image | 3.8 s / ~5.4 s | 14.4 s / 16 s |
+
+Full-screen fills (color-own-001) give ΔE 9–17, so the result does not depend on image content.
+Residual: after a very different image the blue keeps a faint ghost (ΔE ~3–5) and white is faintly
+tinted; longer shakes made white yellower without curing it. Evidence: `evidence/20261016-color-own-001`, `-002`.
 
 ## Host script `lab.py`
 

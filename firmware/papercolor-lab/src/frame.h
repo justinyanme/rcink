@@ -38,6 +38,14 @@ void encode_mono_2bpp(const uint8_t* inks, const uint8_t* old_plane, size_t coun
 // The light plane of `inks` (the next drive's old plane); writes count/8 bytes.
 void mono_plane(const uint8_t* inks, size_t count, uint8_t* plane);
 
+// Own LUT frames: pixel value map[ink & 7] (LUT row - 1) at `bits` 4 (two
+// pixels per byte, left high) or 2 (four per byte, first in bits 7:6).
+void encode_mapped(const uint8_t* inks, const uint8_t map[8], size_t count, unsigned bits, uint8_t* out);
+
+// Staged own colour: 2 bpp value = (pixel >> 2*digit) & 3, four pixels per
+// byte, first in bits 7:6. Three digits address 64 classes over three passes.
+void encode_digit(const uint8_t* inks, unsigned digit, size_t count, uint8_t* out);
+
 // --- TICKEY staged colour (sf32rc v2/src/tickey_color.c) ---
 enum class Palette : uint8_t { Fast, Quality };
 

@@ -44,6 +44,23 @@ void mono_plane(const uint8_t* inks, size_t count, uint8_t* plane) {
   }
 }
 
+void encode_mapped(const uint8_t* inks, const uint8_t map[8], size_t count, unsigned bits, uint8_t* out) {
+  const size_t per_byte = 8 / bits;
+  for (size_t i = 0; i < count; i += per_byte) {
+    uint8_t byte = 0;
+    for (size_t k = 0; k < per_byte; ++k) byte = uint8_t(byte << bits | map[inks[i + k] & 7]);
+    out[i / per_byte] = byte;
+  }
+}
+
+void encode_digit(const uint8_t* inks, unsigned digit, size_t count, uint8_t* out) {
+  for (size_t i = 0; i < count; i += 4) {
+    uint8_t byte = 0;
+    for (size_t k = 0; k < 4; ++k) byte = uint8_t(byte << 2 | ((inks[i + k] >> (2 * digit)) & 3));
+    out[i / 4] = byte;
+  }
+}
+
 uint8_t staged_code(uint8_t ink, Palette palette) {
   // Computed with sf32rc ce0a01a encode() on uniform PALETTE fills:
   //   fast    black 03 white 15 yellow 3F red 2F blue 22 green 31

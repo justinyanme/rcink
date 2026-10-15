@@ -107,10 +107,15 @@ bool render(const Command& cmd) {
   switch (cmd.image) {
     case Image::White: render_fill(g_inks, InkWhite); break;
     case Image::Black: render_fill(g_inks, InkBlack); break;
+    case Image::Yellow: render_fill(g_inks, InkYellow); break;
+    case Image::Red: render_fill(g_inks, InkRed); break;
+    case Image::Blue: render_fill(g_inks, InkBlue); break;
+    case Image::Green: render_fill(g_inks, InkGreen); break;
     case Image::Chart: render_chart(g_inks); break;
     case Image::Text: render_text(g_inks); break;
     case Image::Checker: render_checker(g_inks, cmd.checker); break;
     case Image::Bands: render_bands(g_inks); break;
+    case Image::Grid: render_grid(g_inks); break;
     case Image::Invert:
       if (!g_have_image) return false;
       invert(g_inks, kPixels);

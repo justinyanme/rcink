@@ -130,6 +130,12 @@ void render_bands(uint8_t* inks) {
   for (unsigned y = 0; y < kPanelHeight; ++y) memset(inks + size_t(y) * kPanelWidth, int(y / kBand), kPanelWidth);
 }
 
+void render_grid(uint8_t* inks) {
+  for (unsigned y = 0; y < kPanelHeight; ++y) {
+    for (unsigned x = 0; x < kPanelWidth; ++x) inks[size_t(y) * kPanelWidth + x] = uint8_t((y / 75) * 8 + x / 50);
+  }
+}
+
 void invert(uint8_t* inks, size_t count) {
   for (size_t i = 0; i < count; ++i) {
     if (inks[i] == InkBlack) inks[i] = InkWhite;

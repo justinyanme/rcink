@@ -23,8 +23,11 @@ void render_checker(uint8_t* inks, unsigned size);
 // wrapped at the 8 px margins; then one 16 pt line white on a black band.
 void render_text(uint8_t* inks);
 // Eight full-width bands of 75 px; band i holds value i (0..7). Values 4 and 7
-// are not panel inks: for custom frame=raw, where the value selects LUT row i+1.
+// are not panel inks: for custom map=01234567, where the value selects LUT row i+1.
 void render_bands(uint8_t* inks);
+// 8 x 8 patches of 50 x 75 px; patch (row r, column c) holds value 8r + c
+// (0..63, not panel inks): custom digit=0|1|2 selects its LUT row per pass.
+void render_grid(uint8_t* inks);
 // Black <-> white; chromatic inks unchanged.
 void invert(uint8_t* inks, size_t count);
 
