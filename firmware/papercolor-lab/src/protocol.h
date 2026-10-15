@@ -15,12 +15,14 @@ constexpr size_t kMaxRawBytes = 64;   // raw: command byte + data
 constexpr size_t kMaxReadBytes = 32;  // rawread: bytes returned
 
 enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Raw, RawRead, Trace, Help };
-enum class Image : uint8_t { White, Black };
+enum class Image : uint8_t { White, Black, Chart, Text, Checker, Invert };
+constexpr unsigned kMaxCheckerSize = 300;
 enum class Mode : uint8_t { Native };
 
 struct Command {
   Verb verb{};
   Image image{};                 // show
+  unsigned checker{};            // show checker N: square size, 1..kMaxCheckerSize
   Mode mode{};                   // show
   uint8_t bytes[kMaxRawBytes]{}; // raw: bytes[0] is the command
   size_t count{};                // raw: bytes used

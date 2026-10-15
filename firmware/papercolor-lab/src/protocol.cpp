@@ -37,16 +37,29 @@ bool parse_hex2(const char* tok, uint8_t& out) {
   return true;
 }
 
-bool parse_count(const char* tok, size_t& out) {
-  if (!*tok || strlen(tok) > 2) return false;
-  size_t value = 0;
+// Decimal, no sign or leading zero, within [lo, hi].
+bool parse_uint(const char* tok, unsigned lo, unsigned hi, unsigned& out) {
+  if (!*tok || strlen(tok) > 5 || (tok[0] == '0' && tok[1])) return false;
+  unsigned value = 0;
   for (const char* p = tok; *p; ++p) {
     if (*p < '0' || *p > '9') return false;
-    value = value * 10 + size_t(*p - '0');
+    value = value * 10 + unsigned(*p - '0');
   }
-  if (value < 1 || value > kMaxReadBytes) return false;
+  if (value < lo || value > hi) return false;
   out = value;
   return true;
+}
+
+constexpr struct { const char* name; Image image; } kImages[] = {
+    {"white", Image::White}, {"black", Image::Black},     {"chart", Image::Chart},
+    {"text", Image::Text},   {"checker", Image::Checker}, {"invert", Image::Invert},
+};
+
+bool parse_image(const char* tok, Image& out) {
+  for (const auto& entry : kImages) {
+    if (!strcmp(tok, entry.name)) return out = entry.image, true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -74,13 +87,18 @@ bool parse_command(const char* line, Command& out, const char*& why) {
     return true;
   }
   if (!strcmp(verb, "show")) {
-    if (n != 3) { why = "args"; return false; }
+    // show <image> [N] <mode>: only `checker` takes N.
     out.verb = Verb::Show;
-    if (!strcmp(tok[1], "white")) out.image = Image::White;
-    else if (!strcmp(tok[1], "black")) out.image = Image::Black;
-    else { why = "image"; return false; }
-    if (!strcmp(tok[2], "native")) out.mode = Mode::Native;
+    size_t i = 1;
+    if (n < 3) { why = "args"; return false; }
+    if (!parse_image(tok[i++], out.image)) { why = "image"; return false; }
+    if (out.image == Image::Checker) {
+      if (!parse_uint(tok[i++], 1, kMaxCheckerSize, out.checker)) { why = "size"; return false; }
+    }
+    if (i >= n) { why = "args"; return false; }
+    if (!strcmp(tok[i++], "native")) out.mode = Mode::Native;
     else { why = "mode"; return false; }
+    if (i != n) { why = "args"; return false; }
     return true;
   }
   if (!strcmp(verb, "raw")) {
@@ -96,7 +114,9 @@ bool parse_command(const char* line, Command& out, const char*& why) {
     if (n != 3) { why = "args"; return false; }
     out.verb = Verb::RawRead;
     if (!parse_hex2(tok[1], out.read_cmd)) { why = "hex"; return false; }
-    if (!parse_count(tok[2], out.read_count)) { why = "count"; return false; }
+    unsigned count = 0;
+    if (!parse_uint(tok[2], 1, kMaxReadBytes, count)) { why = "count"; return false; }
+    out.read_count = count;
     return true;
   }
   if (!strcmp(verb, "trace")) {
@@ -112,7 +132,10 @@ bool parse_command(const char* line, Command& out, const char*& why) {
 }
 
 const char* image_name(Image image) {
-  return image == Image::White ? "white" : "black";
+  for (const auto& entry : kImages) {
+    if (entry.image == image) return entry.name;
+  }
+  return "?";
 }
 
 const char* mode_name(Mode mode) {

@@ -34,7 +34,19 @@ static const Row kTable[] = {
     {"INFO", false, Verb::Info},
     {"info now", false, Verb::Info},
     {"show white", false, Verb::Show},
-    {"show chart native", false, Verb::Show},
+    {"show chart native", true, Verb::Show},
+    {"show text native", true, Verb::Show},
+    {"show invert native", true, Verb::Show},
+    {"show checker 40 native", true, Verb::Show},
+    {"show checker 300 native", true, Verb::Show},
+    {"show checker native", false, Verb::Show},
+    {"show checker 0 native", false, Verb::Show},
+    {"show checker 301 native", false, Verb::Show},
+    {"show checker 040 native", false, Verb::Show},
+    {"show checker 40", false, Verb::Show},
+    {"show text 40 native", false, Verb::Show},
+    {"show text native extra", false, Verb::Show},
+    {"show nope native", false, Verb::Show},
     {"show white mono", false, Verb::Show},
     {"raw", false, Verb::Raw},
     {"raw 0x12", false, Verb::Raw},
@@ -69,6 +81,13 @@ void test_show_arguments() {
   TEST_ASSERT_EQUAL(int(Mode::Native), int(cmd.mode));
   TEST_ASSERT_TRUE(parse_command("show white native", cmd, why));
   TEST_ASSERT_EQUAL(int(Image::White), int(cmd.image));
+  TEST_ASSERT_TRUE(parse_command("show checker 40 native", cmd, why));
+  TEST_ASSERT_EQUAL(int(Image::Checker), int(cmd.image));
+  TEST_ASSERT_EQUAL(40, cmd.checker);
+  TEST_ASSERT_FALSE(parse_command("show checker 0 native", cmd, why));
+  TEST_ASSERT_EQUAL_STRING("size", why);
+  TEST_ASSERT_FALSE(parse_command("show nope native", cmd, why));
+  TEST_ASSERT_EQUAL_STRING("image", why);
 }
 
 void test_raw_bytes() {

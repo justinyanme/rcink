@@ -8,6 +8,7 @@
 #include "epd.h"
 #include "fatal.h"
 #include "frame.h"
+#include "image.h"
 #include "protocol.h"
 
 #ifndef RCLAB_BUILD
@@ -80,11 +81,30 @@ void native_refresh(Reply ok, uint32_t began) {
   reply(ok.field("busy_ms", long(busy_ms)).field("total_ms", long(millis() - began)));
 }
 
+// Renders the requested image into g_inks; false when it needs a current image.
+bool render(const Command& cmd) {
+  switch (cmd.image) {
+    case Image::White: render_fill(g_inks, InkWhite); break;
+    case Image::Black: render_fill(g_inks, InkBlack); break;
+    case Image::Chart: render_chart(g_inks); break;
+    case Image::Text: render_text(g_inks); break;
+    case Image::Checker: render_checker(g_inks, cmd.checker); break;
+    case Image::Invert:
+      if (!g_have_image) return false;
+      invert(g_inks, kPixels);
+      break;
+  }
+  g_have_image = true;
+  return true;
+}
+
 void do_show(const Command& cmd) {
   const uint32_t began = millis();
-  memset(g_inks, cmd.image == Image::White ? InkWhite : InkBlack, kPixels);
-  g_have_image = true;
-  native_refresh(Reply(true).field("image", image_name(cmd.image)).field("mode", mode_name(cmd.mode)), began);
+  if (!render(cmd)) return reply(Reply(false).field("stage", "state").field("reason", "no-image"));
+  Reply ok(true);
+  ok.field("image", image_name(cmd.image));
+  if (cmd.image == Image::Checker) ok.field("size", long(cmd.checker));
+  native_refresh(ok.field("mode", mode_name(cmd.mode)), began);
 }
 
 // Cleanup: Native refresh of the current image; refused before any show.
@@ -118,7 +138,7 @@ void dispatch(const char* line) {
     case Verb::Help:
       return reply(Reply(true)
                        .field("verbs", "info,reset,show,cleanup,raw,rawread,trace,help")
-                       .field("show", "<white|black> native")
+                       .field("show", "<white|black|chart|text|checker N|invert> native")
                        .field("raw", "<cmd> [data...] hex2")
                        .field("rawread", "<cmd> <1..32>")
                        .field("trace", "<on|off>"));
