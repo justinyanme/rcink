@@ -53,7 +53,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | `info` | `OK mac= rev=<0x70, 4 bytes> build= temp=<0x40, 2 bytes raw> uptime_ms=` |
 | `reset` | hard reset + native init, no paint → `OK total_ms=` |
 | `cleanup` | Native refresh of the current image → `OK mode=native busy_ms= total_ms=`; before any `show`: `FAIL stage=state reason=no-image` |
-| `show <white\|black> native` | full field, native OTP → `OK image= mode= busy_ms= total_ms=` |
+| `show <image> native` | render image, Native refresh → `OK image= [size=] mode= busy_ms= total_ms=` |
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
 | `trace <on\|off>` | echo every controller write as `# write cmd=XX len=N` → `OK trace=` |
@@ -63,11 +63,37 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 A drive failure is `FAIL stage=<power-on-assert|power-on-release|drive-assert|drive-release|power-off-release|frame-idle|init-idle|…> busy=<level> ms=<waited>`.
 `busy_ms` is the BUSY-asserted duration of the `12` refresh; `total_ms` spans
 frame upload through power-off. `temp` is the raw TSC (`0x40`) read-back; its
-decoding is not established (cold `20 80`, after two drives `21 00`).
+decoding is not established. Observed `1e00`, `1f80`, `2000`, `2080`, `2100`:
+consistent with first byte = °C and bit 7 of the second = 0.5 °C (bench ~30–33 °C),
+unconfirmed against a thermometer.
+
+Images (`image.{h,cpp}`, 400×600 ink plane, one byte per pixel):
+
+| Image | Content |
+| --- | --- |
+| `white`, `black` | full field |
+| `chart` | 2026-10-13 chart: 4 px black border; 200×100 patches black\|white, yellow\|red, blue\|green; y 300–499 four 50 px black→ink RGB ramps (yellow, red, blue, green) quantised to nearest ink (same anchors as production `waveform_trial.cpp`); y≥500 20 px checker |
+| `text` | VT323 13/16/18/24 pt (production headers via `src/shim/M5GFX.h`), `A–Z a–z 0–9` black on white wrapped at 8 px margins; one 16 pt white-on-black line |
+| `checker N` | N px squares (1–300), (0,0) black |
+| `invert` | current image with black↔white; chromatic inks kept; `FAIL stage=state reason=no-image` before any show |
 
 The console flushes USB CDC only while the host handshake reports connected
-(Arduino 2.0.17 HWCDC discards the queue otherwise). Images other than
-`white`/`black`, and modes other than `native`, arrive with #19–#22.
+(Arduino 2.0.17 HWCDC discards the queue otherwise).
+
+## Acceptance thresholds
+
+Fixed before any experimental mode (spec #15); a change needs the data that
+motivated it, recorded here.
+
+| Target | Threshold |
+| --- | --- |
+| Fast mono | warm BUSY ≤2 s; 16 px text readable; 10 updates then Cleanup fully recovers |
+| Draft color | BUSY ≤6 s; six colours distinguishable; 16 px black-on-white text readable |
+| Both | Native refresh afterwards looks normal |
+
+Native baseline (series 1, temp `1e00`–`2000`): BUSY 14387–14509 ms, total
+16128–16333 ms per drive; run-to-run ≤2 ms at a given image; chart six colours
+distinguishable; all text sizes incl. 13 pt readable.
 
 ## Host script `lab.py`
 
@@ -101,6 +127,7 @@ Trial directory (`OUT`, must not exist):
 
 - `protocol.{h,cpp}` — pure parser + `Reply` formatter (host-tested).
 - `frame.{h,cpp}` — pure native encoder (host-tested).
+- `image.{h,cpp}` — pure image renderers + GFXfont glyph renderer (host-tested); `fonts.h` + `shim/M5GFX.h` reuse the production VT323 headers.
 - `epd_init.h` — pinned byte tables (host-tested against a second copy).
 - `epd.{h,cpp}` — driver: `begin, hard_reset, init_native, upload_frame, upload_lut, power_on, drive, power_off, read_register`; all writes through `write()`.
 - `board.{h,cpp}` — PM1 bring-up, CS idle levels. `main.cpp` — console loop.
@@ -116,6 +143,14 @@ JPEGs ≤1600 px / ≈≤200 KB and `observations.md`. Originals stay in gitigno
 | --- | --- |
 | [20261015-skeleton-001](evidence/20261015-skeleton-001/observations.md) | **Pass.** Raw driver: `show black native` then `show white native`, each 14389 ms BUSY / 16137 ms total, whole panel uniform in both photos; 0x70 = `01010400`. |
 | [20261015-hostscript-001](evidence/20261015-hostscript-001/observations.md) | **Pass.** `lab.py trial` end to end: one open, banner, 5 results, 2 photos, restore cleanup; black field, `busy_ms` 14389 again. |
+
+### Series 1 — Native refresh baseline (#19)
+
+| Trial | Verdict |
+| --- | --- |
+| [20261015-native-baseline-001](evidence/20261015-native-baseline-001/observations.md) | **Reference.** `chart`: BUSY 14506 / total 16333 ms; six colours distinguishable, ramps and checker crisp; layout matches 10-13. |
+| [20261015-native-baseline-002](evidence/20261015-native-baseline-002/observations.md) | **Reference.** `text`: BUSY 14387 / 16142 ms; 13–24 pt and white-on-black 16 pt readable. |
+| [20261015-native-baseline-003](evidence/20261015-native-baseline-003/observations.md) | **Reference.** `text` repeat: BUSY 14387 / 16142 ms; run-to-run ≤2 ms. |
 
 ### Prior baseline (production firmware port, PaperColor booster, 2026-10-13)
 

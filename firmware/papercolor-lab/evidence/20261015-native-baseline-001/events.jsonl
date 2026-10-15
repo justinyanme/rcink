@@ -1,0 +1,12 @@
+{"t_ns": 628221977225375, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["info", "show chart native", "photo", "info"], "restore": true}
+{"t_ns": 628222303969916, "clock": "host-monotonic", "event": "boot", "line": "# ready build=211f3650f5be mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=249"}
+{"t_ns": 628222304326791, "clock": "host-monotonic", "event": "write", "line": "info"}
+{"t_ns": 628222411129958, "clock": "host-monotonic", "event": "result", "line": "OK mac=44:1b:f6:c1:31:90 rev=01010400 build=211f3650f5be temp=1e00 uptime_ms=331", "ok": true, "fields": {"mac": "44:1b:f6:c1:31:90", "rev": "01010400", "build": "211f3650f5be", "temp": "1e00", "uptime_ms": "331"}}
+{"t_ns": 628222411368666, "clock": "host-monotonic", "event": "write", "line": "show chart native"}
+{"t_ns": 628238842250416, "clock": "host-monotonic", "event": "result", "line": "OK image=chart mode=native busy_ms=14506 total_ms=16333", "ok": true, "fields": {"image": "chart", "mode": "native", "busy_ms": "14506", "total_ms": "16333"}}
+{"t_ns": 628242690023083, "clock": "host-monotonic", "event": "photo", "file": "01-show-chart-native.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/native-baseline-001/01-show-chart-native.jpg"}
+{"t_ns": 628242690152041, "clock": "host-monotonic", "event": "write", "line": "info"}
+{"t_ns": 628242800449875, "clock": "host-monotonic", "event": "result", "line": "OK mac=44:1b:f6:c1:31:90 rev=01010400 build=211f3650f5be temp=1e00 uptime_ms=20717", "ok": true, "fields": {"mac": "44:1b:f6:c1:31:90", "rev": "01010400", "build": "211f3650f5be", "temp": "1e00", "uptime_ms": "20717"}}
+{"t_ns": 628242800502333, "clock": "host-monotonic", "event": "write", "line": "cleanup"}
+{"t_ns": 628259059690833, "clock": "host-monotonic", "event": "result", "line": "OK mode=native busy_ms=14509 total_ms=16250", "ok": true, "fields": {"mode": "native", "busy_ms": "14509", "total_ms": "16250"}}
+{"t_ns": 628262787751791, "clock": "host-monotonic", "event": "photo", "file": "02-cleanup.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/native-baseline-001/02-cleanup.jpg"}
