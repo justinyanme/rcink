@@ -37,6 +37,7 @@ constexpr uint8_t kCmdLut = 0x20;
 constexpr uint8_t kCmdPsr = 0x00;
 constexpr uint8_t kCmdCdi = 0x50;
 constexpr uint8_t kCmdWindow = 0x83;
+constexpr uint8_t kCmdResolution = 0x61;
 constexpr uint8_t kCmdBooster = 0x06;
 constexpr size_t kLutBytes = 799;
 

@@ -140,7 +140,7 @@ void dispatch(const char* line) {
                        .field("images", "white,black,chart,text,checker:N,invert")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality")
                        .field("interrupt", "cut=50..5000,cdi=0F|3F")
-                       .field("lut", "setup=native|tickey,psr=5F|0F+69|A9,booster=native|none,pack=4|4x|2|2x"));
+                       .field("lut", "setup=native|tickey,psr=5F|0F+69|A9,booster=native|none,tres=400|200,pack=4|4x|2|2x"));
   }
 }
 
