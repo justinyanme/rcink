@@ -51,16 +51,19 @@ void test_mapped_two_and_four_bits() {
   TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, out, 2);
 }
 
-void test_digit_selects_base4_digit() {
-  // values 0x1B (digits 3,2,1,0 high..low = 0,1,2,3), 0x3F, 0x00, 0x24; hand-packed.
+void test_field_selects_bits() {
+  // values 0b011011, 0b111111, 0, 0b100100; hand-packed.
   const uint8_t v[] = {0x1B, 0x3F, 0x00, 0x24};
-  uint8_t out = 0;
-  encode_digit(v, 0, 4, &out);  // 3 3 0 0
-  TEST_ASSERT_EQUAL_HEX8(0xF0, out);
-  encode_digit(v, 1, 4, &out);  // 2 3 0 1
-  TEST_ASSERT_EQUAL_HEX8(0xB1, out);
-  encode_digit(v, 2, 4, &out);  // 1 3 0 2
-  TEST_ASSERT_EQUAL_HEX8(0x72, out);
+  uint8_t out[2] = {};
+  encode_field(v, 0, 2, 4, 2, out);  // bits 1:0 -> 3 3 0 0
+  TEST_ASSERT_EQUAL_HEX8(0xF0, out[0]);
+  encode_field(v, 2, 2, 4, 2, out);  // bits 3:2 -> 2 3 0 1
+  TEST_ASSERT_EQUAL_HEX8(0xB1, out[0]);
+  encode_field(v, 0, 3, 4, 4, out);  // bits 2:0 at 4 bpp -> 3 7 | 0 4
+  TEST_ASSERT_EQUAL_HEX8(0x37, out[0]);
+  TEST_ASSERT_EQUAL_HEX8(0x04, out[1]);
+  encode_field(v, 5, 1, 4, 2, out);  // bit 5 -> 0 1 0 1
+  TEST_ASSERT_EQUAL_HEX8(0x11, out[0]);
 }
 
 int main() {
@@ -69,6 +72,6 @@ int main() {
   RUN_TEST(test_native_row_yellow_blue_order);
   RUN_TEST(test_native_frame_size_and_full_fields);
   RUN_TEST(test_mapped_two_and_four_bits);
-  RUN_TEST(test_digit_selects_base4_digit);
+  RUN_TEST(test_field_selects_bits);
   return UNITY_END();
 }

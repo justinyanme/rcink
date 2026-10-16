@@ -49,7 +49,8 @@ struct Knobs {
   Pack pack{};                      // LUT `pack=<4|2><|x|e|o>` (2-bit mono only), default 4
   bool mapped = false;              // custom `map=<8 hex>`: frame value = map[ink] (LUT row - 1), else transition
   uint8_t map[8]{};                 //   digit i = value for ink/image value i; < 4 with 2-bit packs
-  int8_t digit = -1;                // custom `digit=0|1|2` (pack 2): frame value = (value >> 2*digit) & 3
+  int8_t field_shift = -1;          // custom `field=S:B`: frame value = (value >> S) & (2^B - 1),
+  uint8_t field_bits = 0;           //   S 0..7, B 1..3 and <= pack bits (B 3 = 8 LUT rows needs pack 4)
   bool booster = true;              // LUT `booster=native|none`: 06 6F 1F 17 27 after 04
 };
 

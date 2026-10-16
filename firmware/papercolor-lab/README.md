@@ -129,8 +129,8 @@ Goal (operator, 2026-10-16): our own waveforms — borrow methods, not TICKEY LU
 near black/white mono without ghosting or long-term darkening, then fast colour with six
 distinguishable colours, then a 48-colour attempt. Tools: `tools/lutcodec.py` (codec/builder),
 `tools/wave_trial.py` (named LUT flows + centre colour), console `lut load|set|get`, mode
-`custom` (RAM LUT), image `bands` + `map=01234567` (8 LUT rows side by side; `map` = per-ink LUT row, 2 or 4 bpp), image `grid` + `digit=0|1|2`
-(8×8 patches, value 0..63; pass N uses base-4 digit N, pack 2), fills `yellow red blue green`, verb `otp`.
+`custom` (RAM LUT), image `bands` + `map=01234567` (8 LUT rows side by side; `map` = per-ink LUT row, 2 or 4 bpp), image `grid` + `field=S:B`
+(8×8 patches in the top 480 rows, value 0..63; frame value = bits S..S+B-1, B ≤ pack bits), fills `yellow red blue green`, verb `otp`.
 
 ### Frame format in LUT mode (decoded)
 

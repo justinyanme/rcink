@@ -140,9 +140,12 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     }
     return knobs.mapped = true;
   }
-  if (key_is("digit")) {
-    if (mode != Mode::Custom || !once(512) || strlen(value) != 1 || value[0] < '0' || value[0] > '2') return false;
-    return knobs.digit = int8_t(value[0] - '0'), true;
+  if (key_is("field")) {
+    if (mode != Mode::Custom || !once(512) || strlen(value) != 3 || value[1] != ':') return false;
+    if (value[0] < '0' || value[0] > '7' || value[2] < '1' || value[2] > '3') return false;
+    knobs.field_shift = int8_t(value[0] - '0');
+    knobs.field_bits = uint8_t(value[2] - '0');
+    return true;
   }
   if (key_is("pack")) {
     if (!once(32)) return false;
@@ -230,7 +233,10 @@ bool parse_command(const char* line, Command& out, const char*& why) {
         if (v >> out.knobs.pack.bits) { why = "map"; return false; }
       }
     }
-    if (out.knobs.digit >= 0 && (out.knobs.mapped || out.knobs.pack.bits != 2)) { why = "digit"; return false; }
+    if (out.knobs.field_shift >= 0 && (out.knobs.mapped || out.knobs.field_bits > out.knobs.pack.bits)) {
+      why = "field";
+      return false;
+    }
     return true;
   }
   if (!strcmp(verb, "lut")) {

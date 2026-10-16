@@ -53,11 +53,13 @@ void encode_mapped(const uint8_t* inks, const uint8_t map[8], size_t count, unsi
   }
 }
 
-void encode_digit(const uint8_t* inks, unsigned digit, size_t count, uint8_t* out) {
-  for (size_t i = 0; i < count; i += 4) {
+void encode_field(const uint8_t* inks, unsigned shift, unsigned width, size_t count, unsigned bits, uint8_t* out) {
+  const size_t per_byte = 8 / bits;
+  const unsigned mask = (1u << width) - 1;
+  for (size_t i = 0; i < count; i += per_byte) {
     uint8_t byte = 0;
-    for (size_t k = 0; k < 4; ++k) byte = uint8_t(byte << 2 | ((inks[i + k] >> (2 * digit)) & 3));
-    out[i / 4] = byte;
+    for (size_t k = 0; k < per_byte; ++k) byte = uint8_t(byte << bits | ((inks[i + k] >> shift) & mask));
+    out[i / per_byte] = byte;
   }
 }
 
