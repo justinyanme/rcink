@@ -235,22 +235,30 @@ Earlier two-pass designs (2 bpp, BUSY 3.1–3.8 s) left faint blue/white ghosts:
 `evidence/20261016-color-own-001`, `-002` and git history of this section. Evidence:
 `evidence/20261016-psr1f-001`, `-color-1f-001`, `-white-spread-own-001`, `-white-spread-native-001`.
 
-### 48-colour attempt (2026-10-16)
+### 48-colour rendering (2026-10-16)
 
-`tools/own_grid.py OUT`: image `grid` (64 patches) through three passes, `field=S:B` picks each
-pass's bits of the patch value: 8 bases (4 bpp, top 491 rows only) × 4 partial shifts × 2.
-Camera ΔE76 distinct (greedy): **45 at ≥5**, 30 at ≥8; BUSY ~2.4 s, total ~4.7 s.
+`tools/own_grid.py OUT`: image `grid` (8×8 patches, value 0..63) through two full-screen 4 bpp passes
+(`psr=1FA9`): pass 1 (`field=0:3`) 8 bases — white, black, red, blue, yellow, green, pink (red +
+`8x4`), orange (red + `1x3`); pass 2 (`field=3:3`) 8 modifiers — none, `2x1`, `2x1,8x1`, `8x6`,
+`1x1`, half red cycle `[2:5,9:3]`, half green cycle `[1:5,2:1]`, t1 code 2 ×3. BUSY 2.3 + 0.13 s.
+Count = largest set of patches pairwise ≥ ΔE76 (randomised greedy); white-normalised = channels
+scaled so the plain white patch equals the daylight native white (removes room-light level).
 
-| Design | ΔE≥5 / ≥8 |
+| Design | ΔE≥5 / ≥8 (camera) |
 | --- | --- |
 | 3 × 2 bpp, self-resetting trains in passes 2–3 (they overwrite the base) | 34–40 / 24–26 |
 | 3 × 2 bpp, 4 bases, hill-climbed short pulses | 39–43 / 26–33 |
-| 4 bpp 8 bases × 2 bpp 4 × 2 bpp 2, hill-climbed (own_grid.py) | 43–45 / 30–34 |
+| 4 bpp (5F, rows 0–491) 8 bases × 2 bpp 4 × 2 bpp 2 | 43–45 / 30–34 |
+| 2 × 4 bpp (1F) 8 × 8, teal base, normalised | 47–49 / 38–42 |
+| **2 × 4 bpp (1F) 8 × 8, pink base, normalised (4 runs)** | **48–50 / 35–40** (raw 46–48) |
 
-Limit: one frame (11.7 ms) is the smallest step and a 1-frame yellow or black pulse moves a base
-by ΔE 20–35; t1 weak codes move ~5 but only toward white. Finer steps need a faster frame clock
-(`30` register) — not tried. TICKEY's nominal 48-entry quality palette scores 40 at ΔE≥5 on the
-same metric. Evidence: `evidence/20261016-grid-own-001`.
+Learnings: one frame is the smallest step and a 1-frame black or yellow pulse moves every base
+to the same navy / yellow; white pulses grade (≈ ΔE 3–4 per step) but all bases converge to
+white; half colour trains (`[2:5,9:3]`, `[1:5,2:1]`) add hue shifts that depend on the base.
+Blue/green/teal bases collide most, red-side bases least. A faster frame clock (`pll=07`,
+7.6 ms) did not help. Hill climbs on noisy counts over-select (51 → 44 on re-test): accept only
+repeated means. TICKEY's nominal 48-entry palette scores 40 at ΔE≥5 on the same metric.
+Evidence: `evidence/20261016-grid-1f-001` (4 runs), earlier `evidence/20261016-grid-own-001`.
 
 ## Host script `lab.py`
 

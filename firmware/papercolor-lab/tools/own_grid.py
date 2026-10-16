@@ -28,24 +28,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lutcodec as lc  # noqa: E402
 
 SHAKE = [(4, (8, 6), (2, 10))]
-BASES = [  # W K R B Y G teal orange (search48g it017, 2026-10-16)
+BASES = [  # W K R B Y G pink orange (search48g/h + base-6 trial, 2026-10-16)
     SHAKE + [(8, 60), (1, 5), (8, 20), (2, 1), (8, 5)],
     [(8, (8, 6), (2, 10))],
     [(8, (2, 10), (9, 5))],
     [(12, (1, 10), (2, 6))],
     SHAKE + [(4, (1, 10), (9, 4))],
     [(8, (1, 10), (2, 1))],
-    [(8, (1, 10), (2, 2))],
+    [(8, (2, 10), (9, 5)), (8, 4)],  # pink: red + 4 white frames
     [(8, (2, 10), (9, 5)), (1, 3)],
 ]
 MODIFIERS = [
     [],
     [(2, 1)],
     [(2, 1), (8, 1)],
-    [(8, 1)],
+    [(8, 6)],
     [(1, 1)],
     [(1, (2, 5), (9, 3))],  # half a red cycle
-    [(1, (1, 5), (2, 3))],  # half a blue cycle
+    [(1, (1, 5), (2, 1))],  # half a green cycle
     [(2, 3, 1)],  # t1 code 2 (weak yellow)
 ]
 PASSES = [("0:3", BASES), ("3:3", MODIFIERS)]

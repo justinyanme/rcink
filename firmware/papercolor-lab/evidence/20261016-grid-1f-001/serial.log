@@ -1,0 +1,63 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x15 (USB_UART_CHIP_RESET),boot:0x2b (SPI_FAST_FLASH_BOOT)
+Saved PC:0x42026116
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce3808,len:0x4bc
+load:0x403c9700,len:0xbd8
+load:0x403cc700,len:0x2a0c
+entry 0x403c98d0
+# ready build=eb9e541f9512-dirty mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=251
+OK lut=set offset=0 len=32
+OK lut=set offset=32 len=32
+OK lut=set offset=64 len=32
+OK lut=set offset=96 len=32
+OK lut=set offset=128 len=32
+OK lut=set offset=160 len=32
+OK lut=set offset=192 len=32
+OK lut=set offset=224 len=32
+OK lut=set offset=256 len=32
+OK lut=set offset=288 len=32
+OK lut=set offset=320 len=32
+OK lut=set offset=352 len=32
+OK lut=set offset=384 len=32
+OK lut=set offset=416 len=32
+OK lut=set offset=448 len=32
+OK lut=set offset=480 len=32
+OK lut=set offset=512 len=32
+OK lut=set offset=544 len=32
+OK lut=set offset=576 len=32
+OK lut=set offset=608 len=32
+OK lut=set offset=640 len=32
+OK lut=set offset=672 len=32
+OK lut=set offset=704 len=32
+OK lut=set offset=736 len=32
+OK lut=set offset=768 len=31
+OK image=grid mode=custom setup=tickey psr=1fa9 booster=none tres=400 win=1 pack=4 history=0 busy_ms=2291 total_ms=3129
+OK lut=set offset=0 len=32
+OK lut=set offset=32 len=32
+OK lut=set offset=64 len=32
+OK lut=set offset=96 len=32
+OK lut=set offset=128 len=32
+OK lut=set offset=160 len=32
+OK lut=set offset=192 len=32
+OK lut=set offset=224 len=32
+OK lut=set offset=256 len=32
+OK lut=set offset=288 len=32
+OK lut=set offset=320 len=32
+OK lut=set offset=352 len=32
+OK lut=set offset=384 len=32
+OK lut=set offset=416 len=32
+OK lut=set offset=448 len=32
+OK lut=set offset=480 len=32
+OK lut=set offset=512 len=32
+OK lut=set offset=544 len=32
+OK lut=set offset=576 len=32
+OK lut=set offset=608 len=32
+OK lut=set offset=640 len=32
+OK lut=set offset=672 len=32
+OK lut=set offset=704 len=32
+OK lut=set offset=736 len=32
+OK lut=set offset=768 len=31
+OK image=grid mode=custom setup=tickey psr=1fa9 booster=none tres=400 win=1 pack=4 history=1 busy_ms=129 total_ms=967
