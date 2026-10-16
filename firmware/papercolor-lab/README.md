@@ -206,6 +206,23 @@ Full-screen fills (color-own-001) give ΔE 9–17, so the result does not depend
 Residual: after a very different image the blue keeps a faint ghost (ΔE ~3–5) and white is faintly
 tinted; longer shakes made white yellower without curing it. Evidence: `evidence/20261016-color-own-001`, `-002`.
 
+### 48-colour attempt (2026-10-16)
+
+`tools/own_grid.py OUT`: image `grid` (64 patches) through three passes, `field=S:B` picks each
+pass's bits of the patch value: 8 bases (4 bpp, top 491 rows only) × 4 partial shifts × 2.
+Camera ΔE76 distinct (greedy): **45 at ≥5**, 30 at ≥8; BUSY ~2.4 s, total ~4.7 s.
+
+| Design | ΔE≥5 / ≥8 |
+| --- | --- |
+| 3 × 2 bpp, self-resetting trains in passes 2–3 (they overwrite the base) | 34–40 / 24–26 |
+| 3 × 2 bpp, 4 bases, hill-climbed short pulses | 39–43 / 26–33 |
+| 4 bpp 8 bases × 2 bpp 4 × 2 bpp 2, hill-climbed (own_grid.py) | 43–45 / 30–34 |
+
+Limit: one frame (11.7 ms) is the smallest step and a 1-frame yellow or black pulse moves a base
+by ΔE 20–35; t1 weak codes move ~5 but only toward white. Finer steps need a faster frame clock
+(`30` register) — not tried. TICKEY's nominal 48-entry quality palette scores 40 at ΔE≥5 on the
+same metric. Evidence: `evidence/20261016-grid-own-001`.
+
 ## Host script `lab.py`
 
 PEP 723 typer CLI (`uv run firmware/papercolor-lab/lab.py --help`):
