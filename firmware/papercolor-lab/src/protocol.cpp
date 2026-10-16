@@ -101,6 +101,11 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
     return false;
   }
   if (!is_lut_mode(mode)) return false;
+  if (key_is("pll")) {
+    uint8_t v = 0;
+    if (!once(2048) || !parse_hex2(value, v)) return false;
+    return knobs.pll = v, true;
+  }
   if (key_is("setup")) {
     if (!once(4)) return false;
     if (!strcmp(value, "native")) return knobs.setup_tickey = false, true;

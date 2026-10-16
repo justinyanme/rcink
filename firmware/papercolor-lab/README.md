@@ -141,6 +141,8 @@ distinguishable colours, then a 48-colour attempt. Tools: `tools/lutcodec.py` (c
 - PSR byte 0 selects bit depth: `0F` = 2 bpp, `5F` = 4 bpp (LUT frames reach only rows 0–~491),
   `1F` = 4 bpp over all 600 rows (found 2026-10-16, `evidence/20261016-psr1f-001`). `4F` garbage;
   clearing bit 3 (`57`) only flips content inside rows 0–491; the `13` (DTM2) plane is ignored.
+- Frame clock `30 <pll>` (knob `pll=`, after `setup`): only bits 2:0 count — `07` 7.6 ms/frame,
+  `06` 9.0, `05` 10.2, `04` 11.75 (TICKEY), `02` 17.8; `08`+ falls back to 30.6 ms (`.cache` `pll-001/002`).
 
 ### 799-byte LUT format (decoded by BUSY timing + photos)
 
