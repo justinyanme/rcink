@@ -232,6 +232,17 @@ a 12-cycle blue after a full cycle keeps it; blue in pass 2 from clean black rem
 black then fades to grey with a text ghost; a third pass re-blackening (`2x30`) pales red (ΔE 24)
 and ghosts every block. Colour ghosts depend on several updates of history — open.
 
+Ghost rule found next (chart → text → chart, scratch `own-clean-*`, `own-cleansplit-001..004`,
+`own-half-001`): a pixel **idle in the last pass** shows the previous image when other pixels drive.
+With a clean-mono pre-pass (`own_mono` rows, white → white, rest → black) the text page is clean and
+idle white/yellow stay clean, but idle red, green, blue ghost and idle black fades to grey. So the
+last pass needs idle(W,Y) + R + G + B + K = 5 classes; 2 bpp gives 4, 4 bpp gives 8 but reaches only
+rows 0–491, and a `83` bottom-half window (rows 300–599) still stops at ~491 (RAM is addressed
+absolutely). Also tried: DC-balancing every row (white turns khaki), yellow-saturate reset before
+blue/green, longer or darker blue, a 1-frame `8/2` hold (turns idle pixels black), a uniform
+"flush" refresh (ghost is in the panel, not controller RAM). Next idea: a frame layout giving the
+last pass 3 bits for all 600 rows.
+
 ### 48-colour attempt (2026-10-16)
 
 `tools/own_grid.py OUT`: image `grid` (64 patches) through three passes, `field=S:B` picks each
