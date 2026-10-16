@@ -226,6 +226,11 @@ Learnings (bands + chart, camera ΔE76 to native inks):
 Full-screen fills (color-own-001) give ΔE 9–17, so the result does not depend on image content.
 Residual: after a very different image the blue keeps a faint ghost (ΔE ~3–5) and white is faintly
 tinted; longer shakes made white yellower without curing it. Evidence: `evidence/20261016-color-own-001`, `-002`.
+Tried after the clean mono (chart → text → chart, scratch `own-ghost-010..015`): clean-mono white
+and black in pass 1 remove the white ghost and give native black (ΔE 3) but not the blue ghost;
+a 12-cycle blue after a full cycle keeps it; blue in pass 2 from clean black removes it but idle
+black then fades to grey with a text ghost; a third pass re-blackening (`2x30`) pales red (ΔE 24)
+and ghosts every block. Colour ghosts depend on several updates of history — open.
 
 ### 48-colour attempt (2026-10-16)
 
