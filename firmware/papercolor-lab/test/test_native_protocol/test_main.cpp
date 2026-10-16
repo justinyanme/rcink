@@ -114,6 +114,8 @@ static const Row kTable[] = {
     {"show bands mono map=01234567", false, Verb::Show},
     {"otp 0", false, Verb::Otp},
     {"show chart fast win=2", false, Verb::Show},
+    {"show bands custom psr=1FA9 map=01234567", true, Verb::Show},
+    {"show bands custom psr=4FA9 map=01234567", false, Verb::Show},
     {"show chart fast tres=300", false, Verb::Show},
     {"show text interrupt tres=200", false, Verb::Show},
     {"raw", false, Verb::Raw},

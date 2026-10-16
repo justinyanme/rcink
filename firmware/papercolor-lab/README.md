@@ -86,7 +86,7 @@ The console flushes USB CDC only while the host handshake reports connected
 | --- | --- | --- | --- |
 | `native` | `10` frame, `04`, 200 ms, `06 6F1F1727`, 200 ms, `12 00`, 200 ms, `02 00`, 200 ms (Panel_ED2208 `_turn_on_display`) | — | `busy_ms` |
 | `interrupt` | `50 cdi`, `10` frame (native codes), `04`, 20 ms, `06 6F1F1727`, `83 00 00 01 8F 00 00 02 57 01`, `50 cdi`, `12 00`, BUSY assert, `cut` ms, RST low 2 ms / high 10 ms, native init (no `02`) | `cut=340` (50–5000), `cdi=0F\|3F` (0F) | `cut_ms cdi busy_ms` (assert→cut) |
-| `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=<5F\|0F><69\|A9>`, `booster=native\|none`, `pack=4\|2\|2x` (native values, pack 4) | `setup psr booster pack cold clear_ms busy_ms` |
+| `mono`, `monoclear` | reset+init, [setup], cold: PSR+`20` clear_initial, zero frame, power, `12`; then PSR+`20` mono\|mono_clear, `10` transition frame, [power if warm], `12`, `02`, 20 ms; reset+init | `setup=native\|tickey`, `psr=<5F\|0F\|1F><69\|A9>`, `booster=native\|none`, `pack=4\|2\|2x` (native values, pack 4) | `setup psr booster pack cold clear_ms busy_ms` |
 | `fast`, `quality` | reset+init, [setup], [tres], cold clear (always), PSR+`20` phase1, `10` high selectors, `12`; quality: PSR+`20` phase2, `12` (plane reused); PSR+`20` fast_phase2\|quality_phase3, `10` low selectors, `12`; `02`; fast: `10` high plane post-seed; reset+init | as mono, `pack=4\|4x` only | `setup psr booster tres pack clear_ms p1_ms [p2_ms] final_ms busy_ms` (= phases, without clear) |
 
 `pack`: transition code (old<<1\|new) per pixel at 4 bits (sf32rc), 2 bits (4 px/byte, 60000 B), or `2x`
@@ -138,8 +138,9 @@ distinguishable colours, then a 48-colour attempt. Tools: `tools/lutcodec.py` (c
   per panel row: mono 2 bpp = 60000 B (`pack=2`), raw 4 bpp = 120000 B (`pack=4`).
 - Without the window every panel row consumes two data rows and shows the first
   (`pack=2e` shows the image, `2o` only filler): hence `2x` worked and plain packing squeezed.
-- PSR byte 1 selects bit depth: `0F` = 2 bpp, `5F` = 4 bpp. 4 bpp LUT frames cover only the top
-  ~491 rows (controller RAM ~96 KiB): full-screen colour must use 2 bpp passes.
+- PSR byte 0 selects bit depth: `0F` = 2 bpp, `5F` = 4 bpp (LUT frames reach only rows 0–~491),
+  `1F` = 4 bpp over all 600 rows (found 2026-10-16, `evidence/20261016-psr1f-001`). `4F` garbage;
+  clearing bit 3 (`57`) only flips content inside rows 0–491; the `13` (DTM2) plane is ignored.
 
 ### 799-byte LUT format (decoded by BUSY timing + photos)
 
@@ -194,54 +195,43 @@ Evidence: `evidence/20261016-ghost-native-001`, `-ghost-fastmono-001`, `-mono-cl
 
 ### Own six-colour waveform (2026-10-16)
 
-`tools/own_color.py OUT IMAGE`: two 2 bpp `custom` passes, `map=` picks each ink's LUT row.
-Method borrowed from TICKEY quality phase 2 (structure only): repeated short AC pairs.
+`tools/own_color.py OUT IMAGE...`: **one** full-screen 4 bpp `custom` pass, `psr=1FA9`, `map=10231561`
+(ink → LUT row). Method borrowed from TICKEY quality phases (structure only): repeated short AC
+pairs for colour, 2-frame AC to erase history.
 
-| Ink | Train (`N x [code:frames, code:frames]`, t0 codes) | Pass |
-| --- | --- | --- |
-| white | shake `4x[8:6,2:10]` + white tail `8x60,1x5,8x20,2x1,8x5` | 1 |
-| blue | `12x[1:10,2:6]` (ends on black ≥4 frames) | 1 |
-| yellow | shake + `4x[1:10,9:4]` | 1 |
-| black | `8x[8:6,2:10]` | 1 and 2 |
-| green | `8x[1:10,2:1]` (ends on 1-frame black) | 2 |
-| red | `8x[2:10,9:5]` (black-heavy duty) | 2 |
+| Ink | Row (368 frames, every frame driven; `N x [code:frames, …]`, t0 codes, `t1 2` = t1 code 2) |
+| --- | --- |
+| white | `8x20`, erase `20x[2:2, t1 2:2]`, `2x60`, tail `8x60,1x5,8x20,2x1,8x5`, `2x30,8x60,2x2,8x25` |
+| black | `2x16`, tail, `2x85`, tail, `2x85` |
+| yellow | pad `8x68,2x68`, clean `2x85`+tail, `4x[1:10,9:4]` (ends on yellow) |
+| red | pad `8x6,2x6`, clean, `12x[2:10,9:5]` (ends on code 9) |
+| blue | clean, `12x[1:10,2:6]` (ends on black ≥4 frames) |
+| green | pad `8x52,2x52`, clean, `8x[1:10,2:1]` (ends on 1-frame black) |
 
-Learnings (bands + chart, camera ΔE76 to native inks):
-- Yellow/black trains: the last pulse decides — ends on yellow → yellow; ends on black 1 frame →
-  green, 2 → teal, 4–6 → blue. Black/code-9 trains end on 9 → red. 4–8 cycles suffice.
-- Trains reset by themselves: no black prep needed; a long prep in the same row made red pink.
+Learnings (bands + chart → text → chart ghost tests, camera ΔE76 to native inks):
+- Colour trains: the last pulse decides — yellow/black ending on yellow → yellow, on black 1 frame →
+  green, 2 → teal, 4–6 → blue; black/code-9 ending on 9 → red. 4–12 cycles suffice.
 - Multi-bit t0 codes (9, 11, 13) are load-dependent: code 11 gives red only while other pixels
-  drive code 8 in the same frames, black otherwise (also when the code-8 LUT row has no pixels).
-  Single-bit codes 1/2/8 are stable. `booster`, PSR byte 1 and VCOM codes 4/12 do not change this.
-- Idle pixels are not frozen: during pass 2 idle black drifted maroon and idle red paled. Fix:
-  red in pass 2, black re-driven in pass 2; code 4 as "hold" does not help.
-- `2x85` black keeps colour history (red/blue ghosts); the `8:6/2:10` shake erases it.
+  drive code 8 in the same frames, black otherwise. Single-bit codes 1/2/8 are stable.
+- **Ghost rule**: a pixel that idles while other pixels drive shows the previous image (idle black
+  fades, idle red/green/blue reveal old text). Staged 2 bpp passes always leave some ink idle in the
+  last pass, so every row here is active for the whole pass (no right-align idle, pads instead).
+- PSR byte 0 `1F` makes 4 bpp LUT frames reach all 600 rows (`5F` stops at ~491): one pass, 8 rows.
+- History erase: a clean cycle (`2x85` + tail) before each train; under white the 2-frame
+  `[2:2, t1 2:2]` AC removes the red/yellow residue that cycles alone leave (b* +9 → −2).
+  Fast `8:6/2:10` shakes erase too but yellow the white over time.
 
-| Measure | Own (color-own-002) | Native |
+| Measure | Own (color-1f-001) | Native |
 | --- | --- | --- |
-| chart ΔE K / W / Y / R / B / G | 11 / 9 / 6 / 11 / 6 / 15 | 0 |
-| min pairwise ΔE of the six | > 20 | 31 |
-| BUSY / total per image | 3.8 s / ~5.4 s | 14.4 s / 16 s |
+| min pairwise ΔE of the six | 29 | 31 |
+| chart ΔE K / W / Y / R / B / G (dim light) | 3 / 12 / 15 / 13 / 8 / 11 | 0 |
+| ghost: chart → text → chart | none visible | none |
+| colour history under white (`white_spread.py`, max / mean ΔE) | 3.5 / 1.7 | 2.5 / 1.4 |
+| BUSY / total per image | 4.36 s / 5.3 s | 14.4 s / 16 s |
 
-Full-screen fills (color-own-001) give ΔE 9–17, so the result does not depend on image content.
-Residual: after a very different image the blue keeps a faint ghost (ΔE ~3–5) and white is faintly
-tinted; longer shakes made white yellower without curing it. Evidence: `evidence/20261016-color-own-001`, `-002`.
-Tried after the clean mono (chart → text → chart, scratch `own-ghost-010..015`): clean-mono white
-and black in pass 1 remove the white ghost and give native black (ΔE 3) but not the blue ghost;
-a 12-cycle blue after a full cycle keeps it; blue in pass 2 from clean black removes it but idle
-black then fades to grey with a text ghost; a third pass re-blackening (`2x30`) pales red (ΔE 24)
-and ghosts every block. Colour ghosts depend on several updates of history — open.
-
-Ghost rule found next (chart → text → chart, scratch `own-clean-*`, `own-cleansplit-001..004`,
-`own-half-001`): a pixel **idle in the last pass** shows the previous image when other pixels drive.
-With a clean-mono pre-pass (`own_mono` rows, white → white, rest → black) the text page is clean and
-idle white/yellow stay clean, but idle red, green, blue ghost and idle black fades to grey. So the
-last pass needs idle(W,Y) + R + G + B + K = 5 classes; 2 bpp gives 4, 4 bpp gives 8 but reaches only
-rows 0–491, and a `83` bottom-half window (rows 300–599) still stops at ~491 (RAM is addressed
-absolutely). Also tried: DC-balancing every row (white turns khaki), yellow-saturate reset before
-blue/green, longer or darker blue, a 1-frame `8/2` hold (turns idle pixels black), a uniform
-"flush" refresh (ghost is in the panel, not controller RAM). Next idea: a frame layout giving the
-last pass 3 bits for all 600 rows.
+Earlier two-pass designs (2 bpp, BUSY 3.1–3.8 s) left faint blue/white ghosts: see
+`evidence/20261016-color-own-001`, `-002` and git history of this section. Evidence:
+`evidence/20261016-psr1f-001`, `-color-1f-001`, `-white-spread-own-001`, `-white-spread-native-001`.
 
 ### 48-colour attempt (2026-10-16)
 

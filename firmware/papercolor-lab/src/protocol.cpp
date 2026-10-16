@@ -109,12 +109,13 @@ bool parse_knob(const char* tok, Mode mode, Knobs& knobs, unsigned& seen) {
   }
   if (key_is("psr")) {
     if (!once(8)) return false;
-    // Only recombinations of the pinned native (5F 69) and sf32rc (0F A9) bytes.
+    // Byte 0: native 5F (4 bpp, LUT frames reach rows 0-491), sf32rc 0F (2 bpp) or
+    // 1F (4 bpp over all 600 rows, found 2026-10-16); byte 1: native 69 / sf32rc A9.
     if (strlen(value) != 4) return false;
-    const bool b0 = !strncmp(value, "5F", 2) || !strncmp(value, "0F", 2);
+    const bool b0 = !strncmp(value, "5F", 2) || !strncmp(value, "0F", 2) || !strncmp(value, "1F", 2);
     const bool b1 = !strcmp(value + 2, "69") || !strcmp(value + 2, "A9");
     if (!b0 || !b1) return false;
-    knobs.psr[0] = value[0] == '5' ? 0x5F : 0x0F;
+    knobs.psr[0] = value[0] == '5' ? 0x5F : value[0] == '1' ? 0x1F : 0x0F;
     knobs.psr[1] = value[2] == '6' ? 0x69 : 0xA9;
     return true;
   }
