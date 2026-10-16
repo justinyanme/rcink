@@ -25,9 +25,8 @@ void render_text(uint8_t* inks);
 // Eight full-width bands of 75 px; band i holds value i (0..7). Values 4 and 7
 // are not panel inks: for custom map=01234567, where the value selects LUT row i+1.
 void render_bands(uint8_t* inks);
-// 8 x 8 patches of 50 x 60 px in the top 480 rows (inside the ~491 rows a
-// 4 bpp LUT frame reaches); patch (row r, column c) holds value 8r + c (0..63,
-// not panel inks), rows below hold 0. custom field=S:B selects its LUT row per pass.
+// 8 x 8 patches of 50 x 75 px; patch (row r, column c) holds value 8r + c
+// (0..63, not panel inks): custom field=S:B selects its LUT row per pass.
 void render_grid(uint8_t* inks);
 // Black <-> white; chromatic inks unchanged.
 void invert(uint8_t* inks, size_t count);

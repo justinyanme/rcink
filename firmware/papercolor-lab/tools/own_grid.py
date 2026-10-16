@@ -3,11 +3,13 @@
 # requires-python = ">=3.13"
 # dependencies = ["pillow>=11"]
 # ///
-"""Own staged colour on image `grid` (48-colour attempt, route C): 8 bases x 4 x 2 = 64 classes.
+"""Own staged colour on image `grid` (48-colour attempt, route C): 8 bases x 8 modifiers = 64 classes.
 
-Pass 1 (4 bpp, field 0:3) draws eight AC-train bases; pass 2 (2 bpp, field 3:2) and pass 3
-(2 bpp, field 5:1) add short partial pulses that shift each base. Prints the number of patches
-pairwise distinct at camera ΔE76 >= 5/8/10/15 (greedy) and the 64 patch RGB.
+Two full-screen 4 bpp passes (PSR 1F A9): pass 1 (field 0:3) draws eight AC-train bases, pass 2
+(field 3:3) adds a short partial pulse or train that shifts each base. Prints the largest set of
+patches pairwise distinct at camera ΔE76 >= 5 / 8 (randomised greedy), raw and white-normalised
+(each channel scaled so patch 0, the white base without modifier, equals the native white
+164,175,176 measured in daylight: removes the room-light level, which compresses all ΔE).
 
 Usage: own_grid.py OUT [--port P] [--camera C]
 """
@@ -15,6 +17,7 @@ Usage: own_grid.py OUT [--port P] [--camera C]
 import argparse
 import json
 import math
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lutcodec as lc  # noqa: E402
 
 SHAKE = [(4, (8, 6), (2, 10))]
-BASES = [  # W K R B Y G teal dark-yellow (search48b it024, 2026-10-16)
+BASES = [  # W K R B Y G teal orange (search48g it017, 2026-10-16)
     SHAKE + [(8, 60), (1, 5), (8, 20), (2, 1), (8, 5)],
     [(8, (8, 6), (2, 10))],
     [(8, (2, 10), (9, 5))],
@@ -33,9 +36,20 @@ BASES = [  # W K R B Y G teal dark-yellow (search48b it024, 2026-10-16)
     SHAKE + [(4, (1, 10), (9, 4))],
     [(8, (1, 10), (2, 1))],
     [(8, (1, 10), (2, 2))],
-    SHAKE + [(4, (1, 10), (9, 4)), (2, 1)],
+    [(8, (2, 10), (9, 5)), (1, 3)],
 ]
-PASSES = [("4", "0:3", BASES), ("2", "3:2", [[], [(2, 1)], [(2, 1), (8, 1)], [(1, 1)]]), ("2", "5:1", [[], [(8, 1)]])]
+MODIFIERS = [
+    [],
+    [(2, 1)],
+    [(2, 1), (8, 1)],
+    [(8, 1)],
+    [(1, 1)],
+    [(1, (2, 5), (9, 3))],  # half a red cycle
+    [(1, (1, 5), (2, 3))],  # half a blue cycle
+    [(2, 3, 1)],  # t1 code 2 (weak yellow)
+]
+PASSES = [("0:3", BASES), ("3:3", MODIFIERS)]
+NATIVE_WHITE = (164, 175, 176)
 # panel corners as photo fractions (TL, TR, BR, BL) for the bench camera framing
 CORNERS = [(0.192, 0.280), (0.646, 0.292), (0.606, 0.888), (0.215, 0.882)]
 
@@ -65,11 +79,9 @@ def at(u: float, v: float) -> tuple[float, float]:
 
 def steps() -> list[str]:
     out: list[str] = []
-    for pack, field, rows in PASSES:
-        padded = [None, *(r or None for r in rows)] + [None] * (8 - len(rows))
-        out += lc.lut_steps(lc.build(lc.right_align(padded)))
-        psr = "5FA9" if pack == "4" else "0FA9"
-        out.append(f"show grid custom setup=tickey psr={psr} booster=none win=1 pack={pack} field={field}")
+    for field, rows in PASSES:
+        out += lc.lut_steps(lc.build(lc.right_align([None, *(r or None for r in rows)])))
+        out.append(f"show grid custom setup=tickey psr=1FA9 booster=none win=1 pack=4 field={field}")
     return out
 
 
@@ -86,17 +98,27 @@ def main() -> None:
     w, h = im.size
     cols = []
     for v in range(64):
-        x, y = at((25 + 50 * (v % 8)) / 400, (30 + 60 * (v // 8)) / 600)
-        box = (int(x * w) - 12, int(y * h) - 10, int(x * w) + 12, int(y * h) + 10)
+        x, y = at((25 + 50 * (v % 8)) / 400, (37 + 75 * (v // 8)) / 600)
+        box = (int(x * w) - 18, int(y * h) - 20, int(x * w) + 18, int(y * h) + 20)
         cols.append(tuple(round(c) for c in ImageStat.Stat(im.crop(box)).mean))
     (Path(a.out) / "patches.json").write_text(json.dumps(cols))
-    labs = [lab(c) for c in cols]
-    for th in (5, 8, 10, 15):
+    white = cols[0]
+    normed = [tuple(min(255.0, c[i] * NATIVE_WHITE[i] / white[i]) for i in range(3)) for c in cols]
+    for name, rgb in (("raw", cols), ("white-normalised", normed)):
+        labs = [lab(c) for c in rgb]
+        print(name, " ".join(f"dE>={th}: {largest_distinct(labs, th)}" for th in (5, 8)))
+
+
+def largest_distinct(labs: list[tuple[float, float, float]], th: float, tries: int = 3000) -> int:
+    rng = random.Random(0)
+    best = 0
+    for _ in range(tries):
         kept: list[tuple[float, float, float]] = []
-        for p in labs:
-            if all(math.dist(p, k) >= th for k in kept):
-                kept.append(p)
-        print(f"distinct at dE>={th}: {len(kept)}")
+        for i in rng.sample(range(len(labs)), len(labs)):
+            if all(math.dist(labs[i], k) >= th for k in kept):
+                kept.append(labs[i])
+        best = max(best, len(kept))
+    return best
 
 
 if __name__ == "__main__":

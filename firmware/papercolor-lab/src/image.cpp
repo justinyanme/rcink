@@ -132,7 +132,7 @@ void render_bands(uint8_t* inks) {
 
 void render_grid(uint8_t* inks) {
   for (unsigned y = 0; y < kPanelHeight; ++y) {
-    for (unsigned x = 0; x < kPanelWidth; ++x) inks[size_t(y) * kPanelWidth + x] = y < 480 ? uint8_t((y / 60) * 8 + x / 50) : 0;
+    for (unsigned x = 0; x < kPanelWidth; ++x) inks[size_t(y) * kPanelWidth + x] = uint8_t((y / 75) * 8 + x / 50);
   }
 }
 
