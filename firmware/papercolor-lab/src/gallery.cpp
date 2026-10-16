@@ -58,7 +58,7 @@ void page_index(uint8_t* p, unsigned) {
       "A  next page",
       "B  previous page",
       "C  page action",
-      "C hold  factory clear",
+      "C hold  cleanup",
   };
   unsigned y = kHeader + 40;
   for (const char* line : kLines) {

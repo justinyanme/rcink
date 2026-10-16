@@ -18,7 +18,7 @@ using gallery::Drive;
 
 constexpr int kButtonA = 9, kButtonB = 10, kButtonC = 1;  // M5Unified PaperColor mapping
 constexpr uint32_t kDebounceMs = 30;
-constexpr uint32_t kHoldMs = 800;  // C held this long: native clear
+constexpr uint32_t kHoldMs = 800;  // C held this long: Cleanup
 
 uint8_t* g_plane = nullptr;
 int g_page = -1;  // -1: nothing opened since boot
@@ -108,14 +108,14 @@ epd::Result act(Reply& ok) {
   return show(unsigned(g_page), g_step + 1, true, ok);
 }
 
-epd::Result clear(Reply& ok) {
+epd::Result cleanup(Reply& ok) {
   render_fill(g_plane, InkWhite);
-  ok.field("clear", "native");
+  ok.field("cleanup", "native");
   return modes::run(Mode::Native, Knobs{}, ok);
 }
 
 bool poll() {
-  enum { None, Next, Prev, Act, Clear } event = None;
+  enum { None, Next, Prev, Act, Cleanup } event = None;
   const uint32_t now = millis();
   for (size_t i = 0; i < 3; ++i) {
     Button& b = g_buttons[i];
@@ -128,10 +128,10 @@ bool poll() {
       if (event != None) continue;
       if (!high && i == 0) event = Next;
       else if (!high && i == 1) event = Prev;
-      else if (high && i == 2 && !was_held) event = Act;  // C acts on release: a hold is the native clear
+      else if (high && i == 2 && !was_held) event = Act;  // C acts on release: a hold is the Cleanup
     } else if (i == 2 && !b.high && !b.held && now - b.changed_ms >= kHoldMs && event == None) {
       b.held = true;
-      event = Clear;
+      event = Cleanup;
     }
   }
   if (event == None) return false;
@@ -140,7 +140,7 @@ bool poll() {
   epd::Result r;
   constexpr int n = int(gallery::kPageCount);
   switch (event) {
-    case Clear: r = clear(ok); break;
+    case Cleanup: r = cleanup(ok); break;
     case Act: r = g_page >= 0 ? act(ok) : open(0, ok); break;
     case Prev: r = open(unsigned(g_page < 0 ? n - 1 : (g_page + n - 1) % n), ok); break;
     default: r = open(unsigned(g_page < 0 ? 0 : (g_page + 1) % n), ok); break;

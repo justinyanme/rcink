@@ -183,7 +183,7 @@ void dispatch(const char* line) {
       const uint32_t began = millis();
       Reply ok(true);
       const epd::Result r = cmd.demo_page == kDemoAct     ? demo::act(ok)
-                            : cmd.demo_page == kDemoClear ? demo::clear(ok)
+                            : cmd.demo_page == kDemoCleanup ? demo::cleanup(ok)
                                                           : demo::open(unsigned(cmd.demo_page), ok);
       g_have_image = false;  // the plane now holds a demo page (grid values are not inks)
       if (!r.ok()) return reply_fail(r);

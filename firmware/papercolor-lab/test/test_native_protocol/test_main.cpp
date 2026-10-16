@@ -32,7 +32,7 @@ static const Row kTable[] = {
     {"demo 0", true, Verb::Demo},
     {"demo 6", true, Verb::Demo},
     {"demo act", true, Verb::Demo},
-    {"demo clear", true, Verb::Demo},
+    {"demo cleanup", true, Verb::Demo},
     {"demo 7", false, Verb::Demo},
     {"demo", false, Verb::Demo},
     {"demo 1 2", false, Verb::Demo},
@@ -238,8 +238,8 @@ void test_demo_targets() {
   TEST_ASSERT_EQUAL(6, cmd.demo_page);
   TEST_ASSERT_TRUE(parse_command("demo act", cmd, why));
   TEST_ASSERT_EQUAL(kDemoAct, cmd.demo_page);
-  TEST_ASSERT_TRUE(parse_command("demo clear", cmd, why));
-  TEST_ASSERT_EQUAL(kDemoClear, cmd.demo_page);
+  TEST_ASSERT_TRUE(parse_command("demo cleanup", cmd, why));
+  TEST_ASSERT_EQUAL(kDemoCleanup, cmd.demo_page);
 }
 
 void test_reply_format() {

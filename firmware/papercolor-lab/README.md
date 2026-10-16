@@ -1,5 +1,7 @@
 # papercolor-lab
 
+Cross-panel lessons from this lab: `../../docs/eink-panel-tuning.md`.
+
 Lab firmware for the M5Stack PaperColor: drives only the panel from a line
 console, with every controller byte written by this repo (no M5GFX/M5Unified).
 Boots to an idle console in ~250 ms and paints nothing until told to. Spec and
@@ -57,7 +59,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
 | `trace <on\|off>` | echo every controller write as `# write cmd=XX len=N` → `OK trace=` |
-| `demo <0..6\|act\|clear>` | open demo page N, run the current page's action, or native refresh to white → `OK page= name= step= drive= <mode fields> busy_ms= total_ms=` (clear: `OK clear=native busy_ms= total_ms=`; see Demo gallery); `act` before any page: `FAIL stage=no-page` |
+| `demo <0..6\|act\|cleanup>` | open demo page N, run the current page's action, or Cleanup (native refresh to white) → `OK page= name= step= drive= <mode fields> busy_ms= total_ms=` (cleanup: `OK cleanup=native busy_ms= total_ms=`; see Demo gallery); `act` before any page: `FAIL stage=no-page` |
 | `help` | `OK verbs=… show=… raw=… rawread=… trace=…` |
 | anything else | `FAIL stage=parse reason=<empty\|verb\|args\|image\|mode\|hex\|count\|arg\|length>` |
 
@@ -264,10 +266,10 @@ Evidence: `evidence/20261016-grid-1f-001` (4 runs), earlier `evidence/20261016-g
 ## Demo gallery (`gallery.{h,cpp}`, `demo.{h,cpp}`)
 
 On-device showcase of the own waveforms, no host needed: button A (G9) next page, B (G10)
-previous, C (G1) the page's action on release; C held 0.8 s = native (factory waveform) refresh to
-white, to clear any ghost (page and step kept: the next C or A/B redraws). Boot stays idle; the first A (or C) opens page 1, the first
+previous, C (G1) the page's action on release; C held 0.8 s = Cleanup (native refresh to white) to
+remove residue (page and step kept: the next C or A/B redraws). Boot stays idle; the first A (or C) opens page 1, the first
 B the last page. Presses during a drive are dropped. Each button drive prints
-`# demo OK page= … total_ms=` on the console; `demo <N>` / `act` / `clear` do the same from the host.
+`# demo OK page= … total_ms=` on the console; `demo <N>` / `act` / `cleanup` do the same from the host.
 LUTs are baked from the Python tools (single source) into `src/own_waveforms.inc` by
 `tools/gen_demo_luts.py`; `just lab-host-test` fails when it is stale.
 
@@ -281,7 +283,7 @@ LUTs are baked from the Python tools (single source) into `src/own_waveforms.inc
 | 6 | 48 colours: 8×8 grid of 50×70 px patches under a 40 px caption band | own grid (2 passes) | redraw |
 | 7 | same UI as page 5 by native refresh | native (14.4 s) | new bar values |
 
-After a demo drive `cleanup`/`invert` answer `no-image` (the plane may hold grid values).
+After a demo drive the console verbs `cleanup` and `show invert` answer `no-image` (the plane may hold grid values).
 
 ## Host script `lab.py`
 

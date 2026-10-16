@@ -37,7 +37,8 @@ _Avoid_: full refresh, slow refresh, quality mode
 
 **Fast mono**:
 Two-tone panel update driven by a host-supplied waveform or an interrupted
-native waveform; speed-first, residue tolerated until the next Cleanup.
+native waveform; speed-first, residue tolerated until the next Cleanup. Only
+changed pixels are driven.
 _Avoid_: partial refresh, fast mode
 
 **Draft color**:
@@ -55,6 +56,22 @@ timestamps and settled photo kept together.
 _Avoid_: test, run, experiment
 
 **Lab firmware**:
-Minimal firmware whose only job is driving panel Trials over a serial console;
-no network, storage, sleep or product pages.
-_Avoid_: dev build, debug firmware, demo
+Minimal firmware whose only jobs are driving panel Trials over a serial console
+and showing their conclusions in the Demo gallery; no network, storage, sleep or
+product pages.
+_Avoid_: dev build, debug firmware
+
+**Demo gallery**:
+Button-driven pages in the Lab firmware, one per proven capability, each naming
+the update it uses; for people to judge results on the device.
+_Avoid_: demo mode, showcase
+
+**Own waveform**:
+A waveform this project designed and measured itself, borrowing methods from
+reference implementations but not their table bytes.
+_Avoid_: custom LUT, our LUT
+
+**Clean mono**:
+Two-tone update with an Own waveform that drives every pixel regardless of the
+previous image; slower than Fast mono, residue close to a Native refresh.
+_Avoid_: full mono, slow mono
