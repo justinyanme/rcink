@@ -89,6 +89,25 @@ void test_vt323_glyph_bits() {
   TEST_ASSERT_EQUAL(expected_black, black);  // nothing drawn outside the glyph box
 }
 
+// Scale 3: every font pixel of the hand-decoded A becomes a 3 x 3 block.
+void test_vt323_glyph_scaled() {
+  render_fill(plane.data(), InkWhite);
+  const unsigned end = draw_text(plane.data(), FontSize::Pt16, 20, 100, "A", 7, 3);
+  TEST_ASSERT_EQUAL(59, end);  // xAdvance 13 x 3
+  size_t expected = 0;
+  for (unsigned row = 0; row < 18 * 3; ++row) {
+    for (unsigned col = 0; col < 10 * 3; ++col) {
+      const bool on = kGlyphA[row / 3][col / 3] == '#';
+      expected += on;
+      // Upper-left = cursor + 3 x (xOffset 1, yOffset -17) = (23, 49).
+      TEST_ASSERT_EQUAL_MESSAGE(on ? 7 : InkWhite, at(23 + col, 49 + row), kGlyphA[row / 3]);
+    }
+  }
+  size_t drawn = 0;
+  for (uint8_t v : plane) drawn += v == 7;
+  TEST_ASSERT_EQUAL(expected, drawn);
+}
+
 void test_text_inverse_band() {
   render_text(plane.data());
   // Some row near the bottom is a full black band edge to edge (white-on-black line).
@@ -114,6 +133,7 @@ int main() {
   RUN_TEST(test_checker_parity);
   RUN_TEST(test_invert_row);
   RUN_TEST(test_vt323_glyph_bits);
+  RUN_TEST(test_vt323_glyph_scaled);
   RUN_TEST(test_text_inverse_band);
   RUN_TEST(test_bands_rows);
   return UNITY_END();

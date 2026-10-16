@@ -57,6 +57,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
 | `trace <on\|off>` | echo every controller write as `# write cmd=XX len=N` → `OK trace=` |
+| `demo <0..6\|act>` | open demo page N, or run the current page's action → `OK page= name= step= drive= <mode fields> busy_ms= total_ms=` (see Demo gallery); `act` before any page: `FAIL stage=no-page` |
 | `help` | `OK verbs=… show=… raw=… rawread=… trace=…` |
 | anything else | `FAIL stage=parse reason=<empty\|verb\|args\|image\|mode\|hex\|count\|arg\|length>` |
 
@@ -260,6 +261,27 @@ Blue/green/teal bases collide most, red-side bases least. A faster frame clock (
 repeated means. TICKEY's nominal 48-entry palette scores 40 at ΔE≥5 on the same metric.
 Evidence: `evidence/20261016-grid-1f-001` (4 runs), earlier `evidence/20261016-grid-own-001`.
 
+## Demo gallery (`gallery.{h,cpp}`, `demo.{h,cpp}`)
+
+On-device showcase of the own waveforms, no host needed: button A (G9) next page, B (G10)
+previous, C (G1) the page's action. Boot stays idle; the first A (or C) opens page 1, the first
+B the last page. Presses during a drive are dropped. Each button drive prints
+`# demo OK page= … total_ms=` on the console; `demo <N>` / `demo act` do the same from the host.
+LUTs are baked from the Python tools (single source) into `src/own_waveforms.inc` by
+`tools/gen_demo_luts.py`; `just lab-host-test` fails when it is stale.
+
+| # | Page | Open | C action |
+| --- | --- | --- | --- |
+| 1 | index: page list, button legend | clean mono | redraw |
+| 2 | fast mono: 3-digit counter + bar | clean mono | counter +1 by fast mono (1.2 s, idle pixels keep ghost) |
+| 3 | clean mono: 13–24 pt text, 2–16 px checkers, white-on-black band | clean mono | invert page |
+| 4 | six colours: six named blocks | own colour (4.4 s) | rotate colours |
+| 5 | colour UI: date, status bullets, bar chart | own colour | new bar values |
+| 6 | 48 colours: 8×8 grid of 50×70 px patches under a 40 px caption band | own grid (2 passes) | redraw |
+| 7 | same UI as page 5 by native refresh | native (14.4 s) | new bar values |
+
+After a demo drive `cleanup`/`invert` answer `no-image` (the plane may hold grid values).
+
 ## Host script `lab.py`
 
 PEP 723 typer CLI (`uv run firmware/papercolor-lab/lab.py --help`):
@@ -295,6 +317,7 @@ Trial directory (`OUT`, must not exist):
 - `image.{h,cpp}` — pure image renderers + GFXfont glyph renderer (host-tested); `fonts.h` + `shim/M5GFX.h` reuse the production VT323 headers.
 - `epd_init.h` — pinned byte tables (host-tested against a second copy).
 - `epd.{h,cpp}` — driver: `begin, hard_reset, init_native, upload_frame, upload_lut, power_on, drive, power_off, read_register`; all writes through `write()`.
+- `gallery.{h,cpp}` — pure demo page renderers + drive per page (host-tested). `demo.{h,cpp}` — buttons, page state, drives via `modes::run` with `own_waveforms.inc`.
 - `board.{h,cpp}` — PM1 bring-up, CS idle levels. `main.cpp` — console loop.
 - `build_hash.py` — embeds `git rev-parse --short=12 HEAD` (+`-dirty`) as the build id.
 

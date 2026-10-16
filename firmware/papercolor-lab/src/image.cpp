@@ -60,18 +60,22 @@ const GFXfont& font(FontSize size) {
   return fonts::VT323_16pt7b;
 }
 
-void plot(uint8_t* inks, int x, int y, Ink ink) {
+void plot(uint8_t* inks, int x, int y, uint8_t ink) {
   if (x < 0 || y < 0 || x >= int(kPanelWidth) || y >= int(kPanelHeight)) return;
   inks[size_t(y) * kPanelWidth + size_t(x)] = ink;
 }
 
-// Adafruit GFX drawChar: bits MSB first, rows packed back to back.
-void draw_glyph(uint8_t* inks, const GFXfont& f, const GFXglyph& g, int x, int y, Ink ink) {
+// Adafruit GFX drawChar: bits MSB first, rows packed back to back. Each font pixel becomes a
+// `scale` x `scale` block.
+void draw_glyph(uint8_t* inks, const GFXfont& f, const GFXglyph& g, int x, int y, uint8_t ink, int scale = 1) {
   const uint8_t* bits = f.bitmap + g.bitmapOffset;
   unsigned bit = 0;
   for (int row = 0; row < g.height; ++row) {
     for (int col = 0; col < g.width; ++col, ++bit) {
-      if (bits[bit / 8] & (0x80 >> (bit % 8))) plot(inks, x + g.xOffset + col, y + g.yOffset + row, ink);
+      if (!(bits[bit / 8] & (0x80 >> (bit % 8)))) continue;
+      const int px = x + (g.xOffset + col) * scale, py = y + (g.yOffset + row) * scale;
+      for (int dy = 0; dy < scale; ++dy)
+        for (int dx = 0; dx < scale; ++dx) plot(inks, px + dx, py + dy, ink);
     }
   }
 }
@@ -143,12 +147,13 @@ void invert(uint8_t* inks, size_t count) {
   }
 }
 
-unsigned draw_text(uint8_t* inks, FontSize size, unsigned x, unsigned y, const char* text, Ink ink) {
+unsigned draw_text(uint8_t* inks, FontSize size, unsigned x, unsigned y, const char* text, uint8_t ink,
+                   unsigned scale) {
   const GFXfont& f = font(size);
   for (const char* p = text; *p; ++p) {
     const GFXglyph& g = f.glyph[uint8_t(*p) - f.first];
-    draw_glyph(inks, f, g, int(x), int(y), ink);
-    x += g.xAdvance;
+    draw_glyph(inks, f, g, int(x), int(y), ink, int(scale));
+    x += g.xAdvance * scale;
   }
   return x;
 }

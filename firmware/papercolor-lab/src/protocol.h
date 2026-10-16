@@ -14,7 +14,7 @@ constexpr size_t kMaxLine = 255;
 constexpr size_t kMaxRawBytes = 64;   // raw: command byte + data
 constexpr size_t kMaxReadBytes = 32;  // rawread: bytes returned
 
-enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Lut, Otp, Raw, RawRead, Trace, Help };
+enum class Verb : uint8_t { Info, Reset, Show, Cleanup, Lut, Otp, Raw, RawRead, Trace, Demo, Help };
 enum class Image : uint8_t { White, Black, Yellow, Red, Blue, Green, Chart, Text, Checker, Invert, Bands, Grid };
 constexpr unsigned kMaxCheckerSize = 300;
 // Custom: the console-edited RAM LUT (`lut` verb) over the mono transition frame.
@@ -79,6 +79,7 @@ struct Command {
   LutOp lut_op{};                // lut
   size_t lut_table{};            // lut load: index into kLutTables
   unsigned lut_offset{};         // lut set/get: byte offset, range within kLutBytes799
+  int demo_page{};                // demo <page>: 0..gallery::kPageCount-1; -1 = `demo act`
 };
 
 // Parses one line (trailing CR/LF tolerated). On failure returns false and

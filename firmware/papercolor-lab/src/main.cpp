@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "board.h"
+#include "demo.h"
 #include "epd.h"
 #include "fatal.h"
 #include "frame.h"
@@ -178,10 +179,18 @@ void dispatch(const char* line) {
     case Verb::Trace:
       epd::set_trace(cmd.trace_on);
       return reply(Reply(true).field("trace", cmd.trace_on ? "on" : "off"));
+    case Verb::Demo: {
+      const uint32_t began = millis();
+      Reply ok(true);
+      const epd::Result r = cmd.demo_page < 0 ? demo::act(ok) : demo::open(unsigned(cmd.demo_page), ok);
+      g_have_image = false;  // the plane now holds a demo page (grid values are not inks)
+      if (!r.ok()) return reply_fail(r);
+      return reply(ok.field("total_ms", long(millis() - began)));
+    }
     case Verb::Help:
       // Values carry no spaces so every reply stays key=value parseable.
       return reply(Reply(true)
-                       .field("verbs", "info,reset,show,cleanup,lut,otp,raw,rawread,trace,help")
+                       .field("verbs", "info,reset,show,cleanup,lut,otp,raw,rawread,trace,demo,help")
                        .field("images", "white,black,chart,text,checker:N,invert,bands")
                        .field("modes", "native,interrupt,mono,monoclear,fast,quality,custom")
                        .field("interrupt_knobs", "cut,cdi")
@@ -208,6 +217,7 @@ void setup() {
   g_old = static_cast<uint8_t*>(ps_malloc(kMonoPlaneBytes));
   if (!g_inks || !g_packed || !g_old) fatal("psram alloc failed");
   modes::begin(g_inks, g_packed, g_old);
+  demo::begin(g_inks);
   Serial.printf("# ready build=%s mac=%s rev=%02x%02x%02x%02x supply=0x%02x uptime_ms=%u\n",
                 RCLAB_BUILD, g_mac, rev[0], rev[1], rev[2], rev[3], supply, unsigned(millis()));
 }
@@ -216,6 +226,7 @@ void loop() {
   // HWCDC flush() while the host is detached discards the TX queue
   // (Arduino 2.0.17); the bool conversion reports the connection handshake.
   if (Serial) Serial.flush();
+  if (demo::poll()) g_have_image = false;  // as Verb::Demo
   while (Serial.available() > 0) {
     const int c = Serial.read();
     if (c < 0) break;

@@ -28,9 +28,19 @@ WHITE_ROW = TAIL + BLACK + TAIL
 BLACK_ROW = BLACK + TAIL + BLACK
 
 
+def lut() -> bytes:
+    return lc.build(lc.right_align([None, WHITE_ROW, BLACK_ROW, None, None, None, None, None, None]))
+
+
+# Fast transition mono (README "Own mono waveform"): rows by code (old << 1) | new; only the
+# two changing transitions drive, unchanged pixels idle (fast, but they keep the old ghost).
+# Run as `custom` with KNOBS minus `map=`.
+def fast_lut() -> bytes:
+    return lc.build(lc.right_align([None, None, TAIL, BLACK, None, None, None, None, None]))
+
+
 def steps(images: list[str]) -> list[str]:
-    lut = lc.build(lc.right_align([None, WHITE_ROW, BLACK_ROW, None, None, None, None, None, None]))
-    out = lc.lut_steps(lut)
+    out = lc.lut_steps(lut())
     for image in images:
         out += [f"show {image} custom {KNOBS}", "photo"]
     return out

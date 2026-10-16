@@ -4,6 +4,8 @@
 #include <cstring>
 #include <initializer_list>
 
+#include "gallery.h"
+
 namespace rclab {
 namespace {
 
@@ -293,6 +295,15 @@ bool parse_command(const char* line, Command& out, const char*& why) {
     unsigned count = 0;
     if (!parse_uint(tok[2], 1, kMaxReadBytes, count)) { why = "count"; return false; }
     out.read_count = count;
+    return true;
+  }
+  if (!strcmp(verb, "demo")) {
+    if (n != 2) { why = "args"; return false; }
+    out.verb = Verb::Demo;
+    if (!strcmp(tok[1], "act")) return out.demo_page = -1, true;
+    unsigned page = 0;
+    if (!parse_uint(tok[1], 0, gallery::kPageCount - 1, page)) { why = "page"; return false; }
+    out.demo_page = int(page);
     return true;
   }
   if (!strcmp(verb, "trace")) {

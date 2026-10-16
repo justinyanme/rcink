@@ -77,10 +77,14 @@ def at(u: float, v: float) -> tuple[float, float]:
     return top[0] + (bot[0] - top[0]) * v, top[1] + (bot[1] - top[1]) * v
 
 
+def luts() -> list[bytes]:
+    return [lc.build(lc.right_align([None, *(r or None for r in rows)])) for _, rows in PASSES]
+
+
 def steps() -> list[str]:
     out: list[str] = []
-    for field, rows in PASSES:
-        out += lc.lut_steps(lc.build(lc.right_align([None, *(r or None for r in rows)])))
+    for (field, _), table in zip(PASSES, luts(), strict=True):
+        out += lc.lut_steps(table)
         out.append(f"show grid custom setup=tickey psr=1FA9 booster=none win=1 pack=4 field={field}")
     return out
 

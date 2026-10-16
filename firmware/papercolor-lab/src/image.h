@@ -32,8 +32,10 @@ void render_grid(uint8_t* inks);
 void invert(uint8_t* inks, size_t count);
 
 // Draws `text` with its baseline at y, starting at x; returns the end x.
-// Pixels outside the panel are dropped.
-unsigned draw_text(uint8_t* inks, FontSize size, unsigned x, unsigned y, const char* text, Ink ink);
+// Pixels outside the panel are dropped. `ink` is any plane value (an Ink, or a
+// custom map/field value); `scale` magnifies each font pixel.
+unsigned draw_text(uint8_t* inks, FontSize size, unsigned x, unsigned y, const char* text, uint8_t ink,
+                   unsigned scale = 1);
 unsigned line_height(FontSize size);
 
 }  // namespace rclab

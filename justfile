@@ -21,6 +21,7 @@ native-papercolor-lab:
 
 lab-host-test:
     uv run firmware/papercolor-lab/test_lab.py
+    uv run firmware/papercolor-lab/tools/gen_demo_luts.py --check
 
 native-t-amoled:
     {{ pio }} test -d firmware/t-amoled -e native
