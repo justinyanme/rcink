@@ -65,6 +65,10 @@ constexpr const char* kLutTables[] = {"clear_initial", "mono", "mono_clear", "fa
                                       "fast_cleanup", "quality1", "quality2", "quality3"};
 constexpr size_t kLutTableCount = sizeof(kLutTables) / sizeof(kLutTables[0]);
 
+// Command::demo_page values for `demo act` and `demo clear`.
+constexpr int kDemoAct = -1;
+constexpr int kDemoClear = -2;
+
 struct Command {
   Verb verb{};
   Image image{};                 // show
@@ -79,7 +83,7 @@ struct Command {
   LutOp lut_op{};                // lut
   size_t lut_table{};            // lut load: index into kLutTables
   unsigned lut_offset{};         // lut set/get: byte offset, range within kLutBytes799
-  int demo_page{};                // demo <page>: 0..gallery::kPageCount-1; -1 = `demo act`
+  int demo_page{};                // demo <page>: 0..gallery::kPageCount-1, or kDemoAct / kDemoClear
 };
 
 // Parses one line (trailing CR/LF tolerated). On failure returns false and

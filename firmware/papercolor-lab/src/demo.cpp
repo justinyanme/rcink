@@ -6,6 +6,7 @@
 
 #include "frame.h"
 #include "gallery.h"
+#include "image.h"
 #include "modes.h"
 
 namespace rclab::demo {
@@ -17,6 +18,7 @@ using gallery::Drive;
 
 constexpr int kButtonA = 9, kButtonB = 10, kButtonC = 1;  // M5Unified PaperColor mapping
 constexpr uint32_t kDebounceMs = 30;
+constexpr uint32_t kHoldMs = 800;  // C held this long: native clear
 
 uint8_t* g_plane = nullptr;
 int g_page = -1;  // -1: nothing opened since boot
@@ -26,6 +28,7 @@ struct Button {
   int pin;
   bool high = true;
   uint32_t changed_ms = 0;
+  bool held = false;  // hold already handled (C)
 };
 Button g_buttons[] = {{kButtonA}, {kButtonB}, {kButtonC}};
 
@@ -105,29 +108,48 @@ epd::Result act(Reply& ok) {
   return show(unsigned(g_page), g_step + 1, true, ok);
 }
 
+epd::Result clear(Reply& ok) {
+  render_fill(g_plane, InkWhite);
+  ok.field("clear", "native");
+  return modes::run(Mode::Native, Knobs{}, ok);
+}
+
 bool poll() {
+  enum { None, Next, Prev, Act, Clear } event = None;
   const uint32_t now = millis();
-  int pressed = -1;
   for (size_t i = 0; i < 3; ++i) {
     Button& b = g_buttons[i];
     const bool high = digitalRead(b.pin) != 0;
-    if (high == b.high || now - b.changed_ms < kDebounceMs) continue;
-    b.high = high;
-    b.changed_ms = now;
-    if (!high && pressed < 0) pressed = int(i);
+    if (high != b.high && now - b.changed_ms >= kDebounceMs) {
+      b.high = high;
+      b.changed_ms = now;
+      const bool was_held = b.held;
+      b.held = false;
+      if (event != None) continue;
+      if (!high && i == 0) event = Next;
+      else if (!high && i == 1) event = Prev;
+      else if (high && i == 2 && !was_held) event = Act;  // C acts on release: a hold is the native clear
+    } else if (i == 2 && !b.high && !b.held && now - b.changed_ms >= kHoldMs && event == None) {
+      b.held = true;
+      event = Clear;
+    }
   }
-  if (pressed < 0) return false;
+  if (event == None) return false;
   const uint32_t began = millis();
   Reply ok(true);
   epd::Result r;
   constexpr int n = int(gallery::kPageCount);
-  if (pressed == 2 && g_page >= 0) r = act(ok);
-  else if (pressed == 1) r = open(unsigned(g_page < 0 ? n - 1 : (g_page + n - 1) % n), ok);
-  else r = open(unsigned(g_page < 0 ? 0 : (g_page + 1) % n), ok);  // A, or C before any page
+  switch (event) {
+    case Clear: r = clear(ok); break;
+    case Act: r = g_page >= 0 ? act(ok) : open(0, ok); break;
+    case Prev: r = open(unsigned(g_page < 0 ? n - 1 : (g_page + n - 1) % n), ok); break;
+    default: r = open(unsigned(g_page < 0 ? 0 : (g_page + 1) % n), ok); break;
+  }
   if (r.ok()) Serial.printf("# demo %s total_ms=%lu\n", ok.c_str(), (unsigned long)(millis() - began));
   else Serial.printf("# demo FAIL stage=%s busy=%d ms=%u\n", r.stage, r.busy, unsigned(r.ms));
-  // Presses during the multi-second drive are dropped: resample the levels.
-  for (auto& b : g_buttons) b.high = digitalRead(b.pin) != 0, b.changed_ms = millis();
+  // Presses during the multi-second drive are dropped: resample the levels; a C still
+  // down counts as held so its release does not act.
+  for (auto& b : g_buttons) b.high = digitalRead(b.pin) != 0, b.changed_ms = millis(), b.held = !b.high;
   return true;
 }
 

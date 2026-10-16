@@ -57,7 +57,7 @@ progress/trace and carry no result. Hex bytes are exactly two digits, no prefix.
 | `raw <cmd> [data…]` | one command verbatim (≤64 bytes) → `OK cmd= len=` |
 | `rawread <cmd> <1..32>` | → `OK cmd= data=<hex>` |
 | `trace <on\|off>` | echo every controller write as `# write cmd=XX len=N` → `OK trace=` |
-| `demo <0..6\|act>` | open demo page N, or run the current page's action → `OK page= name= step= drive= <mode fields> busy_ms= total_ms=` (see Demo gallery); `act` before any page: `FAIL stage=no-page` |
+| `demo <0..6\|act\|clear>` | open demo page N, run the current page's action, or native refresh to white → `OK page= name= step= drive= <mode fields> busy_ms= total_ms=` (clear: `OK clear=native busy_ms= total_ms=`; see Demo gallery); `act` before any page: `FAIL stage=no-page` |
 | `help` | `OK verbs=… show=… raw=… rawread=… trace=…` |
 | anything else | `FAIL stage=parse reason=<empty\|verb\|args\|image\|mode\|hex\|count\|arg\|length>` |
 
@@ -264,9 +264,10 @@ Evidence: `evidence/20261016-grid-1f-001` (4 runs), earlier `evidence/20261016-g
 ## Demo gallery (`gallery.{h,cpp}`, `demo.{h,cpp}`)
 
 On-device showcase of the own waveforms, no host needed: button A (G9) next page, B (G10)
-previous, C (G1) the page's action. Boot stays idle; the first A (or C) opens page 1, the first
+previous, C (G1) the page's action on release; C held 0.8 s = native (factory waveform) refresh to
+white, to clear any ghost (page and step kept: the next C or A/B redraws). Boot stays idle; the first A (or C) opens page 1, the first
 B the last page. Presses during a drive are dropped. Each button drive prints
-`# demo OK page= … total_ms=` on the console; `demo <N>` / `demo act` do the same from the host.
+`# demo OK page= … total_ms=` on the console; `demo <N>` / `act` / `clear` do the same from the host.
 LUTs are baked from the Python tools (single source) into `src/own_waveforms.inc` by
 `tools/gen_demo_luts.py`; `just lab-host-test` fails when it is stale.
 

@@ -300,7 +300,8 @@ bool parse_command(const char* line, Command& out, const char*& why) {
   if (!strcmp(verb, "demo")) {
     if (n != 2) { why = "args"; return false; }
     out.verb = Verb::Demo;
-    if (!strcmp(tok[1], "act")) return out.demo_page = -1, true;
+    if (!strcmp(tok[1], "act")) return out.demo_page = kDemoAct, true;
+    if (!strcmp(tok[1], "clear")) return out.demo_page = kDemoClear, true;
     unsigned page = 0;
     if (!parse_uint(tok[1], 0, gallery::kPageCount - 1, page)) { why = "page"; return false; }
     out.demo_page = int(page);

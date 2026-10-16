@@ -1,5 +1,6 @@
-// Demo gallery driver: buttons A (G9) next, B (G10) previous, C (G1) page action;
-// console `demo <page>` / `demo act` does the same. Pages: gallery.h.
+// Demo gallery driver: buttons A (G9) next, B (G10) previous, C (G1) page action on
+// release, C held 0.8 s native clear; console `demo <page>|act|clear` does the same.
+// Pages: gallery.h.
 #pragma once
 
 #include "epd.h"
@@ -13,6 +14,8 @@ void begin(uint8_t* plane);
 epd::Result open(unsigned page, Reply& ok);
 // Runs the current page's action (step + 1); fails before any open.
 epd::Result act(Reply& ok);
+// Native full refresh to white (factory waveform): clears any ghost. Page and step kept.
+epd::Result clear(Reply& ok);
 // Polls the buttons; on a press drives and prints "# demo ..." (no reply: unsolicited).
 // Returns true when it drove the panel (main's image is then the page).
 bool poll();

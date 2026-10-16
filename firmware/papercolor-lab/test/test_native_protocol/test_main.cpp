@@ -32,6 +32,7 @@ static const Row kTable[] = {
     {"demo 0", true, Verb::Demo},
     {"demo 6", true, Verb::Demo},
     {"demo act", true, Verb::Demo},
+    {"demo clear", true, Verb::Demo},
     {"demo 7", false, Verb::Demo},
     {"demo", false, Verb::Demo},
     {"demo 1 2", false, Verb::Demo},
@@ -230,6 +231,17 @@ void test_trace_flag() {
   TEST_ASSERT_FALSE(cmd.trace_on);
 }
 
+void test_demo_targets() {
+  Command cmd;
+  const char* why = nullptr;
+  TEST_ASSERT_TRUE(parse_command("demo 6", cmd, why));
+  TEST_ASSERT_EQUAL(6, cmd.demo_page);
+  TEST_ASSERT_TRUE(parse_command("demo act", cmd, why));
+  TEST_ASSERT_EQUAL(kDemoAct, cmd.demo_page);
+  TEST_ASSERT_TRUE(parse_command("demo clear", cmd, why));
+  TEST_ASSERT_EQUAL(kDemoClear, cmd.demo_page);
+}
+
 void test_reply_format() {
   // Reply lines per protocol: status word, then space-separated key=value.
   TEST_ASSERT_EQUAL_STRING("OK busy_ms=1234 total_ms=16010",
@@ -254,6 +266,7 @@ int main() {
   RUN_TEST(test_raw_bytes);
   RUN_TEST(test_rawread_arguments);
   RUN_TEST(test_trace_flag);
+  RUN_TEST(test_demo_targets);
   RUN_TEST(test_reply_format);
   return UNITY_END();
 }
