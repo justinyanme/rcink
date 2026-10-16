@@ -1,0 +1,11 @@
+{"t_ns": 669923774524750, "clock": "host-monotonic", "event": "open", "port": "/dev/cu.usbmodem83301", "camera": "android:3B161600Z2U00000", "steps": ["show text native", "photo", "show white native", "photo", "show black native", "photo"], "restore": false}
+{"t_ns": 669924086259666, "clock": "host-monotonic", "event": "boot", "line": "# ready build=6a1905dec578-dirty mac=44:1b:f6:c1:31:90 rev=01010400 supply=0x05 uptime_ms=251"}
+{"t_ns": 669924086357583, "clock": "host-monotonic", "event": "write", "line": "show text native"}
+{"t_ns": 669940175138458, "clock": "host-monotonic", "event": "result", "line": "OK image=text mode=native busy_ms=14501 total_ms=16072", "ok": true, "fields": {"image": "text", "mode": "native", "busy_ms": "14501", "total_ms": "16072"}}
+{"t_ns": 669945488328625, "clock": "host-monotonic", "event": "photo", "file": "01-show-text-native.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/ghost-native/01-show-text-native.jpg"}
+{"t_ns": 669945488485916, "clock": "host-monotonic", "event": "write", "line": "show white native"}
+{"t_ns": 669961560043791, "clock": "host-monotonic", "event": "result", "line": "OK image=white mode=native busy_ms=14505 total_ms=16069", "ok": true, "fields": {"image": "white", "mode": "native", "busy_ms": "14505", "total_ms": "16069"}}
+{"t_ns": 669966850543916, "clock": "host-monotonic", "event": "photo", "file": "02-show-white-native.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/ghost-native/02-show-white-native.jpg"}
+{"t_ns": 669966850671208, "clock": "host-monotonic", "event": "write", "line": "show black native"}
+{"t_ns": 669982966904625, "clock": "host-monotonic", "event": "result", "line": "OK image=black mode=native busy_ms=14506 total_ms=16069", "ok": true, "fields": {"image": "black", "mode": "native", "busy_ms": "14506", "total_ms": "16069"}}
+{"t_ns": 669987790824750, "clock": "host-monotonic", "event": "photo", "file": "03-show-black-native.jpg", "camera": "android:3B161600Z2U00000", "stdout": ".cache/papercolor-lab/ghost-native/03-show-black-native.jpg"}

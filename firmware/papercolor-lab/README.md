@@ -171,6 +171,27 @@ unchanged pixels idle. Own clear: every pixel `opposite, 0x30 rest, target`.
 Text is black on white (TICKEY tables: navy on yellow). Evidence: `.cache/papercolor-lab/`
 `mono-own-001..003`, `long-002`, `rest-001`, `kdur-001`, `white-00x`, `drift-*` (curation pending).
 
+### Own clean mono (2026-10-16)
+
+The fast mono's ghost comes from idle unchanged pixels. `tools/own_mono.py OUT IMAGE...` drives
+every pixel, history ignored, through two full cycles: white = tail + `2x85` + tail, black =
+`2x85` + tail + `2x85` (one 2 bpp pass, `map=10111111`). Ghost metric: `tools/ghost_metric.py`
+(high-pass residue of the central area, `hp`; flat field ≈ 0.3–0.7).
+
+| Measure (curated photos) | Fast mono | Clean mono | Native |
+| --- | --- | --- | --- |
+| ghost: white after text / after checker | 2.10 / — | 0.73 / 0.69 | 0.60 |
+| ghost: black after white | — | 0.47 | 0.34 |
+| white / black Lab | (65,−5,−5) / — | (67,−9,3) / (20,8,−29) | (69,−5,−5) / (16,4,−6) |
+| 60 updates (white L*, b*) | — | 68 → 68, 6 → 11 | — |
+| BUSY / total | 1.2 / 1.9 s | 3.17 / 3.9 s | 14.4 / 16 s |
+
+Rejected: fast white/black shake (`4x[8:6,2:10]`) erases history but yellows white (b* +24 over
+60 updates, with or without DC balance or yellow flick); slow shake ghosts 1.3× more; shorter
+cycles ghost +30 %. Use fast mono for small updates, clean mono when the image changes a lot.
+Evidence: `evidence/20261016-ghost-native-001`, `-ghost-fastmono-001`, `-mono-clean-001`,
+`-mono-clean-long-001`.
+
 ### Own six-colour waveform (2026-10-16)
 
 `tools/own_color.py OUT IMAGE`: two 2 bpp `custom` passes, `map=` picks each ink's LUT row.
