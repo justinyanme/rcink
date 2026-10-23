@@ -14,7 +14,7 @@ Authority: `~/w/zmk-config-KEYPOINT/config/boards/shields/lpm_view/widgets/live_
 
 The loaded LaunchAgent `com.rocry.rcink.keypoint` executes `uv run --directory /Users/rocry/w/_hw/rcink/producer keypoint-push` every 60 seconds. Editing this checkout changes the next scheduled send; a commit/restart is not required. `keypoint-push` now defaults to acknowledged writes (`response=True`), surfacing firmware rejection instead of treating write-without-response submission as acceptance.
 
-**Current upgrade state:** sender was unloaded with `launchctl bootout` to prevent KP4 reaching an unupgraded keyboard. Keep it unloaded until KP4 firmware is flashed and an acknowledged deck succeeds. Keyboard USB is not currently attached; flashing and physical eight-color acceptance remain pending. The plist remains at `/Users/rocry/Library/LaunchAgents/com.rocry.rcink.keypoint.plist`.
+**Upgrade evidence, 2026-10-23:** sender was unloaded while old firmware remained. After the user's manual upgrade, a five-card deck succeeded with `response=True` at 14:40; user photo confirmed CLAUDE rows and colors on the panel. Sender restored with `launchctl bootstrap` at 14:42; scheduled five-card acknowledged writes succeeded. It now runs every 60 seconds. The dark UI/gallery follow-up retains KP4 and needs no producer pause. Physical COM, power and wake behavior remain unverified.
 
 ## Resume after firmware upgrade
 
