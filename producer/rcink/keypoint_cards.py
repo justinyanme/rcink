@@ -1,8 +1,8 @@
-"""Build compact KP3 cards from the existing source dataclasses.
+"""Build compact KP4 cards from the existing source dataclasses.
 
 Each builder turns one source's rich data into a renderable :class:`Card`: icon
 + title + either a full set of grid rows or one fewer plus the fetch timestamp.
-Widths are `rcink.kp3`'s to decide, as is the spelling of any row kp3 has a
+Widths are `rcink.kp4`'s to decide, as is the spelling of any row kp4 has a
 builder for (the usage cards' scoped-limit line); the builders here only choose
 what goes on a line. Reset rows use ``Row(until=epoch)`` so the
 keypoint-push job renders a live countdown instead of the frozen "2h 14m"
@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
-from rcink import kp3
+from rcink import kp4
 from rcink.keypoint import LED_HINT_ACTIVE, LED_HINT_ATTENTION, LED_HINT_NONE, LED_HINT_WARNING, Card, Row
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
@@ -55,6 +55,17 @@ def _usage_led_hint(*values: float | None) -> int:
     if peak >= 75.0:
         return LED_HINT_ATTENTION
     return LED_HINT_NONE
+
+
+def _usage_role(value: float | None) -> str:
+    """Consumed quota, independent of reset countdown; same thresholds as LED."""
+    if value is None:
+        raise ValueError("usage pct is required")
+    if value >= 90:
+        return "warning"
+    if value >= 75:
+        return "attention"
+    return "positive"
 
 
 def _window_label(minutes: int | None) -> str:
@@ -116,15 +127,17 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
         rows.append(Row("5H", until=usage.five_hour_reset_at))
     else:
         rows.append(Row("5H", _pct(usage.five_hour_pct)))
-    rows.append(Row(bar=_bar(usage.five_hour_pct)))
+    rows.append(Row(bar=_bar(usage.five_hour_pct), role=_usage_role(usage.five_hour_pct)))
     if usage.seven_day_reset_at is not None:
         rows.append(Row("7D", until=usage.seven_day_reset_at))
     else:
         rows.append(Row("7D", _pct(usage.seven_day_pct)))
-    rows.append(Row(bar=_bar(usage.seven_day_pct)))
+    rows.append(Row(bar=_bar(usage.seven_day_pct), role=_usage_role(usage.seven_day_pct)))
     if usage.scoped_limits:
         limit = max(usage.scoped_limits, key=lambda item: item.pct)
-        rows.append(Row(text=kp3.scoped_limit_row(_scoped_label(limit.label), int(limit.pct))))
+        rows.append(
+            Row(text=kp4.scoped_limit_row(_scoped_label(limit.label), int(limit.pct)), role=_usage_role(limit.pct))
+        )
     return Card(
         id="claude",
         icon="CLAUDE",
@@ -143,7 +156,7 @@ def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
         rows.append(Row(primary_win, until=usage.primary_reset_at))
     else:
         rows.append(Row(primary_win, _pct(usage.primary_pct)))
-    rows.append(Row(bar=_bar(usage.primary_pct)))
+    rows.append(Row(bar=_bar(usage.primary_pct), role=_usage_role(usage.primary_pct)))
     usage_values = [usage.primary_pct]
     if usage.secondary_pct is not None:
         secondary_win = _window_label(usage.secondary_window_min)
@@ -151,7 +164,7 @@ def codex_card(usage: CodexUsage, *, now: dt.datetime) -> Card:
             rows.append(Row(secondary_win, until=usage.secondary_reset_at))
         else:
             rows.append(Row(secondary_win, _pct(usage.secondary_pct)))
-        rows.append(Row(bar=_bar(usage.secondary_pct)))
+        rows.append(Row(bar=_bar(usage.secondary_pct), role=_usage_role(usage.secondary_pct)))
         usage_values.append(usage.secondary_pct)
     return Card(
         id="codex",

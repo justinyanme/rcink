@@ -1,4 +1,4 @@
-"""Push the cached KP3 cards as a deck onto the KEYPOINT keyboard over BLE.
+"""Push the cached KP4 cards as a deck onto the KEYPOINT keyboard over BLE.
 
 One-shot, stateless: load the card cache (written by the page fetchers), drop
 stale cards, then write the whole deck to the keyboard's GATT characteristic
@@ -115,7 +115,9 @@ def run(
     pace: float = typer.Option(0.1, min=0.0, help="Seconds between back-to-back deck writes."),
     max_age: int = typer.Option(DEFAULT_MAX_AGE_S, min=60, help="Drop cards older than this many seconds."),
     scan_timeout: float = typer.Option(8.0, min=1.0, help="BLE scan timeout when falling back to discovery."),
-    response: bool = typer.Option(False, "--response/--no-response", help="Use response writes for diagnostics."),
+    response: bool = typer.Option(
+        True, "--response/--no-response", help="Require the firmware to acknowledge each frame."
+    ),
 ) -> None:
     try:
         asyncio.run(

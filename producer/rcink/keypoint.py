@@ -1,6 +1,6 @@
-"""Local card cache + KP3 frame rendering for the KEYPOINT keyboard display.
+"""Local card cache + KP4 frame rendering for the KEYPOINT keyboard display.
 
-The wire grammar is not this module's to declare: `rcink.kp3` is the vendored
+The wire grammar is not this module's to declare: `rcink.kp4` is the vendored
 copy of the keyboard firmware's contract module, and every width, ceiling, icon
 spelling and LED code comes from there. This module owns rcink's *card* shape
 on top of it — the cache format, the row vocabulary, and which line goes where.
@@ -24,7 +24,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from rcink import kp3
+from rcink import kp4
 
 # Custom GATT service on the left keyboard half (encrypted write); see the
 # KEYPOINT firmware widgets/live_data.{h,c}.
@@ -32,16 +32,17 @@ SERVICE_UUID = "f5d40000-6d2f-4f4b-9b2a-2f4a8e8c0001"
 CHAR_UUID = "f5d40001-6d2f-4f4b-9b2a-2f4a8e8c0001"
 
 #: rcink's card convention, not contract: L1 is the title, the rest are rows.
-MAX_ROWS = kp3.TEXT_LINE_COUNT - 1
+MAX_ROWS = kp4.TEXT_LINE_COUNT - 1
 
 # Producer-facing names for the firmware's LED-hint enum; a renamed hint raises
 # here at import rather than silently shifting every card's severity.
-_LED_CODE = dict(zip(kp3.LED_HINT_NAMES, kp3.LED_CODES, strict=True))
+_LED_CODE = dict(zip(kp4.LED_HINT_NAMES, kp4.LED_CODES, strict=True))
 LED_HINT_NONE = _LED_CODE["NONE"]
 LED_HINT_ACTIVE = _LED_CODE["ACTIVE"]
 LED_HINT_ATTENTION = _LED_CODE["ATTENTION"]
 LED_HINT_WARNING = _LED_CODE["WARNING"]
 LED_HINT_ERROR = _LED_CODE["ERROR"]
+ROW_ROLES = {name.lower(): code for name, code in zip(kp4.ROW_ROLE_NAMES, kp4.ROW_ROLE_CODES, strict=True)}
 
 # Rotation order on the keyboard; unknown card ids sort after these, alphabetically.
 CARD_ORDER = ("claude", "codex", "weather", "calendar", "todo")
@@ -63,8 +64,11 @@ class Row:
     until: int | None = None
     bar: int | None = None
     text: str | None = None
+    role: str = "neutral"
 
     def __post_init__(self) -> None:
+        if not isinstance(self.role, str) or self.role not in ROW_ROLES:
+            raise ValueError(f"unknown KEYPOINT row role: {self.role!r}")
         if sum(x is not None for x in (self.value, self.until, self.bar, self.text)) != 1:
             raise ValueError(f"row {self.label!r}: exactly one of value/until/bar/text required")
         if self.text is not None and self.label:
@@ -104,16 +108,16 @@ def _render_row(row: Row, *, now_ts: int) -> str:
     if row.text is not None:
         return row.text
     if row.bar is not None:
-        return kp3.bar(row.bar)
+        return kp4.bar(row.bar)
     value = row.value if row.value is not None else fmt_countdown(row.until - now_ts)
-    return kp3.kv(row.label, value)
+    return kp4.kv(row.label, value)
 
 
 def render_frame(card: Card, *, now: dt.datetime, generation: int, index: int, total: int) -> bytes:
-    """Render a card to one KP3 frame, computing countdowns at render time and
+    """Render a card to one KP4 frame, computing countdowns at render time and
     stamping the third line with the data timestamp when the card asks for it.
 
-    Only the card's own shape is checked here; ``kp3.build_frame`` validates the
+    Only the card's own shape is checked here; ``kp4.build_frame`` validates the
     frame it produces against the grammar the firmware enforces.
     """
     max_rows = MAX_ROWS - 1 if card.show_timestamp else MAX_ROWS
@@ -122,20 +126,25 @@ def render_frame(card: Card, *, now: dt.datetime, generation: int, index: int, t
 
     now_ts = int(now.timestamp())
     rendered = [_render_row(r, now_ts=now_ts) for r in card.rows]
+    row_roles = [ROW_ROLES[row.role] for row in card.rows]
     rendered += [""] * (max_rows - len(rendered))
+    row_roles += [ROW_ROLES["neutral"]] * (max_rows - len(row_roles))
     if card.show_timestamp:
         data_time = dt.datetime.fromtimestamp(card.data_ts, tz=now.tzinfo).strftime("%H:%M")
-        lines = [kp3.title(card.title), rendered[0], data_time, *rendered[1:]]
+        lines = [kp4.title(card.title), rendered[0], data_time, *rendered[1:]]
+        roles = [ROW_ROLES["neutral"], row_roles[0], ROW_ROLES["neutral"], *row_roles[1:]]
     else:
-        lines = [kp3.title(card.title), *rendered]
+        lines = [kp4.title(card.title), *rendered]
+        roles = [ROW_ROLES["neutral"], *row_roles]
 
-    return kp3.build_frame(
+    return kp4.build_frame(
         card.icon,
         *lines,
         generation=generation,
         index=index,
         total=total,
         led_hint=card.led_hint,
+        row_roles=tuple(roles),
     ).encode("ascii")
 
 
@@ -192,8 +201,8 @@ def frames_to_push(*, now: dt.datetime, max_age_s: int) -> list[bytes]:
     """Load the cache, drop stale cards, and render the whole deck — each card
     stamped with its page index and the deck total (capped at PAGE_MAX). The
     firmware stores the deck; the keyboard's left keys page through it."""
-    cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[: kp3.PAGE_MAX]
+    cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[: kp4.PAGE_MAX]
     total = len(cards)
     # GEN is a fixed-width hex field, so the deck transaction id wraps at its capacity.
-    generation = int(now.timestamp()) % 16**kp3.GENERATION_FIELD_MAX
+    generation = int(now.timestamp()) % 16**kp4.GENERATION_FIELD_MAX
     return [render_frame(card, now=now, generation=generation, index=i, total=total) for i, card in enumerate(cards)]

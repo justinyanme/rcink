@@ -1,6 +1,6 @@
-"""rcink's KP3 card cache and frame rendering.
+"""rcink's KP4 card cache and frame rendering.
 
-The wire grammar itself is `rcink.kp3`'s (and its own repo's tests'); what is
+The wire grammar itself is `rcink.kp4`'s (and its own repo's tests'); what is
 checked here is rcink's card shape on top of it — row rendering, which line
 carries what, the cache round-trip, and the deck the pusher emits.
 """
@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from rcink import kp3
+from rcink import kp4
 from rcink.keypoint import (
     CARD_ORDER,
     Card,
@@ -69,32 +69,32 @@ def test_fmt_countdown(seconds, expected):
 def test_render_frame_layout():
     frame = render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=1)
     fields = frame.decode("ascii").split("|")
-    assert fields[0] == "KP3"
+    assert fields[0] == "KP4"
     assert fields[1] == "A0"  # GEN (deck transaction)
     assert fields[2] == "0"  # IDX (0-based page)
     assert fields[3] == "1"  # TOTAL (deck size)
     assert fields[4] == "CLAUDE"  # icon
     assert fields[5] == "0"  # LED hint
-    assert fields[6] == "CLAUDE   "  # L1 title, left-anchored
-    assert fields[7] == "5H    76%"  # L2 = rows[0] key metric
-    assert fields[8] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
-    assert fields[9] == "WK    88%"
-    assert fields[10] == "RST  1h5m"  # countdown computed at render time, not fetch time
-    assert fields[11] == "OP    18%"
-    assert len(frame) <= kp3.FRAME_MAX
+    assert fields[7] == "CLAUDE   "  # L1 title, left-anchored
+    assert fields[8] == "5H    76%"  # L2 = rows[0] key metric
+    assert fields[9] == (NOW - dt.timedelta(minutes=10)).strftime("%H:%M")  # L3 = data_ts
+    assert fields[10] == "WK    88%"
+    assert fields[11] == "RST  1h5m"  # countdown computed at render time, not fetch time
+    assert fields[12] == "OP    18%"
+    assert len(frame) <= kp4.FRAME_MAX
 
 
 def test_render_frame_fills_the_contract_line_width():
     """The drift this producer had for a while: labels padded one column short."""
     fields = render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
-    kv_lines = [fields[6], fields[7], fields[9], fields[10], fields[11]]  # title + kv rows, not the HH:MM stamp
-    assert {len(line) for line in kv_lines} == {kp3.LINE_MAX}
+    kv_lines = [fields[7], fields[8], fields[10], fields[11], fields[12]]  # title + kv rows, not the HH:MM stamp
+    assert {len(line) for line in kv_lines} == {kp4.LINE_MAX}
 
 
 def test_render_frame_carries_idx_total():
     fields = render_frame(make_card(), now=NOW, generation=0xA0, index=2, total=5).decode("ascii").split("|")
     assert (fields[1], fields[2], fields[3], fields[4], fields[5]) == ("A0", "2", "5", "CLAUDE", "0")
-    assert fields[6] == "CLAUDE   "  # LED hint now precedes L1
+    assert fields[7] == "CLAUDE   "  # LED hint now precedes L1
 
 
 def test_render_frame_carries_led_hint():
@@ -104,14 +104,14 @@ def test_render_frame_carries_led_hint():
 
 def test_render_frame_rejects_bad_led_hint():
     with pytest.raises(ValueError, match="LED hint"):
-        render_frame(make_card(led_hint=len(kp3.LED_CODES)), now=NOW, generation=0xA0, index=0, total=1)
+        render_frame(make_card(led_hint=len(kp4.LED_CODES)), now=NOW, generation=0xA0, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_generation():
     with pytest.raises(ValueError, match="generation"):
         render_frame(make_card(), now=NOW, generation=-1, index=0, total=1)
     with pytest.raises(ValueError, match="generation"):
-        render_frame(make_card(), now=NOW, generation=16**kp3.GENERATION_FIELD_MAX, index=0, total=1)
+        render_frame(make_card(), now=NOW, generation=16**kp4.GENERATION_FIELD_MAX, index=0, total=1)
 
 
 def test_render_frame_rejects_bad_page_args():
@@ -120,21 +120,21 @@ def test_render_frame_rejects_bad_page_args():
     with pytest.raises(ValueError, match="TOTAL"):
         render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=0)  # total must be >= 1
     with pytest.raises(ValueError, match="TOTAL"):
-        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=kp3.PAGE_MAX + 1)
+        render_frame(make_card(), now=NOW, generation=0xA0, index=0, total=kp4.PAGE_MAX + 1)
 
 
 def test_render_frame_l3_is_data_ts_not_now():
     card = make_card(data_ts=NOW_TS - 3600)
     frame = render_frame(card, now=NOW, generation=0xA0, index=0, total=1)
-    l3 = frame.decode("ascii").split("|")[8]
+    l3 = frame.decode("ascii").split("|")[9]
     assert l3 == (NOW - dt.timedelta(hours=1)).strftime("%H:%M")
 
 
 def test_render_frame_pads_missing_rows_with_empty_lines():
     card = make_card(rows=[Row("EV", "3")])
     fields = render_frame(card, now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
-    assert len(fields) == 12  # KP3 + GEN + IDX + TOTAL + ICON + LED + 6 lines
-    assert fields[9] == fields[10] == fields[11] == ""
+    assert len(fields) == 13  # KP4 + GEN + IDX + TOTAL + ICON + LED + 6 lines
+    assert fields[10] == fields[11] == fields[12] == ""
 
 
 def test_render_frame_supports_fifth_raw_row_without_timestamp():
@@ -151,7 +151,7 @@ def test_render_frame_supports_fifth_raw_row_without_timestamp():
 
     fields = render_frame(card, now=NOW, generation=0xA0, index=0, total=1).decode("ascii").split("|")
 
-    assert fields[11] == "FB 41%"
+    assert fields[12] == "FB 41%"
 
 
 def test_render_frame_rejects_sixth_row_without_timestamp():
@@ -255,8 +255,8 @@ def test_card_json_is_plain_and_compact(cache):
     data = json.loads((cache / "claude.json").read_text())
     assert data["icon"] == "CLAUDE"
     assert data["led_hint"] == 0
-    assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 65 * 60}
-    assert data["rows"][0] == {"label": "5H", "value": "76%"}
+    assert data["rows"][2] == {"label": "RST", "until": NOW_TS + 65 * 60, "role": "neutral"}
+    assert data["rows"][0] == {"label": "5H", "value": "76%", "role": "neutral"}
 
 
 # --- frames_to_push (load + freshness + render glue the pusher consumes) ---
