@@ -32,7 +32,7 @@ def main() -> None:
     ap.add_argument("--port", default="/dev/cu.usbmodem83301")
     ap.add_argument("--camera", default="android:3B161600Z2U00000")
     a = ap.parse_args()
-    steps = lc.lut_steps(oc.lut()) + [f"show bands custom {oc.KNOBS} map={oc.MAP}"]
+    steps = [*lc.lut_steps(oc.lut()), f"show bands custom {oc.KNOBS} map={oc.MAP}"]
     steps.append("show white native" if a.white == "native" else f"show white custom {oc.KNOBS} map={oc.MAP}")
     lab_py = Path(__file__).resolve().parents[1] / "lab.py"
     cmd = ["uv", "run", str(lab_py), "trial", a.out, "--port", a.port, "--camera", a.camera]

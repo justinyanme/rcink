@@ -96,7 +96,7 @@ class Canvas:
 
     def text(self, x, y, s, size, color):
         """GLCD font: 6x8 cell at size 1 (5x7 glyph), integer scale by `size`."""
-        cw, ch = 6 * size, 8 * size
+        cw, _ch = 6 * size, 8 * size
         gw, gh = 5 * size * S, 7 * size * S
         base = np.asarray(self.img).copy()
         for i, c in enumerate(s):
@@ -189,9 +189,9 @@ def ind_segmented(c: Canvas, n, idx):
     for i in range(n):
         y = top + i * (seg + gap)
         if i == idx:
-            c.rect(X0 - 2, int(round(y)), 5, int(round(seg)), BLUE)
+            c.rect(X0 - 2, round(y), 5, round(seg), BLUE)
         else:
-            c.vline(X0, int(round(y)), int(round(seg)), BLACK, 1)
+            c.vline(X0, round(y), round(seg), BLACK, 1)
 
 
 def ind_dots(c: Canvas, n, idx):

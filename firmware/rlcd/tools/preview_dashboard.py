@@ -91,7 +91,7 @@ class Canvas:
         self.d.text((x * S, y * S), s, fill=BLACK, font=font, anchor=anchor)
 
     def text_w(self, s, font) -> int:
-        return int(round(self.d.textlength(s, font=font) / S))
+        return round(self.d.textlength(s, font=font) / S)
 
     def finalize(self) -> Image.Image:
         # mono threshold: only exact white stays white; all else -> black ink.

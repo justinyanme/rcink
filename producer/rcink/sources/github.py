@@ -82,7 +82,7 @@ def _normalize(counts: list[int]) -> list[int]:
     if not counts:
         return []
     max_v = max(counts) or 1
-    return [min(100, int(round((c / max_v) * 100))) for c in counts]
+    return [min(100, round((c / max_v) * 100)) for c in counts]
 
 
 def _compute_streak(days: list[tuple[str, int]]) -> int:
@@ -169,7 +169,7 @@ def _aggregate_languages(
         return []
     top = sorted(weighted.items(), key=lambda kv: kv[1], reverse=True)[:TOP_LANGS]
     total = sum(size for _, size in top) or 1
-    return [LangWeek(name=name, pct=int(round(size * 100 / total))) for name, size in top]
+    return [LangWeek(name=name, pct=round(size * 100 / total)) for name, size in top]
 
 
 def _calendar_daily_counts(

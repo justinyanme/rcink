@@ -145,7 +145,7 @@ def test_fail_result_stops_after_one_cleanup(tmp_path: Path) -> None:
     out = tmp_path / "t"
     assert link.writes == [b"show black native\n", b"cleanup\n"]
     assert [p.name for p in out.glob("*.jpg")] == ["01-cleanup-after-failure.jpg"]
-    failed = [e for e in events(out) if e["event"] == "result"][0]
+    failed = next(e for e in events(out) if e["event"] == "result")
     assert failed["ok"] is False and failed["fields"] == {"stage": "drive-release", "busy": "0", "ms": "25000"}
 
 
@@ -182,7 +182,7 @@ def test_firmware_fatal_is_reported(tmp_path: Path) -> None:
 
 def test_no_restore_skips_cleanup(tmp_path: Path) -> None:
     link = FakeLink(BOOT, {"show black native": SHOW_BLACK_OK})
-    out, camera, _ = trial(tmp_path, link, "show black native,photo", restore=False)
+    _out, camera, _ = trial(tmp_path, link, "show black native,photo", restore=False)
     assert link.writes == [b"show black native\n"]
     assert len(camera.argvs) == 1
 
