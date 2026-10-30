@@ -33,5 +33,5 @@ async def test_resolve_device_scan_timeout_is_enforced(monkeypatch):
     monkeypatch.setattr(keypoint_push, "_resolve_connected_macos", no_connected_lookup)
     monkeypatch.setattr(keypoint_push.BleakScanner, "find_device_by_filter", hung_scan)
 
-    with pytest.raises(RuntimeError, match="BLE scan.*timed out"):
+    with pytest.raises(RuntimeError, match=r"BLE scan.*timed out"):
         await keypoint_push._resolve_device(name="KEYPOINT", address=None, scan_timeout=0.01)

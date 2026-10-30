@@ -109,10 +109,11 @@ def _layout_stack(node: dict[str, Any], rect: _Rect, prof: DeviceProfile, axis: 
         cross_size = inner.w if axis == "v" else inner.h
         cross_origin = inner.x if axis == "v" else inner.y
 
-        if axis == "v":
-            child_rect = _Rect(cross_origin, cursor, cross_size, size)
-        else:
-            child_rect = _Rect(cursor, cross_origin, size, cross_size)
+        child_rect = (
+            _Rect(cross_origin, cursor, cross_size, size)
+            if axis == "v"
+            else _Rect(cursor, cross_origin, size, cross_size)
+        )
         _layout_node(child, child_rect, prof)
         cursor += size + (gap if i < len(children) - 1 else 0)
 

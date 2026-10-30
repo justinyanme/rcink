@@ -154,7 +154,7 @@ def test_render_frame_supports_fifth_raw_row_without_timestamp():
 
 
 def test_render_frame_rejects_sixth_row_without_timestamp():
-    with pytest.raises(ValueError, match="expected 1..5 rows"):
+    with pytest.raises(ValueError, match=r"expected 1\.\.5 rows"):
         render_frame(
             make_card(rows=[Row("A", "1")] * 6, show_timestamp=False),
             now=NOW,
@@ -177,7 +177,7 @@ def test_render_frame_rejects_unsupported_chars():
 
 
 def test_render_frame_rejects_fifth_row_when_timestamp_is_shown():
-    with pytest.raises(ValueError, match="expected 1..4 rows"):
+    with pytest.raises(ValueError, match=r"expected 1\.\.4 rows"):
         render_frame(make_card(rows=[Row("A", "1")] * 5), now=NOW, generation=0xA0, index=0, total=1)
 
 

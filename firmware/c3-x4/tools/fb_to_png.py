@@ -19,18 +19,19 @@ first. Reads the dump from stdin (or a file), writes a black-on-white PNG.
 """
 
 import sys
+from pathlib import Path
 
 from PIL import Image
 
 
 def main() -> int:
     out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/x4_frame.png"
-    src = open(sys.argv[2]) if len(sys.argv) > 2 else sys.stdin
+    text = Path(sys.argv[2]).read_text() if len(sys.argv) > 2 else sys.stdin.read()
 
     w = h = 0
     rows: list[str] = []
     capturing = False
-    for line in src:
+    for line in text.splitlines():
         line = line.strip()
         if line.startswith("[fb] BEGIN"):
             dims = line.split()[2]  # e.g. 800x480
