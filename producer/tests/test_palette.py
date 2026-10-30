@@ -1,7 +1,6 @@
 """Palette validation — DSL v1 accepts concrete + semantic color tokens."""
 
 import pytest
-
 from rcink.layout import text
 from rcink.palette import (
     ALL_COLOR_TOKENS,

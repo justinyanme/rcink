@@ -13,7 +13,6 @@ below are what keep the two from drifting apart again.
 import datetime as dt
 
 import pytest
-
 from rcink import kp4
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (

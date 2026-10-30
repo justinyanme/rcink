@@ -20,9 +20,9 @@ from pathlib import Path
 from PIL import Image, ImageStat
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lutcodec as lc  # noqa: E402
-import own_color as oc  # noqa: E402
-from own_grid import at, lab  # noqa: E402
+import lutcodec as lc
+import own_color as oc
+from own_grid import at, lab
 
 
 def main() -> None:

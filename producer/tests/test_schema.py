@@ -1,7 +1,6 @@
 import datetime as dt
 
 import pytest
-
 from rcink.cli_goldens import _BUILDERS, _layout_of
 from rcink.layout import hbar, icon, sparkline, text, vstack
 from rcink.pages.calendar import build_calendar_page

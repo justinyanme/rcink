@@ -14,7 +14,7 @@ import serial
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lab  # noqa: E402
+import lab
 
 PORT = "/dev/cu.usbmodem83301"
 CAMERA = "android:3B161600Z2U00000"

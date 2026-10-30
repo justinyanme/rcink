@@ -6,7 +6,6 @@ import datetime as dt
 
 import typer
 from loguru import logger
-
 from rcink.axiom import ingest
 from rcink.pages.quote import build_quote_page
 from rcink.sources.quotes import pick_quote

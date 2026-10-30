@@ -11,7 +11,6 @@ Then commit the new PNGs alongside the producer change.
 from pathlib import Path
 
 import pytest
-
 from rcink.cli_goldens import _BUILDERS, DEVICES, _layout_of
 from rcink.preview_png import render_to_png, unsupported_node_type
 

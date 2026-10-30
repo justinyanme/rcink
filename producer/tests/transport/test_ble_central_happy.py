@@ -1,6 +1,7 @@
 from rcink.transport.ble.central import push_page
 from rcink.transport.ble.transport import Transport
 from rcink.transport.ble_encode import encode_page
+
 from tests.transport._example_page import example_page
 
 from .fake_peripheral import FakePeripheral

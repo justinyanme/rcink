@@ -6,7 +6,6 @@ import datetime as dt
 
 import typer
 from loguru import logger
-
 from rcink.axiom import ingest
 from rcink.pages.github import build_github_page
 from rcink.sources.github import fetch_github_activity

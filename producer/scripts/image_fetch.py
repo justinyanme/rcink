@@ -6,7 +6,6 @@ from urllib.parse import urlparse
 
 import typer
 from loguru import logger
-
 from rcink.axiom import ingest
 from rcink.pages.image import build_image_page
 

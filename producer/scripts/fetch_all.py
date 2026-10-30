@@ -44,7 +44,7 @@ def run() -> None:
     for name, fn in FETCHERS:
         try:
             fn()
-        except Exception as e:  # noqa: BLE001 — log + degrade, mirror overview_fetch
+        except Exception as e:
             logger.opt(exception=True).error(f"{name}: {e}")
             failed.append(name)
     if failed:

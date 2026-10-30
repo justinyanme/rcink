@@ -5,9 +5,8 @@ from collections import deque
 
 import pytest
 import serial
-from typer.testing import CliRunner
-
 from scripts import dev_cli
+from typer.testing import CliRunner
 
 runner = CliRunner()
 

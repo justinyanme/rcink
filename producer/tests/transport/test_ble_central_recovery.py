@@ -1,5 +1,4 @@
 import pytest
-
 from rcink.transport.ble.central import PushError, push_page
 from rcink.transport.ble.transport import Transport
 from rcink.transport.ble_protocol import (
@@ -10,6 +9,7 @@ from rcink.transport.ble_protocol import (
     ACK_ERR_LOW_BATT,
     ACK_ERR_RENDER,
 )
+
 from tests.transport._example_page import example_page
 
 from .fake_peripheral import FakePeripheral

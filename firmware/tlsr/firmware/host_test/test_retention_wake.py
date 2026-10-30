@@ -22,6 +22,4 @@ def test_deep_retention_wake_rearms_layout_xfer_service():
 
     assert "blc_ll_recoverDeepRetention();" in body
     assert "layout_xfer_service_init();" in body
-    assert body.index("blc_ll_recoverDeepRetention();") < body.index(
-        "layout_xfer_service_init();"
-    )
+    assert body.index("blc_ll_recoverDeepRetention();") < body.index("layout_xfer_service_init();")

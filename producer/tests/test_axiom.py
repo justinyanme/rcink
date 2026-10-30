@@ -2,7 +2,6 @@ import datetime as dt
 import json
 
 import pytest
-
 from rcink.axiom import AxiomError, _cached_data_ts, ingest, query_apl
 from rcink.layout import text, vstack
 from rcink.validate import LayoutValidationError

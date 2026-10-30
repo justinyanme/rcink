@@ -1,7 +1,6 @@
 import datetime as dt
 
 import pytest
-
 from rcink.sources.weather import WeatherConfigError, fetch_weather
 
 

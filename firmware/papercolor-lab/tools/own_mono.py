@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lutcodec as lc  # noqa: E402
+import lutcodec as lc
 
 KNOBS = "setup=tickey psr=0FA9 booster=none win=1 pack=2 map=10111111"
 TAIL = [(8, 60), (1, 5), (8, 20), (2, 1), (8, 5)]

@@ -25,7 +25,7 @@ from pathlib import Path
 from PIL import Image, ImageStat
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lutcodec as lc  # noqa: E402
+import lutcodec as lc
 
 SHAKE = [(4, (8, 6), (2, 10))]
 BASES = [  # W K R B Y G pink orange (search48g/h + base-6 trial, 2026-10-16)

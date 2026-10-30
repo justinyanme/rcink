@@ -12,7 +12,6 @@ from collections.abc import Callable
 
 import typer
 from loguru import logger
-
 from rcink.axiom import ingest
 from rcink.keypoint import write_card
 from rcink.keypoint_cards import weather_card
@@ -32,7 +31,7 @@ def _try[T](name: str, fn: Callable[[], T]) -> T | None:
     """Run a source fetcher; log+degrade if it raises."""
     try:
         return fn()
-    except Exception as e:  # noqa: BLE001 — log + degrade
+    except Exception as e:
         logger.warning(f"overview: {name} fetch failed: {e}")
         return None
 
@@ -43,7 +42,7 @@ def _try_weather() -> tuple[Weather | None, WeatherIssue | None]:
     except WeatherConfigError as e:
         logger.warning(f"overview: weather config failed: {e}")
         return None, "config"
-    except Exception as e:  # noqa: BLE001 — log + degrade
+    except Exception as e:
         logger.warning(f"overview: weather fetch failed: {e}")
         return None, "fetch"
 

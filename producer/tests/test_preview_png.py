@@ -1,7 +1,6 @@
 """Smoke tests for the PIL reference renderer."""
 
 import pytest
-
 from rcink.devices_profile import C3_X4, S3, TLSR
 from rcink.layout import divider, grid, hbar, hstack, marker, spacer, sparkline, text, vstack
 from rcink.preview_png import render_to_png, unsupported_node_type

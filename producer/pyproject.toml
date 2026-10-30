@@ -35,12 +35,7 @@ dev-cli        = "scripts.dev_cli:main"
 rcink-goldens  = "rcink.cli_goldens:main"
 
 [dependency-groups]
-dev = [
-    "pytest>=8",
-    "pytest-httpx>=0.30",
-    "pytest-asyncio>=1.3",
-    "ruff>=0.6",
-]
+dev = ["pytest>=8", "pytest-httpx>=0.30", "pytest-asyncio>=1.3"]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,15 +49,3 @@ addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 
-[tool.ruff]
-line-length = 120
-
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle: keep whitespace + line rules predictable
-    "F",   # Pyflakes: catch name errors + dead code early
-    "UP",  # pyupgrade: auto-modernize syntax for >=3.13
-    "B",   # flake8-bugbear: fail fast on common foot-guns
-    "SIM", # flake8-simplify: trim complex branches for clarity
-    "I",   # isort: ensure deterministic import ordering
-]

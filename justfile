@@ -7,8 +7,8 @@ default:
     @just --list
 
 lint:
-    cd producer && uv run ruff format --check .
-    cd producer && uv run ruff check .
+    cd producer && uvx ruff format --check .
+    cd producer && uvx ruff check .
 
 producer-test:
     cd producer && uv run pytest

@@ -6,7 +6,6 @@ import datetime as dt
 
 import typer
 from loguru import logger
-
 from rcink.axiom import ingest
 from rcink.keypoint import write_card
 from rcink.keypoint_cards import calendar_card

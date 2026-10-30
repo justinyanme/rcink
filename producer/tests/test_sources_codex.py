@@ -2,7 +2,6 @@ import datetime as dt
 import json
 
 import pytest
-
 from rcink.sources.codex import USAGE_URL, CodexCredsError, CodexUsage, fetch_codex_usage
 
 

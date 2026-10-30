@@ -23,7 +23,7 @@ from pathlib import Path
 from PIL import Image, ImageStat
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import lutcodec as lc  # noqa: E402
+import lutcodec as lc
 
 ROOT = Path(__file__).resolve().parents[3]
 PORT = "/dev/cu.usbmodem83301"

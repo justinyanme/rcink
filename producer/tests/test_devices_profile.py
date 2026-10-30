@@ -1,5 +1,4 @@
 import pytest
-
 from rcink.devices_profile import C3_X4, EPD397, RLCD, S3, T_AMOLED, TLSR, get_profile
 
 
