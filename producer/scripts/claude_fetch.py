@@ -71,12 +71,7 @@ def _reingest_snapshot(creds_error: ClaudeCredsError) -> None:
 
 
 def _usage_metric_fields(usage: ClaudeUsage) -> dict[str, float]:
-    if usage.five_hour_pct is None or usage.seven_day_pct is None:
-        raise ValueError("Claude usage missing required five_hour/seven_day pct")
-    fields: dict[str, float] = {
-        "five_hour_pct": usage.five_hour_pct,
-        "seven_day_pct": usage.seven_day_pct,
-    }
+    fields: dict[str, float] = {"seven_day_pct": usage.seven_day_pct}
     for limit in usage.scoped_limits:
         slug = re.sub(r"[^a-z0-9]+", "_", limit.label.lower()).strip("_")
         if not slug:
@@ -96,9 +91,9 @@ def run() -> None:
         _reingest_snapshot(creds_error)
         return
     metric_fields = _usage_metric_fields(usage)
-    logger.info(f"claude usage: 5h={usage.five_hour_pct}% 7d={usage.seven_day_pct}%")
+    logger.info(f"claude usage: 7d={usage.seven_day_pct}%")
 
-    spark = sparkline_24h(metric_id="claude.usage", field="five_hour_pct")
+    spark = sparkline_24h(metric_id="claude.usage", field="seven_day_pct")
     page = build_claude_page(usage, sparkline=spark or None)
     ingest(id="claude", layout=page, order=10)
     _save_snapshot(page)

@@ -123,11 +123,6 @@ def _next_calendar_event(calendar: TodaysCalendar, *, now: dt.datetime) -> CalEv
 
 def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
     rows: list[Row] = []
-    if usage.five_hour_reset_at is not None:
-        rows.append(Row("5H", until=usage.five_hour_reset_at))
-    else:
-        rows.append(Row("5H", _pct(usage.five_hour_pct)))
-    rows.append(Row(bar=_bar(usage.five_hour_pct), role=_usage_role(usage.five_hour_pct)))
     if usage.seven_day_reset_at is not None:
         rows.append(Row("7D", until=usage.seven_day_reset_at))
     else:
@@ -142,7 +137,7 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
         id="claude",
         icon="CLAUDE",
         title="CLAUDE",
-        led_hint=_usage_led_hint(usage.five_hour_pct, usage.seven_day_pct),
+        led_hint=_usage_led_hint(usage.seven_day_pct),
         rows=rows,
         data_ts=int(now.timestamp()),
         show_timestamp=False,

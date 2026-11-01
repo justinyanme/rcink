@@ -5,14 +5,14 @@ wire. Reset rows carry an absolute epoch (``until``) so the countdown stays live
 between 15-minute fetches instead of freezing at the formatted string the page
 builders use.
 
-The claude and codex cards are also the shape the keyboard repo's preview deck
-models through ``kp4.claude_card`` / ``kp4.codex_card``; the byte-match tests
-below are what keep the two from drifting apart again.
+The two-window codex card is also the shape the keyboard repo's preview deck
+models through ``kp4.codex_card``; the byte-match test below keeps the two from
+drifting apart. The claude card has a single 7D window since the 5h limit was
+retired, so it no longer matches the two-window ``kp4.claude_card`` preview.
 """
 
 import datetime as dt
 
-import pytest
 from rcink import kp4
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
@@ -45,12 +45,9 @@ def _renders(card) -> list[str]:
 
 def make_claude() -> ClaudeUsage:
     return ClaudeUsage(
-        five_hour_pct=76.0,
         seven_day_pct=88.0,
         scoped_limits=[ScopedLimit(label="FABLE", pct=41.0)],
-        five_hour_reset="2h 14m",
         seven_day_reset="3d 5h",
-        five_hour_reset_at=RESET_AT,
         seven_day_reset_at=RESET_AT_7D,
         plan="Max",
     )
@@ -61,15 +58,24 @@ def test_claude_card_renders():
     frame = render_frame(card, now=NOW, generation=0xA0, index=0, total=1)
     fields = frame.decode("ascii").split("|")
     assert fields[4] == "CLAUDE"
-    assert fields[5] == "2"  # ATTENTION: peak >= 75%
+    assert fields[5] == "2"  # ATTENTION: 7D at 88% >= 75%
+    assert fields[6] == "002100"  # bar ATTENTION, scoped limit POSITIVE
     assert fields[7] == "CLAUDE   "
-    assert fields[8] == "5H  1h30m"  # L2: 5H countdown to reset
-    assert fields[9] == "[076]"  # L3: 5H bar at 76%
-    assert fields[10] == "7D     4d"  # L4: 7D countdown to reset
-    assert fields[11] == "[088]"  # L5: 7D bar at 88%
-    assert fields[12] == "FB 41%"  # L6: highest model-scoped limit
+    assert fields[8] == "7D     4d"  # L2: 7D countdown to reset (the only window)
+    assert fields[9] == "[088]"  # L3: 7D bar at 88%
+    assert fields[10] == "FB 41%"  # L4: highest model-scoped limit
+    assert fields[11:] == ["", ""]
     assert len(frame) <= kp4.FRAME_MAX
     assert card.data_ts == NOW_TS
+
+
+def test_claude_card_without_scoped_limit_is_one_window():
+    usage = make_claude()
+    usage.scoped_limits = []
+
+    fields = _renders(claude_card(usage, now=NOW))
+
+    assert fields[8:] == ["7D     4d", "[088]", "", "", ""]
 
 
 def test_claude_card_uses_highest_scoped_limit():
@@ -81,7 +87,7 @@ def test_claude_card_uses_highest_scoped_limit():
 
     fields = _renders(claude_card(usage, now=NOW))
 
-    assert fields[12] == "SN 82%"
+    assert fields[10] == "SN 82%"
 
 
 def test_claude_card_scoped_limit_still_fits_the_frame_at_100_pct():
@@ -90,40 +96,8 @@ def test_claude_card_scoped_limit_still_fits_the_frame_at_100_pct():
 
     frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
 
-    assert frame.decode("ascii").split("|")[12] == "FB 100%"
+    assert frame.decode("ascii").split("|")[10] == "FB 100%"
     assert len(frame) <= kp4.FRAME_MAX
-
-
-def test_claude_card_byte_matches_the_kp4_usage_card():
-    """The keyboard repo's preview deck is kp4.claude_card; same data, same bytes."""
-    usage = make_claude()
-    usage.scoped_limits = []  # a plan without scoped limits leaves L6 empty
-
-    frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
-
-    assert frame == kp4.claude_card(
-        "1h30m", 76, "4d", 88, led_hint=2, row_roles=(0, 0, 2, 0, 2, 0), generation=0xA0
-    ).encode("ascii")
-
-
-def test_claude_card_with_a_scoped_limit_byte_matches_the_kp4_usage_card():
-    """The usual card: kp4 owns the L6 scoped-limit row too, so the shapes agree
-    with a scoped limit present -- not only in the empty-L6 case."""
-    usage = make_claude()
-    usage.scoped_limits = [ScopedLimit(label="FABLE", pct=68.0)]
-
-    frame = render_frame(claude_card(usage, now=NOW), now=NOW, generation=0xA0, index=0, total=1)
-
-    expected = kp4.claude_card(
-        "1h30m", 76, "4d", 88, scoped_limit=("FB", 68), led_hint=2, row_roles=(0, 0, 2, 0, 2, 1), generation=0xA0
-    )
-    assert frame == expected.encode("ascii")
-
-
-def test_claude_card_rejects_missing_required_pct():
-    usage = ClaudeUsage(None, None, [], "", "", five_hour_reset_at=None)
-    with pytest.raises(ValueError, match="usage pct"):
-        claude_card(usage, now=NOW)
 
 
 def frame_text(fields: list[str]) -> str:

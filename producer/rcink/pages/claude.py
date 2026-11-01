@@ -1,6 +1,6 @@
 """Build a Claude usage page in the magazine style.
 
-Knockout red header, two KPI rows (hbar height 18), optional BY MODEL · 7D
+Knockout red header, the 7D KPI row (hbar height 18), optional BY MODEL · 7D
 bar rows, optional USAGE · LAST 24H sparkline. The firmware overlays its own
 status bar at the top and nav strip at the bottom, so this builder doesn't
 include either.
@@ -32,15 +32,15 @@ def build_claude_compact_page(usage: ClaudeUsage) -> dict:
         black. `info`/`success` would both collapse to black here.
     """
 
-    def _row(label: str, pct: float | None) -> dict:
-        color: ColorToken = "accent" if (pct is not None and pct >= 80) else "black"
+    def _row(label: str, pct: float) -> dict:
+        color: ColorToken = "accent" if pct >= 80 else "black"
         return hstack(
             gap=6,
             align="center",
             children=[
                 text(label, size="body", weight="bold"),
-                hbar(pct=pct if pct is not None else 0, color=color, height=20),
-                text(f"{int(pct)}%" if pct is not None else "—", size="body", weight="bold"),
+                hbar(pct=pct, color=color, height=20),
+                text(f"{int(pct)}%", size="body", weight="bold"),
             ],
         )
 
@@ -58,10 +58,9 @@ def build_claude_compact_page(usage: ClaudeUsage) -> dict:
                 align="center",
                 weight="bold",
             ),
-            _row("5H", usage.five_hour_pct),
             _row("7D", usage.seven_day_pct),
             text(
-                f"resets {usage.five_hour_reset}" if usage.five_hour_reset else "",
+                f"resets {usage.seven_day_reset}" if usage.seven_day_reset else "",
                 size="sm",
                 align="center",
             ),
@@ -98,8 +97,6 @@ def build_claude_page(
             weight="bold",
         ),
         spacer(size=8),
-        kpi_row("5H WINDOW", usage.five_hour_pct, usage.five_hour_reset, "info"),
-        spacer(size=10),
         kpi_row("7D WINDOW", usage.seven_day_pct, usage.seven_day_reset, "success"),
     ]
 

@@ -333,11 +333,11 @@ def build_overview_page(
     claude_row = _usage_row(
         brand="CLAUDE",
         brand_color="accent",
-        primary_pct=claude.five_hour_pct if claude else None,
-        primary_label="5H",
-        primary_reset=claude.five_hour_reset if claude else "",
-        secondary_pct=claude.seven_day_pct if claude else None,
-        secondary_label="7D",
+        primary_pct=claude.seven_day_pct if claude else None,
+        primary_label="7D",
+        primary_reset=claude.seven_day_reset if claude else "",
+        secondary_pct=None,
+        secondary_label=None,
     )
     codex_row = _usage_row(
         brand="CODEX",

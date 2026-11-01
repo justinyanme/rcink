@@ -41,13 +41,13 @@ class ScopedLimit:
 
 @dataclass(slots=True)
 class ClaudeUsage:
-    five_hour_pct: float | None
-    seven_day_pct: float | None
+    """The weekly window is the only plan-wide limit; the 5h session window was
+    retired upstream (`five_hour` is null since 2026-10-31)."""
+
+    seven_day_pct: float
     scoped_limits: list[ScopedLimit]
-    five_hour_reset: str  # human-formatted countdown e.g. "2h 14m"
-    seven_day_reset: str
-    five_hour_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
-    seven_day_reset_at: int | None = None
+    seven_day_reset: str  # human-formatted countdown e.g. "3d 5h"
+    seven_day_reset_at: int | None = None  # absolute epoch; live countdown for the keypoint card
     plan: str = "Max"
 
 
@@ -161,45 +161,22 @@ def fetch_claude_usage(path: Path = CREDS_DEFAULT) -> ClaudeUsage:
     r.raise_for_status()
     data = r.json()
 
-    def window(key: str, *, required: bool) -> dict | None:
-        v = data.get(key)
-        if v is None and not required:
-            return None
-        if not isinstance(v, dict):
-            raise ValueError(f"Claude usage response missing/malformed window: {key}")
-        return v
+    if data.get("five_hour") is not None:
+        logger.warning("Claude usage response has a five_hour window again; the producer ignores it")
 
-    def checked_pct(key: str, *, required: bool = True) -> float | None:
-        block = window(key, required=required)
-        if block is None:
-            return None
-        return _checked_pct(block.get("utilization"), label=key)
-
-    def reset_iso(key: str) -> str | None:
-        v = window(key, required=True)
-        iso = v.get("resets_at")
-        if not isinstance(iso, str) or not iso:
-            logger.warning(f"Claude usage response missing reset for {key}; hiding reset countdown")
-            return None
-        return iso
-
-    five_hour_reset_iso = reset_iso("five_hour")
-    seven_day_reset_iso = reset_iso("seven_day")
+    seven_day = data.get("seven_day")
+    if not isinstance(seven_day, dict):
+        raise ValueError("Claude usage response missing/malformed window: seven_day")
+    reset_iso = seven_day.get("resets_at")
+    if not isinstance(reset_iso, str) or not reset_iso:
+        logger.warning("Claude usage response missing reset for seven_day; hiding reset countdown")
+        reset_iso = None
 
     return ClaudeUsage(
-        five_hour_pct=checked_pct("five_hour"),
-        seven_day_pct=checked_pct("seven_day"),
+        seven_day_pct=_checked_pct(seven_day.get("utilization"), label="seven_day"),
         scoped_limits=_scoped_limits(data),
-        five_hour_reset=_reset_text(five_hour_reset_iso),
-        seven_day_reset=_reset_text(seven_day_reset_iso),
-        five_hour_reset_at=(
-            int(dt.datetime.fromisoformat(five_hour_reset_iso.replace("Z", "+00:00")).timestamp())
-            if five_hour_reset_iso is not None
-            else None
-        ),
+        seven_day_reset=_reset_text(reset_iso),
         seven_day_reset_at=(
-            int(dt.datetime.fromisoformat(seven_day_reset_iso.replace("Z", "+00:00")).timestamp())
-            if seven_day_reset_iso is not None
-            else None
+            int(dt.datetime.fromisoformat(reset_iso.replace("Z", "+00:00")).timestamp()) if reset_iso else None
         ),
     )

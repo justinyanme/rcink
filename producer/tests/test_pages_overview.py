@@ -384,10 +384,8 @@ def test_overview_rows_have_no_letter_icon_markers_and_labels_are_sm():
 def test_overview_usage_reset_times_are_compact():
     page = build_overview_page(
         claude=ClaudeUsage(
-            five_hour_pct=42,
             seven_day_pct=68,
             scoped_limits=[],
-            five_hour_reset="1h 39m",
             seven_day_reset="5d 4h",
         ),
         codex=CodexUsage(
@@ -407,9 +405,9 @@ def test_overview_usage_reset_times_are_compact():
     )
 
     texts = _all_text(page)
-    assert "1h39m" in texts
+    assert "5d4h" in texts
     assert "1h0m" in texts
-    assert "1h 39m" not in texts
+    assert "5d 4h" not in texts
     assert "1h 0m" not in texts
 
 

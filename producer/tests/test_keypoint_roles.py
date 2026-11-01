@@ -14,15 +14,15 @@ NOW = dt.datetime(2026, 10, 23, 12, tzinfo=dt.UTC)
 
 @pytest.mark.parametrize(("pct", "role"), [(0, 1), (74.9, 1), (75, 2), (89.9, 2), (90, 3), (100, 3)])
 def test_usage_roles_apply_to_each_window_and_scoped_limit(pct, role):
-    usage = ClaudeUsage(pct, 20, [ScopedLimit("FABLE", pct)], "", "")
+    usage = ClaudeUsage(pct, [ScopedLimit("FABLE", pct)], "")
     parsed = kp4.parse(render_frame(claude_card(usage, now=NOW), now=NOW, generation=0, index=0, total=1))
-    assert parsed.row_roles == (0, 0, role, 0, 1, role)
+    assert parsed.row_roles == (0, 0, role, role, 0, 0)
 
 
 def test_scoped_limit_role_does_not_change_whole_card_led_hint():
-    usage = ClaudeUsage(20, 30, [ScopedLimit("FABLE", 95)], "", "")
+    usage = ClaudeUsage(30, [ScopedLimit("FABLE", 95)], "")
     parsed = kp4.parse(render_frame(claude_card(usage, now=NOW), now=NOW, generation=0, index=0, total=1))
-    assert (parsed.led_hint, parsed.row_roles) == (0, (0, 0, 1, 0, 1, 3))
+    assert (parsed.led_hint, parsed.row_roles) == (0, (0, 0, 1, 3, 0, 0))
 
 
 def test_single_weekly_codex_window_has_one_colored_bar():

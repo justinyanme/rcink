@@ -53,7 +53,7 @@ def test_fresh_token_used_read_only(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
+            "five_hour": None,  # retired upstream; captured response 2026-11-01
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
             "seven_day_opus": None,
             "seven_day_sonnet": None,
@@ -73,11 +73,10 @@ def test_fresh_token_used_read_only(httpx_mock, tmp_path):
     )
     usage = fetch_claude_usage(p)
     assert isinstance(usage, ClaudeUsage)
-    assert usage.five_hour_pct == 42.0
     assert usage.seven_day_pct == 68.0
     assert usage.scoped_limits == [ScopedLimit(label="FABLE", pct=41.0)]
     # Absolute reset epoch parsed for the keypoint live countdown.
-    assert usage.five_hour_reset_at == int(dt.datetime(2026, 5, 17, 20, 0, tzinfo=dt.UTC).timestamp())
+    assert usage.seven_day_reset_at == int(dt.datetime(2026, 5, 24, 0, 0, tzinfo=dt.UTC).timestamp())
     # Exactly one request (no refresh round-trip), with the token verbatim.
     req = httpx_mock.get_request()
     assert req.headers["Authorization"] == "Bearer sk-ant-oat01-fresh"
@@ -107,12 +106,11 @@ def test_usage_reset_text_formatting(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": iso},
             "seven_day": {"utilization": 68.0, "resets_at": iso},
         },
     )
     usage = fetch_claude_usage(p)
-    assert usage.five_hour_reset.startswith("2h")
+    assert usage.seven_day_reset.startswith("2h")
 
 
 def test_missing_reset_degrades_to_empty_text_and_no_epoch(httpx_mock, tmp_path):
@@ -120,25 +118,22 @@ def test_missing_reset_degrades_to_empty_text_and_no_epoch(httpx_mock, tmp_path)
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0},
-            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "seven_day": {"utilization": 68.0},
         },
     )
     usage = fetch_claude_usage(p)
-    assert usage.five_hour_pct == 42.0
-    assert usage.five_hour_reset == ""
-    assert usage.five_hour_reset_at is None
+    assert usage.seven_day_pct == 68.0
+    assert usage.seven_day_reset == ""
+    assert usage.seven_day_reset_at is None
 
 
 def test_missing_required_window_raises(httpx_mock, tmp_path):
     p = write_creds(tmp_path, FRESH)
     httpx_mock.add_response(
         url=USAGE_URL,
-        json={
-            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
-        },
+        json={"five_hour": None, "seven_day": None},
     )
-    with pytest.raises(ValueError, match="five_hour"):
+    with pytest.raises(ValueError, match="seven_day"):
         fetch_claude_usage(p)
 
 
@@ -147,12 +142,11 @@ def test_pct_over_100_clamps(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 142.0, "resets_at": "2026-05-17T20:00:00Z"},
-            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "seven_day": {"utilization": 142.0, "resets_at": "2026-05-24T00:00:00Z"},
         },
     )
     usage = fetch_claude_usage(p)
-    assert usage.five_hour_pct == 100.0
+    assert usage.seven_day_pct == 100.0
 
 
 def test_negative_pct_raises(httpx_mock, tmp_path):
@@ -160,8 +154,7 @@ def test_negative_pct_raises(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": -1.0, "resets_at": "2026-05-17T20:00:00Z"},
-            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "seven_day": {"utilization": -1.0, "resets_at": "2026-05-24T00:00:00Z"},
         },
     )
     with pytest.raises(ValueError, match="out of range"):
@@ -175,7 +168,6 @@ def test_missing_limits_warns_and_returns_empty_list(httpx_mock, monkeypatch, tm
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
         },
     )
@@ -189,7 +181,6 @@ def test_non_model_and_surface_scoped_limits_are_skipped(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
             "limits": [
                 {
@@ -255,7 +246,6 @@ def test_malformed_model_scoped_limit_raises(httpx_mock, tmp_path, entry, messag
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
             "limits": [entry],
         },
@@ -272,7 +262,6 @@ def test_scoped_pct_over_100_clamps_with_warning(httpx_mock, monkeypatch, tmp_pa
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": 42.0, "resets_at": "2026-05-17T20:00:00Z"},
             "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
             "limits": [
                 {
@@ -292,8 +281,7 @@ def test_bool_pct_raises(httpx_mock, tmp_path):
     httpx_mock.add_response(
         url=USAGE_URL,
         json={
-            "five_hour": {"utilization": True, "resets_at": "2026-05-17T20:00:00Z"},
-            "seven_day": {"utilization": 68.0, "resets_at": "2026-05-24T00:00:00Z"},
+            "seven_day": {"utilization": True, "resets_at": "2026-05-24T00:00:00Z"},
         },
     )
     with pytest.raises(ValueError, match="invalid pct"):
