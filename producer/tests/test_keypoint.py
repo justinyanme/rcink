@@ -8,8 +8,8 @@ carries what, the cache round-trip, and the deck the pusher emits.
 import datetime as dt
 import json
 
+import kp4
 import pytest
-from rcink import kp4
 from rcink.keypoint import (
     CARD_ORDER,
     Card,

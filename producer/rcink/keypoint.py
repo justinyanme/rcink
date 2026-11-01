@@ -1,8 +1,8 @@
 """Local card cache + KP4 frame rendering for the KEYPOINT keyboard display.
 
-The wire grammar is not this module's to declare: `rcink.kp4` is the vendored
-copy of the keyboard firmware's contract module, and every width, ceiling, icon
-spelling and LED code comes from there. This module owns rcink's *card* shape
+The wire grammar is not this module's to declare: `kp4` is the keyboard
+firmware's protocol package (installed from zmk-config-KEYPOINT), and every
+width, ceiling, icon spelling, LED code and GATT UUID comes from there. This module owns rcink's *card* shape
 on top of it — the cache format, the row vocabulary, and which line goes where.
 
 Screen convention: L1 is the card title, the remaining lines are content rows
@@ -24,12 +24,11 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from rcink import kp4
+import kp4
 
-# Custom GATT service on the left keyboard half (encrypted write); see the
-# KEYPOINT firmware widgets/live_data.{h,c}.
-SERVICE_UUID = "f5d40000-6d2f-4f4b-9b2a-2f4a8e8c0001"
-CHAR_UUID = "f5d40001-6d2f-4f4b-9b2a-2f4a8e8c0001"
+# Custom GATT service on the left keyboard half (encrypted write).
+SERVICE_UUID = kp4.SERVICE_UUID
+CHAR_UUID = kp4.CHAR_UUID
 
 #: rcink's card convention, not contract: L1 is the title, the rest are rows.
 MAX_ROWS = kp4.TEXT_LINE_COUNT - 1
@@ -198,10 +197,15 @@ def fresh_cards(cards: list[Card], *, now: dt.datetime, max_age_s: int) -> list[
 
 
 def frames_to_push(*, now: dt.datetime, max_age_s: int) -> list[bytes]:
-    """Load the cache, drop stale cards, and render the whole deck — each card
-    stamped with its page index and the deck total (capped at PAGE_MAX). The
-    firmware stores the deck; the keyboard's left keys page through it."""
-    cards = fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[: kp4.PAGE_MAX]
+    """Load the cache, drop stale cards, and render the whole deck (capped at
+    PAGE_MAX). The firmware stores the deck; the keyboard's left keys page through it."""
+    return render_deck(fresh_cards(load_cards(), now=now, max_age_s=max_age_s)[: kp4.PAGE_MAX], now=now)
+
+
+def render_deck(cards: list[Card], *, now: dt.datetime) -> list[bytes]:
+    """Render cards as one deck: each stamped with its page index and the deck total."""
+    if len(cards) > kp4.PAGE_MAX:
+        raise ValueError(f"deck of {len(cards)} cards exceeds PAGE_MAX={kp4.PAGE_MAX}")
     total = len(cards)
     # GEN is a fixed-width hex field, so the deck transaction id wraps at its capacity.
     generation = int(now.timestamp()) % 16**kp4.GENERATION_FIELD_MAX

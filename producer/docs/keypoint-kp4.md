@@ -6,7 +6,12 @@
 
 `KP4|GEN|IDX|TOTAL|ICON|LED|ROLES|L1|L2|L3|L4|L5|L6`, printable ASCII, maximum 88 bytes. Six lines, at most nine characters each. `ROLES` contains exactly six digits aligned with the six lines: `0` neutral, `1` positive, `2` attention, `3` warning, `4` error. Firmware owns palette/layout; producer sends meanings, never RGB values. Card LED hint remains independent. KP3 firmware rejects KP4 frames.
 
-Authority: `~/w/zmk-config-KEYPOINT/config/boards/shields/lpm_view/widgets/live_data.h` and `live_data_core.c`; `rcink/kp4.py` and `kp4_contract.json` are vendored from that repo's `scripts/` directory. Upgrade/freeze both copies together.
+Authority: `~/w/zmk-config-KEYPOINT/config/boards/shields/lpm_view/widgets/live_data.{h,c}` and `live_data_core.c`. The protocol module `kp4` (constants, GATT UUIDs, parser, `read_deck`, `title`/`kv`/`bar`) has one copy, in that repo's `scripts/`; rcink installs it as a uv git dependency pinned in `pyproject.toml` `[tool.uv.sources]`. To take a protocol change: push it there, bump `rev`, `uv sync`, run tests. Card content (which rows, thresholds, `scoped_limit_row`) is rcink's: `rcink/keypoint_cards.py`.
+
+Demo / debugging pushes (same BLE path as the scheduled job):
+
+- `uv run keypoint-push --demo` — fixed sample data through the real card builders (`rcink/keypoint_demo.py`).
+- `uv run keypoint-push --frames ~/w/zmk-config-KEYPOINT/demo/kp4/usage.kp4` — a hand-written deck file verbatim; ZMK's `demo/kp4/` holds them.
 
 `Row.role` accepts lowercase semantic names, default `neutral`. Rendering keeps roles aligned through timestamp insertion and empty-line padding. Usage bars represent **consumed quota**: below 75% positive, 75–<90% attention, ≥90% warning; each window is independent. Highest model-scoped limit uses the same thresholds. Reset countdown does not affect severity. Whole-card LED calculation still considers usage windows only, excluding the scoped-limit line.
 

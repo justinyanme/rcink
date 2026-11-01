@@ -2,9 +2,8 @@
 
 Each builder turns one source's rich data into a renderable :class:`Card`: icon
 + title + either a full set of grid rows or one fewer plus the fetch timestamp.
-Widths are `rcink.kp4`'s to decide, as is the spelling of any row kp4 has a
-builder for (the usage cards' scoped-limit line); the builders here only choose
-what goes on a line. Reset rows use ``Row(until=epoch)`` so the
+Widths are `kp4`'s to decide (the firmware protocol); what goes on each line,
+including the usage cards' scoped-limit row, is decided here. Reset rows use ``Row(until=epoch)`` so the
 keypoint-push job renders a live countdown instead of the frozen "2h 14m"
 string the e-ink pages show.
 """
@@ -14,7 +13,8 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
-from rcink import kp4
+import kp4
+
 from rcink.keypoint import LED_HINT_ACTIVE, LED_HINT_ATTENTION, LED_HINT_NONE, LED_HINT_WARNING, Card, Row
 from rcink.sources.claude import ClaudeUsage
 from rcink.sources.codex import CodexUsage
@@ -29,6 +29,24 @@ def _pct(value: float | None) -> str:
     if value is None:
         raise ValueError("usage pct is required")
     return f"{int(value)}%"
+
+
+def scoped_limit_row(label: str, pct: int) -> str:
+    """A `TAG NN%` row: one model-scoped limit under the usage window.
+
+    Not padded like `kp4.kv()`: the glass right-aligns text lines, so it reads
+    as one short token trailing the bar rather than a third label column. A
+    swapped pair ("68 FB%") would fit the line and the firmware would accept
+    it, so both halves are type-checked rather than formatted blindly.
+    """
+    if not isinstance(label, str) or not label:
+        raise ValueError(f"scoped limit label must be a non-empty string, got {label!r}")
+    if isinstance(pct, bool) or not isinstance(pct, int) or pct < 0:
+        raise ValueError(f"scoped limit percentage must be a non-negative int, got {pct!r}")
+    row = f"{label} {pct}%"
+    if len(row) > kp4.LINE_MAX:
+        raise ValueError(f"scoped limit row {row!r} longer than {kp4.LINE_MAX} chars")
+    return row
 
 
 def _scoped_label(label: str) -> str:
@@ -130,9 +148,7 @@ def claude_card(usage: ClaudeUsage, *, now: dt.datetime) -> Card:
     rows.append(Row(bar=_bar(usage.seven_day_pct), role=_usage_role(usage.seven_day_pct)))
     if usage.scoped_limits:
         limit = max(usage.scoped_limits, key=lambda item: item.pct)
-        rows.append(
-            Row(text=kp4.scoped_limit_row(_scoped_label(limit.label), int(limit.pct)), role=_usage_role(limit.pct))
-        )
+        rows.append(Row(text=scoped_limit_row(_scoped_label(limit.label), int(limit.pct)), role=_usage_role(limit.pct)))
     return Card(
         id="claude",
         icon="CLAUDE",

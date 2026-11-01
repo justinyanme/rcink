@@ -11,6 +11,9 @@ live between the 15-minute fetches. The deck order is fixed (keypoint.CARD_ORDER
 
 Run manually:
     uv run keypoint-push                   # push the deck once, then exit
+    uv run keypoint-push --demo            # sample data through the real card builders
+    uv run keypoint-push --frames FILE     # a .kp4 deck file verbatim, e.g.
+                                           # ~/w/zmk-config-KEYPOINT/demo/kp4/usage.kp4
     uv run keypoint-push --response        # diagnostic writes surface firmware rejects
     uv run keypoint-push --pace 0          # no inter-write delay
     uv run keypoint-push --address <UUID>  # skip discovery
@@ -21,13 +24,17 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import platform
+from pathlib import Path
+from typing import Annotated
 
+import kp4
 import typer
 from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 from loguru import logger
-from rcink.keypoint import CHAR_UUID, SERVICE_UUID, frames_to_push
+from rcink.keypoint import CHAR_UUID, SERVICE_UUID, frames_to_push, render_deck
+from rcink.keypoint_demo import demo_cards
 
 app = typer.Typer(add_completion=False, help=__doc__)
 
@@ -82,16 +89,23 @@ async def _resolve_device(name: str, address: str | None, scan_timeout: float) -
     return device
 
 
+def _deck(*, frames_file: Path | None, demo: bool, max_age_s: int) -> list[bytes]:
+    now = dt.datetime.now().astimezone()
+    if frames_file is not None:
+        return [frame.encode("ascii") for frame in kp4.read_deck(frames_file)]
+    if demo:
+        return render_deck(demo_cards(now=now), now=now)
+    return frames_to_push(now=now, max_age_s=max_age_s)
+
+
 async def _push(
     name: str,
     address: str | None,
     pace: float,
-    max_age_s: int,
     scan_timeout: float,
     response: bool,
+    frames: list[bytes],
 ) -> None:
-    now = dt.datetime.now().astimezone()
-    frames = frames_to_push(now=now, max_age_s=max_age_s)
     if not frames:
         logger.warning("no fresh cards in cache — nothing to push (firmware keeps its last/NO DATA state)")
         return
@@ -117,16 +131,24 @@ def run(
     response: bool = typer.Option(
         True, "--response/--no-response", help="Require the firmware to acknowledge each frame."
     ),
+    frames: Annotated[
+        Path | None,
+        typer.Option(exists=True, dir_okay=False, help="Push this .kp4 deck file verbatim instead of the card cache."),
+    ] = None,
+    demo: bool = typer.Option(False, help="Push sample data through the real card builders instead of the cache."),
 ) -> None:
+    if frames is not None and demo:
+        raise typer.BadParameter("--frames and --demo are mutually exclusive")
+    deck = _deck(frames_file=frames, demo=demo, max_age_s=max_age)
     try:
         asyncio.run(
             _push(
                 name=name,
                 address=address,
                 pace=pace,
-                max_age_s=max_age,
                 scan_timeout=scan_timeout,
                 response=response,
+                frames=deck,
             )
         )
     except (BleakError, RuntimeError) as exc:

@@ -5,20 +5,21 @@ wire. Reset rows carry an absolute epoch (``until``) so the countdown stays live
 between 15-minute fetches instead of freezing at the formatted string the page
 builders use.
 
-The two-window codex card is also the shape the keyboard repo's preview deck
-models through ``kp4.codex_card``; the byte-match test below keeps the two from
-drifting apart. The claude card has a single 7D window since the 5h limit was
-retired, so it no longer matches the two-window ``kp4.claude_card`` preview.
+Card content is rcink's alone; kp4 only says what a frame may carry. Expected
+frames below are hand-written, and match the shapes in zmk-config-KEYPOINT's
+hand-written ``demo/kp4/usage.kp4``.
 """
 
 import datetime as dt
 
-from rcink import kp4
+import kp4
+import pytest
 from rcink.keypoint import render_frame
 from rcink.keypoint_cards import (
     calendar_card,
     claude_card,
     codex_card,
+    scoped_limit_row,
     todo_card,
     weather_card,
 )
@@ -135,12 +136,39 @@ def test_codex_card_renders():
     assert fields[11] == "[068]"  # L5: secondary bar at 68%
 
 
-def test_codex_card_byte_matches_the_kp4_usage_card():
+def test_codex_card_two_window_frame():
     frame = render_frame(codex_card(make_codex(), now=NOW), now=NOW, generation=0xA0, index=0, total=1)
 
-    assert frame == kp4.codex_card(
-        "1h30m", 42, "6d", 68, led_hint=0, row_roles=(0, 0, 1, 0, 1, 0), generation=0xA0
-    ).encode("ascii")
+    assert frame == b"KP4|A0|0|1|CODEX|0|001010|CODEX    |5H  1h30m|[042]|7D     6d|[068]|"
+
+
+def test_claude_card_frame():
+    frame = render_frame(claude_card(make_claude(), now=NOW), now=NOW, generation=0xA0, index=0, total=1)
+
+    assert frame == b"KP4|A0|0|1|CLAUDE|2|002100|CLAUDE   |7D     4d|[088]|FB 41%||"
+
+
+def test_scoped_limit_row_is_short_and_unpadded():
+    """Unlike kv(), the row does not claim the whole line: the glass
+    right-aligns it, so it reads as one token under the 7D bar."""
+    assert scoped_limit_row("FB", 41) == "FB 41%"
+    assert scoped_limit_row("FB", 100) == "FB 100%"
+    assert scoped_limit_row("ABCD", 100) == "ABCD 100%"  # exactly the 9-char line
+
+
+@pytest.mark.parametrize(
+    ("label", "pct"),
+    [
+        ("FABLE", 100),  # "FABLE 100%" is one over the line
+        (68, "FB"),  # swapped pair: "68 FB%" would fit and the firmware would accept it
+        ("", 41),
+        ("FB", True),
+        ("FB", -1),
+    ],
+)
+def test_scoped_limit_row_refuses_what_nobody_could_read(label, pct):
+    with pytest.raises(ValueError):
+        scoped_limit_row(label, pct)
 
 
 def test_codex_card_warns_on_high_usage():

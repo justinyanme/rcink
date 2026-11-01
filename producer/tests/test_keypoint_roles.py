@@ -2,8 +2,8 @@
 
 import datetime as dt
 
+import kp4
 import pytest
-from rcink import kp4
 from rcink.keypoint import Card, Row, load_cards, render_frame, write_card
 from rcink.keypoint_cards import claude_card, codex_card
 from rcink.sources.claude import ClaudeUsage, ScopedLimit

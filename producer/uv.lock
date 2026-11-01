@@ -196,6 +196,11 @@ wheels = [
 ]
 
 [[package]]
+name = "kp4"
+version = "0.1.0"
+source = { git = "https://github.com/RoCry/zmk-config-KEYPOINT?subdirectory=scripts&rev=0c62a98cc3ecc555eba61c36bac13730402b586c#0c62a98cc3ecc555eba61c36bac13730402b586c" }
+
+[[package]]
 name = "loguru"
 version = "0.7.3"
 source = { registry = "https://pypi.org/simple" }
@@ -456,6 +461,7 @@ dependencies = [
     { name = "bleak" },
     { name = "httpx" },
     { name = "jsonschema" },
+    { name = "kp4" },
     { name = "loguru" },
     { name = "pillow" },
     { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'" },
@@ -476,6 +482,7 @@ requires-dist = [
     { name = "bleak", specifier = ">=3.0.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "kp4", git = "https://github.com/RoCry/zmk-config-KEYPOINT?subdirectory=scripts&rev=0c62a98cc3ecc555eba61c36bac13730402b586c" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pyobjc-framework-eventkit", marker = "sys_platform == 'darwin'", specifier = ">=10.3" },

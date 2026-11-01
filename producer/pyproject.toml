@@ -16,6 +16,9 @@ dependencies = [
     "xxhash>=3.7.0",
     "pillow>=12.2.0",
     "jsonschema>=4.26.0",
+    # KEYPOINT KP4 protocol: the one copy lives in zmk-config-KEYPOINT/scripts;
+    # bump the rev in [tool.uv.sources] to take a protocol change.
+    "kp4",
 ]
 
 [project.scripts]
@@ -48,4 +51,7 @@ packages = ["rcink", "scripts"]
 addopts = "-ra -q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.uv.sources]
+kp4 = { git = "https://github.com/RoCry/zmk-config-KEYPOINT", subdirectory = "scripts", rev = "0c62a98cc3ecc555eba61c36bac13730402b586c" }
 
