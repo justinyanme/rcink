@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "proto/envelope.h"
+#include "render/usage.h"
 
 namespace rcpaper {
 
@@ -17,6 +18,7 @@ enum class FetchResult : uint8_t {
 struct RefreshCompletion {
   FetchResult result = FetchResult::DataFailed;
   std::vector<PageRecord> pages;
+  UsageSnapshot usage;
   bool clock_synced = false;
   uint64_t completed_at_s = 0;
 };

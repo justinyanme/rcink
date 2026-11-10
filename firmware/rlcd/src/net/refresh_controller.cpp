@@ -7,6 +7,7 @@
 
 #include "config.h"
 #include "net/refresh_flow.h"
+#include "net/usage_config.h"
 #include "power/network_policy.h"
 #include "power/refresh_schedule.h"
 #include "sense/clock.h"
@@ -65,6 +66,22 @@ bool finish_network_refresh(RefreshAppState app) {
   // task so NVS, ADC, and RTC/I2C cannot race rendering or input.
   if (completion.clock_synced) write_rtc_from_clock();
   app.battery = read_battery();
+#if RCRLCD_USAGE_ENABLED
+  const bool success = fetch_succeeded(completion.result);
+  if (success) app.usage = completion.usage;
+  PageRecord page = usage_page(app.usage, completion.completed_at_s, !success);
+  if (!app.device.pages.empty() && app.device.pages[0].layout_json == page.layout_json) {
+    page.data_ts = app.device.pages[0].data_ts;
+  }
+  completion.pages = {std::move(page)};
+  if (success) {
+    record_successful_fetch(app.device, completion.pages);
+    app.device.last_fetch_s = completion.completed_at_s;
+  }
+  app.device.pages = std::move(completion.pages);
+  app.device.page_index = 0;
+  // shortcut: source snapshots live only in RAM in #2; #5 adds validated persistence.
+#else
   if (fetch_succeeded(completion.result)) {
     record_successful_fetch(app.device, completion.pages);
     app.device.pages = std::move(completion.pages);
@@ -77,6 +94,7 @@ bool finish_network_refresh(RefreshAppState app) {
                   (unsigned)app.device.pages.size(),
                   (unsigned)app.device.page_index);
   }
+#endif
   app.last_result = fetch_result_name(completion.result);
 
   const uint32_t adaptive = battery_interval(app);

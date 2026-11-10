@@ -199,3 +199,96 @@ match the device exactly.
 ```bash
 uv run tools/preview_dashboard.py && open /tmp/rlcd_dashboard.png
 ```
+
+## Optional weekly allowance source (#2)
+
+Define both settings in the gitignored `include/config.h` to replace this
+RLCD's Axiom Deck with the private weekly allowance page:
+
+```cpp
+#define RCRLCD_USAGE_URL "https://justinyan.app/api/usage-limits"
+#define RCRLCD_USAGE_READ_KEY "your-separate-read-key"
+```
+
+The device receives **only** the read key, never the existing upload key.
+Without these definitions, Axiom behavior is unchanged. Defining only one is a
+compile error. Climate Dashboard, existing Deck/button navigation and runtime
+power policy are preserved. #2 keeps the existing startup view and polling
+cadence; #4 owns the selected usage startup view and five-minute HOST cadence.
+Console `f` remains the manual network refresh; button navigation never fetches.
+
+The background refresh fetches/validates the complete response; the main task
+applies it and builds one ordinary DSL/PageRecord. The fixed slots are Claude,
+Codex, Kimi and Gemini (Antigravity). The initial collector supplies only Claude;
+other slots show `--` without allowance bars. Used is rounded once and remaining
+is its integer complement. Bars represent remaining. Sampling/reset times are
+UTC (`Z`); per-row stale state follows the source, not the last HTTP success.
+#3 owns the final four-provider detail layout.
+
+HTTPS uses GTS Root R4 (certificate source and fingerprint in
+`src/net/usage_ca.h`), hostname validation, the existing RTC/NTP clock gate,
+`rcink-rlcd/1.0` User-Agent and JSON Accept header. Connect/TLS/read deadlines are
+10 seconds each. HTTP/1.0 requests close-delimited identity bodies; unexpected
+transfer encoding is rejected. The body is bounded to 4096 bytes with a total
+10-second body deadline. Redirects are refused, so the read key cannot follow a
+Location header. A failed HTTP/status/schema/size/time check preserves the last
+good **in-memory** snapshot and displays `fetch failed`; serial logs expose only
+sanitized diagnostics/status codes. An unknown clock cannot display fresh rows
+or cause a TLS bypass. No insecure TLS fallback exists.
+
+### Deliberate lifecycle boundary
+
+#2 keeps source timestamps in RAM and does not persist a usage snapshot into
+the legacy Axiom cache. On reset/deep-sleep wake, values start unavailable until
+a successful refresh. During this slice, freshness is recalculated when building
+a page after a refresh; automatic offline expiry/redraw between refreshes and
+validated restore after restart belong to #5. The unchanged 15-minute HOST
+cadence can exceed OpenUsage's source expiry; do not treat this slice as the
+finished unattended dashboard. Existing Axiom cache data remains intact.
+
+### Local evidence and pending acceptance
+
+On 2026-11-10 the following passed in the isolated #2 worktree:
+
+- Native suite: **79/79** tests, including four new response/view tests. The
+  anonymous Claude response uses the same sample/expiry/reset and percentages
+  as Just Ship's source-fixture → projection → PUT → test D1 → GET test. It also
+  covers half-rounding, missing slots, stale/unknown time, malformed/oversized
+  responses and last-good visible values on failure. Layout geometry is tested
+  inside the existing 344×300 content area beside the 56px sidebar; this is not
+  a real framebuffer/font or physical-device acceptance claim.
+- Production `waveshare-s3-rlcd` build with unconfigured safe placeholders:
+  success, 62,960 bytes RAM and 1,392,997 bytes flash.
+- The same production build with usage-enabled safe placeholders: success,
+  62,956 bytes RAM and 1,394,465 bytes flash. Original private configuration was
+  restored byte-for-byte afterward. These build artifacts contain placeholders
+  and are not deployment firmware.
+
+Commands (run from `firmware/rlcd`):
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with platformio==6.1.19 --with esptool==4.9.0 pio test -e native
+DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with platformio==6.1.19 --with esptool==4.9.0 pio run -e waveshare-s3-rlcd
+```
+
+A read-only host HTTPS probe against `/api/health` using the same root CA,
+User-Agent and HTTP/1.0 received 200 with a Content-Length and Connection: close.
+This checks current service compatibility only; ESP32 HTTPS and the new private
+route have **not** been tested against a live device/deployment.
+
+Supervisor still owns review/model selection, live Worker migration/secrets and
+deployment, verifying the running M4 cache-only helper and one-shot source
+upload, board identity/backup, flash, actual source/API/framebuffer comparison,
+font/clipping/readability, buttons and climate access. M4 SSH was unavailable;
+no live source/account values were verified. No device was opened, reset or
+flashed, and no production state or scheduled job was changed.
+
+For rollback, disable the new uploader and restore prior Worker/firmware
+versions; the additive D1 table can remain. The old daily token uploader and
+heatmap do not need changes. The backend/operator contract is in Just Ship's
+`docs/usage-limits.md` and ADR 0005.
+
+At supervisor handoff, live blockers are confirmed: unavailable M4 SSH, the
+RLCD's offline Wi-Fi settings in `firmware/rlcd/include/config.h`, and expired
+local Cloudflare OAuth. They remain unmet acceptance items; no host networking,
+login or deployment repair was attempted.
