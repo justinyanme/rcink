@@ -132,7 +132,8 @@ PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, bool fetch_fa
         (provider.resets_at != 0 && now >= provider.resets_at);
     text(parts, std::to_string(used) + "% used" + (stale ? " / STALE" : ""), "sm");
     JsonObject bar = parts.add<JsonObject>();
-    bar["type"] = "hbar"; bar["pct"] = remaining; bar["height"] = 8;
+    // Stay above draw_hbar's 4px cutoff after RLCD spacing compaction.
+    bar["type"] = "hbar"; bar["pct"] = remaining; bar["height"] = 12;
     text(parts, "At " + utc_stamp(provider.fetched_at) + " reset " +
          (provider.resets_at == 0 ? "--" : utc_stamp(provider.resets_at)), "sm");
   }

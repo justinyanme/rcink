@@ -70,7 +70,22 @@ void test_first_view_fits_beside_existing_sidebar() {
   deserializeJson(doc, usage_page(snapshot, 1794297900, false).layout_json);
   const auto root = parse_layout(doc.as<JsonVariantConst>());
   UsageMeasurer measurer;
-  assert_in_content(run_layout(root, {0, 0, 344, 300}, measurer, 0.55f));
+  const auto laid = run_layout(root, {0, 0, 344, 300}, measurer, 0.55f);
+  assert_in_content(laid);
+  unsigned bars = 0;
+  for (const auto& row : laid.children) {
+    for (const auto& node : row.children) {
+      if (node.node->type != NodeType::HBar) continue;
+      bars++;
+      // draw_hbar needs an inset fill area after the renderer's compaction.
+      TEST_ASSERT_GREATER_THAN(4, node.rect.w);
+      TEST_ASSERT_GREATER_THAN(4, node.rect.h);
+      const int fill_width = (node.rect.w - 4) * (int)node.node->as_hbar.pct / 100;
+      TEST_ASSERT_GREATER_THAN(0, fill_width);
+      TEST_ASSERT_GREATER_THAN(0, node.rect.h - 4);
+    }
+  }
+  TEST_ASSERT_EQUAL(1, bars);  // Unavailable slots stay bar-free.
 }
 void test_bad_responses_do_not_replace_last_good_visible_values() {
   UsageSnapshot cache;
