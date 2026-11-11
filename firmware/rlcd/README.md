@@ -200,7 +200,7 @@ match the device exactly.
 uv run tools/preview_dashboard.py && open /tmp/rlcd_dashboard.png
 ```
 
-## Optional weekly allowance source (#2)
+## Optional weekly allowance source (#2–#3)
 
 Define both settings in the gitignored `include/config.h` to replace this
 RLCD's Axiom Deck with the private weekly allowance page:
@@ -219,11 +219,20 @@ Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
 applies it and builds one ordinary DSL/PageRecord. The fixed slots are Claude,
-Codex, Kimi and Gemini (Antigravity). The initial collector supplies only Claude;
-other slots show `--` without allowance bars. Used is rounded once and remaining
-is its integer complement. Bars represent remaining. Sampling/reset times are
-UTC (`Z`); per-row stale state follows the source, not the last HTTP success.
-#3 owns the final four-provider detail layout.
+Codex, Kimi and Gemini (Antigravity). The #3 collector selects an explicit stable
+account per slot: Claude/Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing
+or invalid sources are omitted; the API retains each slot's last successful
+observation under its original expiry. Unobserved slots show `--` and Unavailable,
+without allowance bars. Used is rounded once and remaining is its integer
+complement. Bars represent remaining.
+
+Each row has a provider/remaining heading, a compact used/status/source-age/reset
+line and a remaining bar. Age is truncated to whole minutes/hours/days/years
+(`m`/`h`/`d`/`y`, `<1m` for under a minute); `R` introduces the source reset in UTC
+(`Z`), or `R--` if none was supplied. `age?` and the clock warning mean local time
+cannot establish source age. Status is `OK` or `STALE` per provider. Successful
+HTTP polling never freshens source timestamps. All four rows fit beside the
+existing 56px sidebar without changing the font ladder or monochrome palette.
 
 HTTPS uses GTS Root R4 (certificate source and fingerprint in
 `src/net/usage_ca.h`), hostname validation, the existing RTC/NTP clock gate,
@@ -245,6 +254,31 @@ a page after a refresh; automatic offline expiry/redraw between refreshes and
 validated restore after restart belong to #5. The unchanged 15-minute HOST
 cadence can exceed OpenUsage's source expiry; do not treat this slice as the
 finished unattended dashboard. Existing Axiom cache data remains intact.
+
+### #3 local handoff
+
+The native suite passes **81/81**, including two new four-provider tests using
+the same anonymous observations as Just Ship's source → D1 → GET integration
+fixture. They check complementary rounding (including half percentages), valid
+0% used, source ages, independent reset/expiry state, remaining bars and geometry
+inside the 344×300 content area at nominal font sizes. Four full rows plus the
+unknown-clock warning and fetch-failure header fit without a scaling pass.
+Unavailable rows remain bar-free. These geometry checks use conservative text
+measurements; they do not establish real glyph/framebuffer or physical readability.
+
+Both production `waveshare-s3-rlcd` builds passed with safe placeholder config:
+unconfigured **62,960 bytes RAM / 1,394,005 bytes flash**, usage-enabled
+**62,956 bytes RAM / 1,395,929 bytes flash**. Local private config was preserved
+and restored by rename, without reading its contents. Tool/dependency/build
+state for the completed builds stays inside this worktree. No binary is committed
+or suitable for rollout. Two preliminary PIO commands failed before building
+because they ran at the repo root; corrected commands ran from `firmware/rlcd`.
+
+Only the usage page builder/tests and these notes changed. Scheduling, HOST
+polling, startup selection, persistent cache and automatic offline redraw remain
+with #4/#5. Supervisor owns fresh independent review, account configuration,
+production source/API/framebuffer comparison, physical button/climate acceptance,
+rollout and publication. No #3 live/device acceptance is claimed.
 
 ### Local evidence and pending acceptance
 

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <ctime>
 #include <initializer_list>
+#include <utility>
 
 namespace rcpaper {
 namespace {
@@ -59,6 +60,15 @@ std::string utc_stamp(uint64_t epoch_s) {
                 utc.tm_mday, utc.tm_hour, utc.tm_min);
   return buf;
 }
+std::string source_age(uint64_t fetched_at, uint64_t now) {
+  if (now < kClockMinimum || now + 300 < fetched_at) return "age?";
+  const uint64_t seconds = now > fetched_at ? now - fetched_at : 0;
+  for (const auto& unit : {std::make_pair(31536000ULL, "y"), {86400ULL, "d"},
+                           {3600ULL, "h"}, {60ULL, "m"}}) {
+    if (seconds >= unit.first) return std::to_string(seconds / unit.first) + unit.second;
+  }
+  return "<1m";
+}
 }  // namespace
 
 bool decode_usage(const std::string& json, UsageSnapshot& out) {
@@ -107,14 +117,14 @@ bool decode_usage(const std::string& json, UsageSnapshot& out) {
 
 PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, bool fetch_failed) {
   JsonDocument doc;
-  doc["type"] = "vstack"; doc["pad"] = 12; doc["gap"] = 10;
+  doc["type"] = "vstack"; doc["pad"] = 12; doc["gap"] = 8;
   JsonArray children = doc["children"].to<JsonArray>();
   text(children, fetch_failed ? "Weekly / fetch failed" : "Weekly allowance", "body", true);
   if (now < kClockMinimum) text(children, "Clock unknown / freshness unknown", "sm");
   for (size_t i = 0; i < 4; i++) {
     const auto& provider = snapshot.providers[i];
     JsonObject row = children.add<JsonObject>();
-    row["type"] = "vstack"; row["gap"] = 4;
+    row["type"] = "vstack"; row["gap"] = 2;
     JsonArray parts = row["children"].to<JsonArray>();
     JsonObject heading = parts.add<JsonObject>();
     heading["type"] = "hstack"; heading["gap"] = 8; heading["align"] = "center";
@@ -122,6 +132,7 @@ PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, bool fetch_fa
     text(labels, kNames[i], "sm", true);
     if (provider.status == UsageStatus::Unavailable) {
       text(labels, "--", "h2");
+      text(parts, "Unavailable / age -- / reset --", "sm");
       continue;
     }
     const int used = (int)std::round(provider.used_percent);
@@ -130,12 +141,12 @@ PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, bool fetch_fa
     const bool stale = provider.status == UsageStatus::Stale || now < kClockMinimum ||
         now + 300 < provider.fetched_at || now >= provider.expires_at ||
         (provider.resets_at != 0 && now >= provider.resets_at);
-    text(parts, std::to_string(used) + "% used" + (stale ? " / STALE" : ""), "sm");
+    text(parts, std::to_string(used) + "% used / " + (stale ? "STALE" : "OK") +
+         " / " + source_age(provider.fetched_at, now) + " / R" +
+         (provider.resets_at == 0 ? "--" : utc_stamp(provider.resets_at)), "sm");
     JsonObject bar = parts.add<JsonObject>();
     // Stay above draw_hbar's 4px cutoff after RLCD spacing compaction.
     bar["type"] = "hbar"; bar["pct"] = remaining; bar["height"] = 12;
-    text(parts, "At " + utc_stamp(provider.fetched_at) + " reset " +
-         (provider.resets_at == 0 ? "--" : utc_stamp(provider.resets_at)), "sm");
   }
   PageRecord page;
   page.id = "usage-limits";
