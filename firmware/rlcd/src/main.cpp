@@ -16,6 +16,7 @@
 #include "net/refresh_controller.h"
 #include "net/refresh_flow.h"
 #include "net/wifi.h"
+#include "net/usage_config.h"
 #include "power/runtime_policy.h"
 #include "power/sleep.h"
 #include "power/wake_schedule.h"
@@ -35,6 +36,7 @@ namespace rcpaper {
 // Desk climate Dashboard plus the Axiom Deck. RTC + SHTC3 keep Dashboard useful
 // offline; network refreshes resync the RTC and update the secondary Deck.
 DeviceState g_state;
+UsageSnapshot g_usage;
 BatteryReading g_battery;
 Shtc3Reading g_env;
 View g_view = View::Dashboard;
@@ -94,6 +96,7 @@ static RefreshAppState refresh_app_state() {
       g_runtime.mode,
       g_fetch_retry_not_before_s,
       g_last_result,
+      g_usage,
   };
 }
 
@@ -131,8 +134,12 @@ void render_dashboard_now(bool force_sample = false) {
 }
 
 static bool deck_is_stale(uint64_t now) {
+#if RCRLCD_USAGE_ENABLED
+  return false;  // Usage rows carry source freshness, not HTTP receipt freshness.
+#else
   return g_state.last_fetch_s > 0 && now >= g_state.last_fetch_s &&
          now - g_state.last_fetch_s >= FETCH_INTERVAL_SEC;
+#endif
 }
 
 void render_current() {
@@ -435,6 +442,14 @@ void setup() {
                 (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
 
   g_state = nvs_load();
+#if RCRLCD_USAGE_ENABLED
+  // Do not interpret the legacy Axiom pages cache as an allowance snapshot.
+  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), false)};
+  g_state.page_index = 0;
+  g_state.last_fetch_s = 0;
+  g_state.last_fetch_fingerprint = 0;
+  g_state.unchanged_fetches = 0;
+#endif
   g_view = view_from_nvs(g_state.view_id);
   Serial.printf("[view] loaded %s\n", view_name(g_view));
 

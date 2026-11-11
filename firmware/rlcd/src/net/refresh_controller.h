@@ -5,6 +5,7 @@
 #include "power/runtime_policy.h"
 #include "sense/battery.h"
 #include "store/nvs.h"
+#include "render/usage.h"
 
 namespace rcpaper {
 
@@ -14,6 +15,7 @@ struct RefreshAppState {
   RuntimeMode runtime_mode;
   uint64_t& retry_not_before_s;
   const char*& last_result;
+  UsageSnapshot& usage;
 };
 
 bool refresh_due_now(const RefreshAppState& app);

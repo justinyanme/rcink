@@ -12,6 +12,8 @@
 
 #include "config.h"
 #include "net/axiom.h"
+#include "net/usage_client.h"
+#include "net/usage_config.h"
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
@@ -56,6 +58,9 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
     completion.result = FetchResult::WifiFailed;
   } else {
     completion.clock_synced = ntp_sync_once(LOCAL_TZ);
+#if RCRLCD_USAGE_ENABLED
+    completion.result = usage_fetch(completion.usage) ? FetchResult::Changed : FetchResult::DataFailed;
+#else
     std::vector<PageRecord> fresh;
     if (!axiom_fetch_pages(fresh) || fresh.empty()) {
       Serial.println("[main] fetch failed; keeping cache");
@@ -72,6 +77,7 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
                     (unsigned)completion.pages.size(),
                     (int)(completion.result == FetchResult::Changed));
     }
+#endif
   }
   wifi_disconnect();
   completion.completed_at_s = (uint64_t)time(nullptr);
