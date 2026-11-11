@@ -270,15 +270,34 @@ Both production `waveshare-s3-rlcd` builds passed with safe placeholder config:
 unconfigured **62,960 bytes RAM / 1,394,005 bytes flash**, usage-enabled
 **62,956 bytes RAM / 1,395,929 bytes flash**. Local private config was preserved
 and restored by rename, without reading its contents. Tool/dependency/build
-state for the completed builds stays inside this worktree. No binary is committed
-or suitable for rollout. Two preliminary PIO commands failed before building
-because they ran at the repo root; corrected commands ran from `firmware/rlcd`.
+state for the completed builds stays inside this worktree. Those placeholder
+artifacts were not committed and were not rollout firmware. Two preliminary PIO
+commands failed before building because they ran at the repo root; corrected commands ran from `firmware/rlcd`.
 
 Only the usage page builder/tests and these notes changed. Scheduling, HOST
 polling, startup selection, persistent cache and automatic offline redraw remain
-with #4/#5. Supervisor owns fresh independent review, account configuration,
-production source/API/framebuffer comparison, physical button/climate acceptance,
-rollout and publication. No #3 live/device acceptance is claimed.
+with #4/#5. #4 is implemented/reviewed separately and is not incorporated here.
+
+### #3 supervisor rollout checkpoint (2026-11-11)
+
+The supervisor reports that GPT-6 Astra pre-rollout review passed, followed by
+collector **11/11**, Worker usage **8/8** and native usage **6/6** checks. The
+reviewed M4 collector uploaded all four selected snapshots; exact API fields
+agree with the source observations. No private account IDs or live values are
+recorded here.
+
+The supervisor built production firmware and flashed the verified board with a
+successful written-data hash check. An external Wi-Fi outage initially produced
+`NO_AP_FOUND`; the user resolved connectivity and the actual device now reports
+**GET 200**. This did not require an implementation change.
+
+Final four-row framebuffer capture/comparison is **pending**. Do not mark #3
+acceptance complete or publish its PRs until the supervisor confirms source/API/
+framebuffer percentages, labels, remaining bars and unclipped 400×300 layout.
+Physical readability and button/climate acceptance remain supervisor-owned.
+Private live configuration and binaries may now be present in this worktree;
+this documentation update neither reads them nor rebuilds firmware. No #4
+scheduling/startup changes or #5 persistence/offline changes are included.
 
 ### Local evidence and pending acceptance
 
