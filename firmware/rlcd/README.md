@@ -397,7 +397,8 @@ The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
 
 ### #4 automatic updates: local verification and handoff
 
-On 2026-11-11, in the assigned isolated worktree, native tests passed **83/83**,
+Before the #3 integration rebase on 2026-11-11, in the assigned isolated worktree,
+native tests passed **83/83**,
 including usage HOST success/failure boundaries, unchanged battery/low-battery
 and Axiom intervals, cold startup selection and deep-sleep/navigation behavior.
 The existing runtime, interaction, retained-display and wake tests also passed.
@@ -418,5 +419,20 @@ API, device and framebuffer, including newer samples with unchanged percentages.
 Source/upload/device schedules are independent: five-minute intervals do not
 guarantee five-minute end-to-end latency. Real startup/buttons, HOST/ECO and
 power checks, D1 write telemetry and four-row storage bounds remain live
-acceptance criteria. #3 owns four-provider mapping/detail; #5 owns persistent
-usage values and offline expiry. #4 does not claim those criteria complete.
+acceptance criteria for #4. Merged #3 supplies accepted four-provider mapping,
+detail layout and completed Wi-Fi/device acceptance; those are not pending.
+#5 owns persistent usage values and offline expiry. #4 does not claim those
+lifecycle criteria complete.
+
+After the #3 merge, #4 rebased without conflicts onto `origin/main`
+`88c91f48e49eb5646f7976d6f7eb558fd71d738b` (PR7); the companion Just Ship base is
+`ac89e97d42087bb4662896c9e7abf26971d04f31` (PR45). #4 runtime remains unchanged
+from reviewed rcink `87c66a5336b67cb3abc1cab734612921c1c94843`. The imported #3
+renderer/tests and completed hardware evidence are preserved. Using the same
+local caches and pinned PIO command above, focused `native` suites
+`test_native_usage`, `test_native_refresh_schedule`, `test_native_network_policy`
+and `test_native_navigation` passed **26/26**. Production builds were not repeated:
+#4 runtime is unchanged and #3 completed its own builds/hardware acceptance.
+Only #4 docs changed during this integration closeout. No private config, M4,
+device or live service access occurred. Push/PR/deployment remain on hold for
+supervisor integration review and two subsequent automatic 300-second cycles.
