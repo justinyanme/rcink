@@ -200,7 +200,7 @@ match the device exactly.
 uv run tools/preview_dashboard.py && open /tmp/rlcd_dashboard.png
 ```
 
-## Optional weekly allowance source (#2)
+## Optional weekly allowance source (#2–#3)
 
 Define both settings in the gitignored `include/config.h` to replace this
 RLCD's Axiom Deck with the private weekly allowance page:
@@ -219,11 +219,20 @@ Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
 applies it and builds one ordinary DSL/PageRecord. The fixed slots are Claude,
-Codex, Kimi and Gemini (Antigravity). The initial collector supplies only Claude;
-other slots show `--` without allowance bars. Used is rounded once and remaining
-is its integer complement. Bars represent remaining. Sampling/reset times are
-UTC (`Z`); per-row stale state follows the source, not the last HTTP success.
-#3 owns the final four-provider detail layout.
+Codex, Kimi and Gemini (Antigravity). The #3 collector selects an explicit stable
+account per slot: Claude/Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing
+or invalid sources are omitted; the API retains each slot's last successful
+observation under its original expiry. Unobserved slots show `--` and Unavailable,
+without allowance bars. Used is rounded once and remaining is its integer
+complement. Bars represent remaining.
+
+Each row has a provider/remaining heading, a compact used/status/source-age/reset
+line and a remaining bar. Age is truncated to whole minutes/hours/days/years
+(`m`/`h`/`d`/`y`, `<1m` for under a minute); `R` introduces the source reset in UTC
+(`Z`), or `R--` if none was supplied. `age?` and the clock warning mean local time
+cannot establish source age. Status is `OK` or `STALE` per provider. Successful
+HTTP polling never freshens source timestamps. All four rows fit beside the
+existing 56px sidebar without changing the font ladder or monochrome palette.
 
 HTTPS uses GTS Root R4 (certificate source and fingerprint in
 `src/net/usage_ca.h`), hostname validation, the existing RTC/NTP clock gate,
@@ -245,6 +254,71 @@ a page after a refresh; automatic offline expiry/redraw between refreshes and
 validated restore after restart belong to #5. The unchanged 15-minute HOST
 cadence can exceed OpenUsage's source expiry; do not treat this slice as the
 finished unattended dashboard. Existing Axiom cache data remains intact.
+
+### #3 local handoff
+
+The native suite passes **81/81**, including two new four-provider tests using
+the same anonymous observations as Just Ship's source → D1 → GET integration
+fixture. They check complementary rounding (including half percentages), valid
+0% used, source ages, independent reset/expiry state, remaining bars and geometry
+inside the 344×300 content area at nominal font sizes. Four full rows plus the
+unknown-clock warning and fetch-failure header fit without a scaling pass.
+Unavailable rows remain bar-free. These geometry checks use conservative text
+measurements; they do not establish real glyph/framebuffer or physical readability.
+
+Both production `waveshare-s3-rlcd` builds passed with safe placeholder config:
+unconfigured **62,960 bytes RAM / 1,394,005 bytes flash**, usage-enabled
+**62,956 bytes RAM / 1,395,929 bytes flash**. Local private config was preserved
+and restored by rename, without reading its contents. Tool/dependency/build
+state for the completed builds stays inside this worktree. Those placeholder
+artifacts were not committed and were not rollout firmware. Two preliminary PIO
+commands failed before building because they ran at the repo root; corrected commands ran from `firmware/rlcd`.
+
+Only the usage page builder/tests and these notes changed. Scheduling, HOST
+polling, startup selection, persistent cache and automatic offline redraw remain
+with #4/#5. #4 is implemented/reviewed separately and is not incorporated here.
+
+### #3 completed hardware acceptance (2026-11-11)
+
+The supervisor reports that GPT-6 Astra pre-rollout review passed, followed by
+collector **11/11**, Worker usage **8/8** and native usage **6/6** checks. The
+reviewed M4 collector uploaded all four selected snapshots; exact API fields
+agree with the source observations. No private account IDs or live values are
+recorded here.
+
+The supervisor built production firmware and flashed the verified board with a
+successful written-data hash check. An external Wi-Fi outage initially produced
+`NO_AP_FOUND`; the user resolved connectivity and the actual device now reports
+**GET 200**. This did not require an implementation change.
+
+**#3 hardware acceptance is complete.** Supervisor evidence is recorded in
+`i3-device-acceptance.json`, `i3-device-api.json` and `i3-device-usage.png` for
+reviewed runtime commits rcink `72ee727` / Just Ship `8750ef0`. Actual source/API/
+layout percentages, status, original reset times, source age and complementary
+remaining bars agree for all four providers. The captured remaining values were
+Claude **37%**, Codex **33%**, Kimi **94%** and Gemini **100%**; these are historical
+acceptance observations. The exact 400×300 framebuffer is readable without
+clipping, including `Gemini (Antigravity) 100% left` and the existing sidebar.
+The D1 latest-snapshot table contains exactly **four rows**.
+
+Actual console next reached the climate Dashboard with `env_ok=1`; previous
+returned to Usage. Physical controls were user-confirmed during #2 and their
+input paths are unchanged. No further user confirmation is required for #3.
+
+Fresh focused checks before publication passed native usage **6/6**, collector/
+projection **29/29** and Worker usage/D1 **8/8**. Both branches were fetched and
+rebased onto `origin/main` without changes (rcink base `d9c479c`, Just Ship base
+`16facba`). The reviewed implementation is unchanged; only documentation was
+committed during closeout. No production firmware rebuild or private config/
+binary access occurred in this closeout.
+
+The GitHub workflow requires self-hosted runners, but `justinyanme/rcink` has
+**zero registered runners** and existing CI runs are queued. Remote CI is not
+claimed green; local checks and supervisor hardware evidence are recorded above.
+Merge the companion Just Ship PR **before** this firmware PR. Published-PR Astra
+closeout and merging remain supervisor-owned; no further deployment/device/M4
+operation is part of this closeout. #4 remains separate and #5 remains outside
+this branch.
 
 ### Local evidence and pending acceptance
 

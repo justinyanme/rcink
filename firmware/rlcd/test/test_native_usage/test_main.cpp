@@ -138,7 +138,7 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   const auto page = usage_page(snapshot, 1794297900, false).layout_json;
   TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("100% left"));
   TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("0% used / STALE"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("reset --"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("R--"));
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
   const auto unknown = usage_page(snapshot, 0, false).layout_json;
   TEST_ASSERT_NOT_EQUAL(std::string::npos, unknown.find("Clock unknown"));
@@ -149,11 +149,72 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("hbar"));
   TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("% left"));
 }
+std::string four_response() {
+  return R"({"schema":"rcink.usage-limits.v1","servedAt":1794297900,"providers":[
+    {"id":"claude","status":"ok","usedPercent":33.75,"remainingPercent":66.25,"fetchedAt":1794297600,"expiresAt":1794298200,"resetsAt":1794632400},
+    {"id":"codex","status":"ok","usedPercent":41.5,"remainingPercent":58.5,"fetchedAt":1794297660,"expiresAt":1794298260,"resetsAt":1794298000},
+    {"id":"kimi","status":"ok","usedPercent":0,"remainingPercent":100,"fetchedAt":1794297720,"expiresAt":1794298800,"resetsAt":null},
+    {"id":"gemini","status":"ok","usedPercent":75,"remainingPercent":25,"fetchedAt":1794297780,"expiresAt":1794298380,"resetsAt":1794735000}]})";
+}
+void test_four_rows_show_independent_age_status_reset_and_remaining_bars() {
+  UsageSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
+  JsonDocument doc;
+  deserializeJson(doc, usage_page(snapshot, 1794298000, false).layout_json);
+  const auto rows = doc["children"].as<JsonArrayConst>();
+  TEST_ASSERT_EQUAL(5, rows.size());
+  const char* names[] = {"Claude", "Codex", "Kimi", "Gemini (Antigravity)"};
+  const char* left[] = {"66% left", "58% left", "100% left", "25% left"};
+  const char* detail[] = {
+    "34% used / OK / 6m / R11/14 05:00Z",
+    "42% used / STALE / 5m / R11/10 08:06Z",
+    "0% used / OK / 4m / R--",
+    "75% used / OK / 3m / R11/15 09:30Z",
+  };
+  const int bars[] = {66, 58, 100, 25};
+  for (unsigned i = 0; i < 4; i++) {
+    const auto row = rows[i + 1]["children"];
+    TEST_ASSERT_EQUAL_STRING(names[i], row[0]["children"][0]["value"]);
+    TEST_ASSERT_EQUAL_STRING(left[i], row[0]["children"][1]["value"]);
+    TEST_ASSERT_EQUAL_STRING(detail[i], row[1]["value"]);
+    TEST_ASSERT_EQUAL(bars[i], row[2]["pct"].as<int>());
+  }
+  // Source expiry affects only that row; fresh GET/servedAt does not alter age.
+  const auto expired = usage_page(snapshot, 1794298380, true).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, expired.find("75% used / STALE / 10m"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, expired.find("0% used / OK / 11m"));
+}
+void test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning() {
+  UsageSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
+  UsageMeasurer measurer;
+  for (const uint64_t now : {0ULL, 1794298000ULL, 4102444799ULL}) {
+    for (const bool failed : {false, true}) {
+      JsonDocument doc;
+      deserializeJson(doc, usage_page(snapshot, now, failed).layout_json);
+      const auto root = parse_layout(doc.as<JsonVariantConst>());
+      const auto laid = run_layout(root, {0, 0, 344, 300}, measurer, 0.55f);
+      assert_in_content(laid);
+      unsigned bars = 0;
+      for (const auto& row : laid.children) {
+        for (const auto& node : row.children) {
+          if (node.node->type == NodeType::HBar) {
+            bars++;
+            TEST_ASSERT_GREATER_THAN(4, node.rect.h);
+          }
+        }
+      }
+      TEST_ASSERT_EQUAL(4, bars);
+    }
+  }
+}
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_validated_snapshot_becomes_truthful_deck_page);
   RUN_TEST(test_first_view_fits_beside_existing_sidebar);
   RUN_TEST(test_bad_responses_do_not_replace_last_good_visible_values);
   RUN_TEST(test_stale_unknown_clock_null_reset_and_real_zero_are_honest);
+  RUN_TEST(test_four_rows_show_independent_age_status_reset_and_remaining_bars);
+  RUN_TEST(test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning);
   return UNITY_END();
 }
