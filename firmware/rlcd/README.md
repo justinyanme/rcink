@@ -434,5 +434,20 @@ local caches and pinned PIO command above, focused `native` suites
 and `test_native_navigation` passed **26/26**. Production builds were not repeated:
 #4 runtime is unchanged and #3 completed its own builds/hardware acceptance.
 Only #4 docs changed during this integration closeout. No private config, M4,
-device or live service access occurred. Push/PR/deployment remain on hold for
-supervisor integration review and two subsequent automatic 300-second cycles.
+device or live service access occurred during that integration closeout.
+
+### #4 supervisor live rollout and paused acceptance (2026-11-11)
+
+Reviewed production firmware from rcink `23e8bbf` was flashed with hash
+verification and starts in Usage HOST. Initial all-four-provider values, status
+and reset times agree across source, API and framebuffer. The reviewed M4
+LaunchAgent from Just Ship `7641c65` is installed; its initial automatic upload
+of four providers succeeded. No new Worker deployment was needed. The existing
+daily job and production WordPress retry patch were verified unchanged.
+
+The user paused acceptance before two subsequent automatic 300-second cycles
+completed, so those criteria are **not passed**. Observation/tail is stopping
+while the automatic service remains running. The user requested commit and
+push now, with no further testing/rebuild/review, PR or merge. Further live
+acceptance remains supervisor-owned; private config and build artifacts stay
+untouched by the builder.
