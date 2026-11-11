@@ -22,7 +22,8 @@ uint32_t battery_interval(const RefreshAppState& app) {
 }
 
 uint32_t current_interval(const RefreshAppState& app) {
-  return network_refresh_interval_sec(app.runtime_mode, battery_interval(app));
+  return network_refresh_interval_sec(app.runtime_mode, battery_interval(app),
+                                      RCRLCD_USAGE_ENABLED);
 }
 
 }  // namespace
@@ -51,7 +52,8 @@ bool start_network_refresh(RefreshAppState app) {
 
   app.last_result = "refresh-task-failed";
   const uint32_t cooldown =
-      network_failure_retry_sec(app.runtime_mode, battery_interval(app));
+      network_failure_retry_sec(app.runtime_mode, battery_interval(app),
+                                RCRLCD_USAGE_ENABLED);
   app.retry_not_before_s = (uint64_t)time(nullptr) + cooldown;
   Serial.printf("[auto] retry gate %u s result=task-failed\n",
                 (unsigned)cooldown);
@@ -100,8 +102,8 @@ bool finish_network_refresh(RefreshAppState app) {
   const uint32_t adaptive = battery_interval(app);
   const uint32_t cooldown =
       fetch_succeeded(completion.result)
-          ? network_refresh_interval_sec(app.runtime_mode, adaptive)
-          : network_failure_retry_sec(app.runtime_mode, adaptive);
+          ? network_refresh_interval_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED)
+          : network_failure_retry_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED);
   app.retry_not_before_s = completion.completed_at_s + cooldown;
   Serial.printf("[auto] retry gate %u s result=%u\n", (unsigned)cooldown,
                 (unsigned)completion.result);
@@ -112,7 +114,7 @@ void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
                                             RuntimeMode previous) {
   const uint64_t now = (uint64_t)time(nullptr);
   if (app.runtime_mode == RuntimeMode::Host) {
-    // A real data host gets its own 15-minute policy, independent of an older
+    // A real data host gets its own fixed policy, independent of an older
     // battery-mode cooldown.
     app.retry_not_before_s = 0;
   } else if (previous == RuntimeMode::Host &&

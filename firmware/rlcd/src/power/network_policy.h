@@ -7,6 +7,7 @@
 namespace rcpaper {
 
 constexpr uint32_t kHostRefreshIntervalSec = 15 * 60;
+constexpr uint32_t kUsageHostRefreshIntervalSec = 5 * 60;
 
 struct NetworkRefreshQuery {
   uint64_t now_s;
@@ -18,14 +19,14 @@ struct NetworkRefreshQuery {
 };
 
 inline uint32_t network_refresh_interval_sec(
-    RuntimeMode mode, uint32_t adaptive_interval_sec) {
-  return mode == RuntimeMode::Host ? kHostRefreshIntervalSec
-                                   : adaptive_interval_sec;
+    RuntimeMode mode, uint32_t adaptive_interval_sec, bool usage_enabled = false) {
+  if (mode != RuntimeMode::Host) return adaptive_interval_sec;
+  return usage_enabled ? kUsageHostRefreshIntervalSec : kHostRefreshIntervalSec;
 }
 
 inline uint32_t network_failure_retry_sec(
-    RuntimeMode mode, uint32_t adaptive_interval_sec) {
-  return network_refresh_interval_sec(mode, adaptive_interval_sec);
+    RuntimeMode mode, uint32_t adaptive_interval_sec, bool usage_enabled = false) {
+  return network_refresh_interval_sec(mode, adaptive_interval_sec, usage_enabled);
 }
 
 inline bool network_refresh_due(const NetworkRefreshQuery& query) {

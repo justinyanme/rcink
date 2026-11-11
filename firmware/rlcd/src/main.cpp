@@ -450,6 +450,12 @@ void setup() {
   g_state.last_fetch_fingerprint = 0;
   g_state.unchanged_fetches = 0;
 #endif
+  const uint8_t startup_view = startup_view_id(
+      g_state.view_id, RCRLCD_USAGE_ENABLED, resumed_from_deep_sleep);
+  if (g_state.view_id != startup_view) {
+    g_state.view_id = startup_view;
+    nvs_save_view(g_state.view_id);
+  }
   g_view = view_from_nvs(g_state.view_id);
   Serial.printf("[view] loaded %s\n", view_name(g_view));
 

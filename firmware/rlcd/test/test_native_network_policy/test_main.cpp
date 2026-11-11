@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "power/network_policy.h"
+#include "power/refresh_schedule.h"
 
 using namespace rcpaper;
 
@@ -52,11 +53,41 @@ void test_empty_cache_or_invalid_clock_fetches_after_cooldown() {
   TEST_ASSERT_FALSE(network_refresh_due(query));
 }
 
+void test_usage_host_fetch_and_failed_retry_wait_five_minutes() {
+  NetworkRefreshQuery query = {};
+  query.now_s = 1299;
+  query.last_fetch_s = 1000;
+  query.clock_valid = true;
+  query.interval_sec = network_refresh_interval_sec(RuntimeMode::Host, 7200, true);
+  TEST_ASSERT_FALSE(network_refresh_due(query));
+  query.now_s = 1300;
+  TEST_ASSERT_TRUE(network_refresh_due(query));
+  // A failed request keeps last success but starts a full scheduled cooldown.
+  query.retry_not_before_s = 1300 + network_failure_retry_sec(RuntimeMode::Host, 7200, true);
+  query.now_s = 1599;
+  TEST_ASSERT_FALSE(network_refresh_due(query));
+  query.now_s = 1600;
+  TEST_ASSERT_TRUE(network_refresh_due(query));
+}
+
+void test_usage_does_not_change_battery_low_battery_or_axiom_cadence() {
+  const uint32_t low_battery = adaptive_refresh_interval_sec(1800, 2, 19, true);
+  for (bool usage : {false, true}) {
+    TEST_ASSERT_EQUAL_UINT32(14400, network_refresh_interval_sec(RuntimeMode::Eco, low_battery, usage));
+    TEST_ASSERT_EQUAL_UINT32(14400, network_failure_retry_sec(RuntimeMode::Active, low_battery, usage));
+    TEST_ASSERT_EQUAL_UINT32(1800, network_refresh_interval_sec(RuntimeMode::Active, 1800, usage));
+  }
+  TEST_ASSERT_EQUAL_UINT32(900, network_refresh_interval_sec(RuntimeMode::Host, low_battery, false));
+  TEST_ASSERT_EQUAL_UINT32(300, network_refresh_interval_sec(RuntimeMode::Host, low_battery, true));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_host_uses_fixed_interval_for_success_and_failure);
   RUN_TEST(test_battery_modes_keep_adaptive_refresh_interval);
   RUN_TEST(test_cache_age_and_retry_cooldown_both_gate_fetches);
   RUN_TEST(test_empty_cache_or_invalid_clock_fetches_after_cooldown);
+  RUN_TEST(test_usage_host_fetch_and_failed_retry_wait_five_minutes);
+  RUN_TEST(test_usage_does_not_change_battery_low_battery_or_axiom_cadence);
   return UNITY_END();
 }

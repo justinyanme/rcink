@@ -72,6 +72,29 @@ void test_empty_deck_always_returns_dashboard() {
   TEST_ASSERT_EQUAL_UINT(0, previous.page_index);
 }
 
+void test_usage_starts_in_saved_deck_and_wake_navigation_still_reaches_climate() {
+  const uint8_t startup = startup_view_id(0, true, false);
+  TEST_ASSERT_EQUAL_UINT8(1, startup);
+  TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(startup, true, true));
+  const NavigationState climate = navigation_after_next_press(View::Deck, 0, 1);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Dashboard),
+                          static_cast<uint8_t>(climate.view));
+  // Timer/KEY wakes honor the user's last selection before applying a KEY press.
+  TEST_ASSERT_EQUAL_UINT8(0, startup_view_id(0, true, true));
+  const NavigationState usage = navigation_after_next_press(climate.view, 0, 1);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck),
+                          static_cast<uint8_t>(usage.view));
+  const NavigationState back = navigation_after_previous_press(usage.view, 0, 1);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Dashboard),
+                          static_cast<uint8_t>(back.view));
+}
+
+void test_unconfigured_startup_preserves_the_existing_saved_view() {
+  TEST_ASSERT_EQUAL_UINT8(0, startup_view_id(0, false, false));
+  TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(1, false, false));
+  TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(1, false, true));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_key_enters_deck_from_dashboard);
@@ -81,5 +104,7 @@ int main() {
   RUN_TEST(test_boot_moves_to_previous_deck_page);
   RUN_TEST(test_boot_returns_home_before_first_deck_page);
   RUN_TEST(test_empty_deck_always_returns_dashboard);
+  RUN_TEST(test_usage_starts_in_saved_deck_and_wake_navigation_still_reaches_climate);
+  RUN_TEST(test_unconfigured_startup_preserves_the_existing_saved_view);
   return UNITY_END();
 }
