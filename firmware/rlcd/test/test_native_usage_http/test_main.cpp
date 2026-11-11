@@ -1,5 +1,6 @@
 #include <unity.h>
 #include "render/usage.h"
+#include "render/usage_view.h"
 #include "../fixtures/usage_response.h"
 // Exercise the production HTTP consumer at its HTTPClient/clock boundaries.
 #include "../../src/net/usage_client.cpp"
@@ -45,10 +46,10 @@ void test_http_failures_keep_last_good_values_and_recovery_uses_original_source_
     }
     TEST_ASSERT_FALSE(usage_fetch(cache));
     TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_usage(cache).c_str());
-    const auto failed = usage_page(cache, 1794298200, true).layout_json;
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, failed.find("fetch failed"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, failed.find("66% left"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, failed.find("STALE"));
+    const auto failed = derive_usage_view(cache, 1794298200, {true, 0, 0});
+    TEST_ASSERT_EQUAL_STRING("SYNC FAILED", failed.footer_chip.c_str());
+    TEST_ASSERT_EQUAL(66, failed.rows[0].left);
+    TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)failed.rows[0].state);
     TEST_ASSERT_LESS_OR_EQUAL(10000, test_millis);
   }
   reset_http();
@@ -65,9 +66,9 @@ void test_unknown_clock_prevents_https_and_cannot_make_retained_data_fresh() {
   http_fixture::clock_valid = false;
   TEST_ASSERT_FALSE(usage_fetch(cache));
   TEST_ASSERT_EQUAL(0, http_fixture::requests);
-  const auto page = usage_page(cache, 0, true).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("Clock unknown"));
-  TEST_ASSERT_EQUAL(std::string::npos, page.find(" / OK / "));
+  const auto view = derive_usage_view(cache, 0, {true, 0, 0});
+  TEST_ASSERT_EQUAL_STRING("NO CLOCK", view.footer_chip.c_str());
+  for (const auto& row : view.rows) TEST_ASSERT_NOT_EQUAL((int)UsageRowState::Live, (int)row.state);
 }
 
 int main() {

@@ -157,8 +157,9 @@ a panel reset or intermediate blank frame.
 - `v` previous through Dashboard/Deck ring
 - `t` re-read sensors + redraw dashboard
 - `i` invert light/dark polarity + redraw current View
+- `a` toggle the usage view's HOST animation (off gives the static frame for `p`)
 - `s` state dump
-- `q` dump current `layout_json`
+- `q` dump current `layout_json` (the usage page's encoded view model)
 - `p` dump current packed ST7305 framebuffer as hex for screenshot capture
 - `c` clear screen
 - `R` reboot
@@ -224,7 +225,7 @@ and refresh-gate adjustment. Battery adaptive/low-battery intervals are unchange
 Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
-applies it and builds one ordinary DSL/PageRecord. The fixed slots are Claude,
+applies it and builds one PageRecord. The fixed slots are Claude,
 Codex, Kimi and Gemini (Antigravity). The #3 collector selects an explicit stable
 account per slot: Claude/Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing
 or invalid sources are omitted; the API retains each slot's last successful
@@ -232,13 +233,52 @@ observation under its original expiry. Unobserved slots show `--` and Unavailabl
 without allowance bars. Used is rounded once and remaining is its integer
 complement. Bars represent remaining.
 
-Each row has a provider/remaining heading, a compact used/status/source-age/reset
-line and a remaining bar. Age is truncated to whole minutes/hours/days/years
-(`m`/`h`/`d`/`y`, `<1m` for under a minute); `R` introduces the source reset in UTC
-(`Z`), or `R--` if none was supplied. `age?` and the clock warning mean local time
-cannot establish source age. Status is `OK` or `STALE` per provider. Successful
-HTTP polling never freshens source timestamps. All four rows fit beside the
-existing 56px sidebar without changing the font ladder or monochrome palette.
+#### Road view
+
+The usage page is hand-drawn full-screen (`src/render/usage_render.cpp`), not a
+DSL page beside the sidebar. `src/render/usage_view.cpp` derives everything it
+shows as a pure, natively tested model; the page's `layout_json` carries that
+model's JSON, which is both what gets drawn and the redraw fingerprint.
+
+```
+* Best bet today: [K] Kimi                         <- headline
+[logo]  34%  Claude                    dry 14h early
+             ......... [car]=====-=====x   |> 2d 18h
+...
+Synced 18:19                        [batt] 99% HOST
+```
+
+- Each provider is a car on a 150 px road whose checkered flag is that
+  provider's own weekly reset. The car sits at the elapsed share of the
+  604800-second window; dots behind it are the week already gone.
+- The solid road ahead is how far this week's *average* burn rate lasts. Running
+  out before the flag shows an `x` and `dry 14h early` (days from 48 h); lasting
+  shows the projected leftover, e.g. `~92% to spare`. `out of gas` means 0 %.
+  Fewer than ~3.4 hours into a week shows `new week` instead of a projection.
+- The headline picks the fresh provider with the most room above its even-pace
+  share (remaining % minus time-left %, remaining > 10 %). When a fresh provider
+  is at 0 % or ≤ 10 % it says `Codex is napping. Try ...` / `... is almost out`.
+- Remaining ≤ 10 % is drawn inverted. Countdowns are hour-granular (`2d 18h`,
+  `17h`, minutes only in the last hour) so the frame changes about hourly, not
+  every minute. The footer shows `Synced HH:MM`, or `SYNC FAILED retry HH:MM`.
+- Stale data loses its personality: no projection, a hatched road and an
+  outline car. When every known row is stale, the headline says
+  `No signal. Numbers from HH:MM.` once; a single stale row gets its own
+  `3h old` chip. An untrusted clock shows `What day is it? Clock not set.` and
+  no positions. Never-observed rows show `--` and `no data yet`, with no car.
+- Gemini is Antigravity's Gemini weekly pool, marked by the small arch logo.
+- In `HOST` only, the view animates at 8 fps (lane marks scroll, cars bob and
+  puff, `Zz` floats) and numbers/roads roll in from zero for 0.9 s after a
+  successful sync or when entering the view. ECO/ACTIVE draw the static frame,
+  which is also what deep sleep retains. A frame takes ~36 ms on device.
+
+Logos are 1-bit bitmaps baked from the single-colour SVGs in
+`tools/usage_logos/` (lobe-icons; marks belong to their owners):
+
+```bash
+uv run tools/bake_usage_logos.py          # regenerate src/render/usage_logos.h
+uv run tools/bake_usage_logos.py --check  # verify the header is current
+```
 
 HTTPS uses GTS Root R4 (certificate source and fingerprint in
 `src/net/usage_ca.h`), hostname validation, the existing RTC/NTP clock gate,
@@ -247,7 +287,7 @@ HTTPS uses GTS Root R4 (certificate source and fingerprint in
 transfer encoding is rejected. The body is bounded to 4096 bytes with a total
 10-second body deadline. Redirects are refused, so the read key cannot follow a
 Location header. A failed HTTP/status/schema/size/time check preserves the last
-good snapshot and displays `fetch failed`; serial logs expose only
+good snapshot and displays `SYNC FAILED`; serial logs expose only
 sanitized diagnostics/status codes. An unknown clock cannot display fresh rows
 or cause a TLS bypass. No insecure TLS fallback exists.
 

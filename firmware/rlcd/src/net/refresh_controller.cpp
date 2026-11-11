@@ -69,8 +69,8 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
   // task so NVS, ADC, and RTC/I2C cannot race rendering or input.
   if (completion.clock_synced) write_rtc_from_clock();
   app.battery = read_battery();
-#if RCRLCD_USAGE_ENABLED
   const bool success = fetch_succeeded(completion.result);
+#if RCRLCD_USAGE_ENABLED
   app.usage_fetch_failed = !success;
   if (success) {
     merge_usage(completion.usage, app.usage);
@@ -90,9 +90,8 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
     record_successful_fetch(app.device, observations);
     app.device.last_fetch_s = completion.completed_at_s;
   }
-  usage_page_changed = update_usage_page(app.device, app.usage, completion.completed_at_s, !success);
 #else
-  if (fetch_succeeded(completion.result)) {
+  if (success) {
     record_successful_fetch(app.device, completion.pages);
     app.device.pages = std::move(completion.pages);
     if (app.device.page_index >= app.device.pages.size()) {
@@ -109,10 +108,16 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
 
   const uint32_t adaptive = battery_interval(app);
   const uint32_t cooldown =
-      fetch_succeeded(completion.result)
+      success
           ? network_refresh_interval_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED)
           : network_failure_retry_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED);
   app.retry_not_before_s = completion.completed_at_s + cooldown;
+#if RCRLCD_USAGE_ENABLED
+  // After the gate is known, so a failure can say when it will retry.
+  usage_page_changed = update_usage_page(
+      app.device, app.usage, completion.completed_at_s,
+      {!success, app.device.last_fetch_s, app.retry_not_before_s});
+#endif
   Serial.printf("[auto] retry gate %u s result=%u\n", (unsigned)cooldown,
                 (unsigned)completion.result);
   return true;

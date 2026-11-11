@@ -1,5 +1,6 @@
 #include <unity.h>
 #include "render/usage.h"
+#include "render/usage_view.h"
 #include "input/navigation.h"
 #include "../fixtures/usage_response.h"
 #include "../support/Arduino.h"
@@ -33,7 +34,9 @@ void test_nvs_restart_preserves_usage_and_saved_climate_without_replacing_axiom_
   TEST_ASSERT_TRUE(decode_usage(nvs_load_usage(), cache));
   TEST_ASSERT_EQUAL_UINT64(1794297660, cache.providers[1].fetched_at);
   TEST_ASSERT_EQUAL_UINT64(1794298000, cache.providers[1].resets_at);
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, usage_page(cache, 1794298000, false).layout_json.find("42% used / STALE"));
+  const auto view = derive_usage_view(cache, 1794298000, {});
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
+  TEST_ASSERT_EQUAL(58, view.rows[1].left);
   nvs_save_view(1);
   TEST_ASSERT_EQUAL(1, nvs_load().view_id);
   TEST_ASSERT_EQUAL_STRING(saved.c_str(), nvs_load_usage().c_str());
@@ -60,7 +63,9 @@ void test_failed_or_corrupt_persistence_keeps_last_good_cache_and_bounds_restore
   TEST_ASSERT_TRUE(nvs_load_usage().empty());
   UsageSnapshot cold;
   TEST_ASSERT_FALSE(decode_usage(nvs_load_usage(), cold));
-  TEST_ASSERT_EQUAL(std::string::npos, usage_page(cold, 0, false).layout_json.find("% left"));
+  for (const auto& row : derive_usage_view(cold, 0, {}).rows) {
+    TEST_ASSERT_EQUAL((int)UsageRowState::Unavailable, (int)row.state);
+  }
 }
 
 int main() {

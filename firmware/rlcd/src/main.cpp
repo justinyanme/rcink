@@ -59,6 +59,18 @@ RTC_DATA_ATTR static uint32_t g_usage_fetch_fingerprint = 0;
 RTC_DATA_ATTR static uint8_t g_usage_unchanged_fetches = 0;
 static uint64_t g_usage_evaluated_at_s = UINT64_MAX;
 static const char* g_last_result = "boot";
+#if RCRLCD_USAGE_ENABLED
+// HOST-only animation of the usage road view. ECO and ACTIVE always draw the
+// static frame, which is also what deep sleep retains.
+static constexpr uint32_t kUsageFrameMs = 125;
+static constexpr uint32_t kUsageSweepMs = 900;
+static bool g_usage_animation = true;
+static bool g_usage_sweeping = false;
+static uint32_t g_usage_sweep_start_ms = 0;
+static uint32_t g_usage_last_frame_ms = 0;
+static std::string g_usage_view_json;
+static UsageView g_usage_view;
+#endif
 static bool g_render_pending = false;
 
 static_assert(FETCH_INTERVAL_SEC > 0, "FETCH_INTERVAL_SEC must be > 0");
@@ -124,6 +136,52 @@ static void try_enter_deep_sleep() {
   deep_sleep_until(next_probe_wake_epoch((uint64_t)time(nullptr)));
 }
 
+#if RCRLCD_USAGE_ENABLED
+static UsageSync usage_sync() {
+  return {g_usage_fetch_failed, g_state.last_fetch_s, g_fetch_retry_not_before_s};
+}
+
+static bool usage_animating() {
+  return g_usage_animation && g_runtime.mode == RuntimeMode::Host;
+}
+
+static void start_usage_sweep() {
+  if (!usage_animating()) return;
+  g_usage_sweeping = true;
+  g_usage_sweep_start_ms = millis();
+}
+
+static UsageFrame usage_frame() {
+  UsageFrame frame;
+  if (!usage_animating()) return frame;
+  const uint32_t now = millis();
+  frame.moving = true;
+  frame.t_ms = now;
+  if (g_usage_sweeping) {
+    const uint32_t elapsed = now - g_usage_sweep_start_ms;
+    if (elapsed >= kUsageSweepMs) {
+      g_usage_sweeping = false;
+    } else {
+      const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
+      frame.sweep = 1.0f - rest * rest * rest;  // ease-out cubic
+    }
+  }
+  return frame;
+}
+
+// Draw exactly the model that was fingerprinted into the page record.
+static bool draw_usage_page(const PageRecord& rec) {
+  if (rec.layout_json != g_usage_view_json) {
+    UsageView view;
+    if (!decode_usage_view(rec.layout_json, view)) return false;
+    g_usage_view = view;
+    g_usage_view_json = rec.layout_json;
+  }
+  render_usage(g_usage_view, g_battery, g_runtime.mode, usage_frame());
+  return true;
+}
+#endif
+
 void render_dashboard_now(bool force_sample = false) {
   const uint64_t now = (uint64_t)time(nullptr);
   if (force_sample ||
@@ -164,20 +222,33 @@ void render_current() {
   }
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
   const PageRecord& rec = g_state.pages[g_state.page_index];
-
-  LayoutNode root;
-  if (!parse_page_layout(rec, root)) {
-    g_last_result = "parse-failed";
-    render_error("layout_json parse failed", g_runtime.mode);
-    g_deck_frame_valid = false;
-    return;
-  }
-
   const uint64_t now = (uint64_t)time(nullptr);
   const bool stale = deck_is_stale(now);
-  if (!render_page(rec, root, stale, g_state, g_battery, g_runtime.mode)) {
-    g_deck_frame_valid = false;
-    return;
+
+#if RCRLCD_USAGE_ENABLED
+  if (rec.id == kUsagePageId) {
+    const uint32_t t0 = millis();
+    if (!draw_usage_page(rec)) {
+      g_last_result = "usage-view-invalid";
+      render_error("usage view decode failed", g_runtime.mode);
+      g_deck_frame_valid = false;
+      return;
+    }
+    Serial.printf("[render] usage road in %u ms\n", (unsigned)(millis() - t0));
+  } else
+#endif
+  {
+    LayoutNode root;
+    if (!parse_page_layout(rec, root)) {
+      g_last_result = "parse-failed";
+      render_error("layout_json parse failed", g_runtime.mode);
+      g_deck_frame_valid = false;
+      return;
+    }
+    if (!render_page(rec, root, stale, g_state, g_battery, g_runtime.mode)) {
+      g_deck_frame_valid = false;
+      return;
+    }
   }
   g_deck_frame_valid = true;
   g_last_deck_stale = stale;
@@ -239,6 +310,9 @@ void toggle_view() {
 }
 
 void apply_navigation(const NavigationState& next) {
+#if RCRLCD_USAGE_ENABLED
+  if (next.view == View::Deck && g_view != View::Deck) start_usage_sweep();
+#endif
   if (next.page_index != g_state.page_index) {
     g_state.page_index = next.page_index;
     nvs_save_progress(g_state.page_index);
@@ -287,6 +361,9 @@ static bool poll_refresh_completion() {
   const DeckViewKey before = deck_visible_state();
   bool usage_page_changed = false;
   if (!finish_network_refresh(refresh_app_state(), usage_page_changed)) return false;
+#if RCRLCD_USAGE_ENABLED
+  if (usage_page_changed && !g_usage_fetch_failed && g_view == View::Deck) start_usage_sweep();
+#endif
   return g_view == View::Dashboard ? dashboard_minute_due()
                                    : usage_page_changed || before != deck_visible_state();
 }
@@ -296,10 +373,25 @@ static bool poll_usage_freshness() {
   const uint64_t now = (uint64_t)time(nullptr);
   if (now == g_usage_evaluated_at_s) return false;
   g_usage_evaluated_at_s = now;
-  return update_usage_page(g_state, g_usage, now, g_usage_fetch_failed) &&
+  return update_usage_page(g_state, g_usage, now, usage_sync()) &&
          g_view == View::Deck;
 #else
   return false;
+#endif
+}
+
+// Quiet in-place frames; content changes still go through render_current().
+static void poll_usage_animation() {
+#if RCRLCD_USAGE_ENABLED
+  if (g_view != View::Deck || !g_deck_frame_valid || !usage_animating() ||
+      g_state.page_index >= g_state.pages.size() ||
+      g_state.pages[g_state.page_index].id != kUsagePageId) {
+    return;
+  }
+  const uint32_t now = millis();
+  if (now - g_usage_last_frame_ms < kUsageFrameMs) return;
+  g_usage_last_frame_ms = now;
+  draw_usage_page(g_state.pages[g_state.page_index]);
 #endif
 }
 
@@ -343,8 +435,8 @@ static InteractionDecision poll_interaction() {
 void console_help() {
   Serial.println(
       "[console] f fetch, r render, d diagnostics, m toggle-view, n next, "
-      "v previous, t read-sensors, i invert, s state, q layout, p frame, "
-      "c clear, R reboot, h help");
+      "v previous, t read-sensors, i invert, a usage-animation, s state, "
+      "q layout, p frame, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -387,6 +479,16 @@ void console_dispatch(char c) {
     case 'i':
       st7305_set_dark_mode(!st7305_dark_mode());
       render_current_view();
+      break;
+    case 'a':
+#if RCRLCD_USAGE_ENABLED
+      g_usage_animation = !g_usage_animation;
+      g_usage_sweeping = false;
+      Serial.printf("[console] usage animation %s\n", g_usage_animation ? "on" : "off");
+      render_current_view();
+#else
+      Serial.println("[console] usage disabled");
+#endif
       break;
     case 's':
       console_dump_state(g_view, g_runtime.mode, usb_host_present(), g_state,
@@ -479,11 +581,11 @@ void setup() {
     g_usage_fetch_fingerprint = 0;
     g_usage_unchanged_fetches = 0;
   }
-  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), g_usage_fetch_failed)};
-  g_state.page_index = 0;
   g_state.last_fetch_s = g_usage_last_fetch_s;
   g_state.last_fetch_fingerprint = g_usage_fetch_fingerprint;
   g_state.unchanged_fetches = g_usage_unchanged_fetches;
+  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), usage_sync())};
+  g_state.page_index = 0;
 #endif
   const uint8_t startup_view = startup_view_id(
       g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved);
@@ -552,6 +654,8 @@ void loop() {
     delay(20);
     return;
   }
+
+  poll_usage_animation();
 
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
       refresh_due_now(refresh_app_state())) {
