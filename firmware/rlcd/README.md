@@ -57,7 +57,7 @@ Dashboard, Deck, and error screens carry one truthful mode badge:
 
 | Badge | Meaning | Behavior |
 |---|---|---|
-| `HOST` | USB **data host** detected from 1 ms SOF frames | stays awake; USB console + both buttons available; fixed 15-minute fetch |
+| `HOST` | USB **data host** detected from 1 ms SOF frames | stays awake; USB console + both buttons available; usage fetch every 5 minutes, Axiom every 15 |
 | `ACTIVE` | interactive grace window | stays awake for 8 seconds after last button activity |
 | `ECO` | no host and no recent activity | retained display; deep sleep; 30-second aligned probe wake |
 
@@ -81,8 +81,9 @@ Screen/network cadence:
 - Deck: no date/clock chrome; redraw only for navigation, current-page data,
   battery/STALE state, polarity, or runtime badge changes.
 - Silent probe wakes and unchanged fetches do not push a frame.
-- Producer normally publishes every 15 minutes. `HOST` fetches every 15
-  minutes, including after a failed attempt. `ACTIVE`/`ECO` keep adaptive 30
+- Producer normally publishes every 15 minutes. Axiom `HOST` fetches every 15
+  minutes; configured usage `HOST` fetches every 300 seconds, including after a
+  failed attempt. `ACTIVE`/`ECO` keep adaptive 30
   min → 1 h → 2 h intervals; low battery may extend that to 4 h.
 - Wi-Fi/NTP/Axiom work runs as one background refresh. The main loop continues
   polling USB SOF, buttons, and the console; state/NVS/RTC/display reconciliation
@@ -213,8 +214,14 @@ RLCD's Axiom Deck with the private weekly allowance page:
 The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. Climate Dashboard, existing Deck/button navigation and runtime
-power policy are preserved. #2 keeps the existing startup view and polling
-cadence; #4 owns the selected usage startup view and five-minute HOST cadence.
+power policy are preserved. With #4, cold boot/reboot selects the usage Deck
+and saves it via the existing NVS view key. Timer/KEY deep-sleep wakes restore
+the last selected view; KEY then advances once. Thus a climate selection remains
+usable across battery wakes. KEY/BOOT still navigate Usage ↔ climate; no new
+view or network-dependent button action is introduced. Usage `HOST` polls every
+300 seconds after success or failure; unconfigured Axiom `HOST` stays at 900.
+Runtime transitions retain the existing host-loss debounce, active grace window
+and refresh-gate adjustment. Battery adaptive/low-battery intervals are unchanged.
 Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
@@ -251,9 +258,10 @@ or cause a TLS bypass. No insecure TLS fallback exists.
 the legacy Axiom cache. On reset/deep-sleep wake, values start unavailable until
 a successful refresh. During this slice, freshness is recalculated when building
 a page after a refresh; automatic offline expiry/redraw between refreshes and
-validated restore after restart belong to #5. The unchanged 15-minute HOST
-cadence can exceed OpenUsage's source expiry; do not treat this slice as the
-finished unattended dashboard. Existing Axiom cache data remains intact.
+validated restore after restart belong to #5. The five-minute HOST cadence does
+not provide offline freshness transitions between fetches; do not treat #4 as
+completing #5's unattended offline lifecycle. Existing Axiom cache data remains
+intact.
 
 ### #3 local handoff
 
@@ -386,3 +394,29 @@ appropriate prior Worker/firmware while preserving unrelated production fixes.
 The additive D1 table and original daily token uploader/heatmap can remain.
 The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
 0005. Merge and any further deployment remain supervisor-owned.
+
+### #4 automatic updates: local verification and handoff
+
+On 2026-11-11, in the assigned isolated worktree, native tests passed **83/83**,
+including usage HOST success/failure boundaries, unchanged battery/low-battery
+and Axiom intervals, cold startup selection and deep-sleep/navigation behavior.
+The existing runtime, interaction, retained-display and wake tests also passed.
+Production `waveshare-s3-rlcd` builds passed with both unconfigured safe
+placeholders and usage-enabled safe placeholders. The original local config
+was restored by rename without reading or printing its private contents. No
+generated firmware is committed or suitable for rollout.
+
+The commands above used additional worktree-local caches:
+`PLATFORMIO_CORE_DIR="$PWD/.pio/core" UV_CACHE_DIR="$PWD/.pio/uv-cache"`.
+No simulator, serial access, flash, M4 mutation or live service access occurred.
+
+The independent M4 uploader's private-env migration, install/disable commands,
+filtered Worker tail and expected D1 metrics are in Just Ship's
+`docs/usage-limits-automatic.md`. After independent review, the supervisor must
+enable that job and verify at least two automatic cycles through real source,
+API, device and framebuffer, including newer samples with unchanged percentages.
+Source/upload/device schedules are independent: five-minute intervals do not
+guarantee five-minute end-to-end latency. Real startup/buttons, HOST/ECO and
+power checks, D1 write telemetry and four-row storage bounds remain live
+acceptance criteria. #3 owns four-provider mapping/detail; #5 owns persistent
+usage values and offline expiry. #4 does not claim those criteria complete.

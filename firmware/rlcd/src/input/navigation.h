@@ -12,6 +12,11 @@ struct NavigationState {
   size_t page_index;
 };
 
+inline uint8_t startup_view_id(uint8_t saved_view_id, bool usage_enabled,
+                               bool resumed_from_deep_sleep) {
+  return usage_enabled && !resumed_from_deep_sleep ? 1 : saved_view_id;
+}
+
 inline NavigationState navigation_after_next_press(
     View view, size_t page_index, size_t page_count) {
   if (page_count == 0) return {View::Dashboard, 0};
