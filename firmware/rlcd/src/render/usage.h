@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include "proto/envelope.h"
+#include "store/nvs.h"
 
 namespace rcpaper {
 
@@ -24,6 +25,11 @@ struct UsageSnapshot {
 
 // Validate the complete four-slot response before replacing the caller's cache.
 bool decode_usage(const std::string& json, UsageSnapshot& out);
+std::string encode_usage(const UsageSnapshot& snapshot);
+bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache);
 PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, bool fetch_failed);
+bool update_usage_page(DeviceState& device, const UsageSnapshot& snapshot,
+                       uint64_t now, bool fetch_failed);
+uint32_t usage_page_fingerprint(const PageRecord& page);
 
 }  // namespace rcpaper

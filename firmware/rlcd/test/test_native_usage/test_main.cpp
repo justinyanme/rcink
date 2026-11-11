@@ -5,16 +5,10 @@
 #include "render/engine.h"
 #include "render/fonts.h"
 #include <functional>
+#include "../fixtures/usage_response.h"
 
 using namespace rcpaper;
 
-std::string response() {
-  return R"({"schema":"rcink.usage-limits.v1","servedAt":1794297900,"providers":[
-    {"id":"claude","status":"ok","usedPercent":33.75,"remainingPercent":66.25,"fetchedAt":1794297600,"expiresAt":1794298200,"resetsAt":1794632400},
-    {"id":"codex","status":"unavailable","usedPercent":null,"remainingPercent":null,"fetchedAt":null,"expiresAt":null,"resetsAt":null},
-    {"id":"kimi","status":"unavailable","usedPercent":null,"remainingPercent":null,"fetchedAt":null,"expiresAt":null,"resetsAt":null},
-    {"id":"gemini","status":"unavailable","usedPercent":null,"remainingPercent":null,"fetchedAt":null,"expiresAt":null,"resetsAt":null}]})";
-}
 void test_validated_snapshot_becomes_truthful_deck_page() {
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
@@ -149,13 +143,6 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("hbar"));
   TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("% left"));
 }
-std::string four_response() {
-  return R"({"schema":"rcink.usage-limits.v1","servedAt":1794297900,"providers":[
-    {"id":"claude","status":"ok","usedPercent":33.75,"remainingPercent":66.25,"fetchedAt":1794297600,"expiresAt":1794298200,"resetsAt":1794632400},
-    {"id":"codex","status":"ok","usedPercent":41.5,"remainingPercent":58.5,"fetchedAt":1794297660,"expiresAt":1794298260,"resetsAt":1794298000},
-    {"id":"kimi","status":"ok","usedPercent":0,"remainingPercent":100,"fetchedAt":1794297720,"expiresAt":1794298800,"resetsAt":null},
-    {"id":"gemini","status":"ok","usedPercent":75,"remainingPercent":25,"fetchedAt":1794297780,"expiresAt":1794298380,"resetsAt":1794735000}]})";
-}
 void test_four_rows_show_independent_age_status_reset_and_remaining_bars() {
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
@@ -208,6 +195,129 @@ void test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning() {
     }
   }
 }
+void test_restart_restores_original_observations_and_offline_expiry_without_redrawing_unchanged_page() {
+  UsageSnapshot cache;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
+  const std::string saved = encode_usage(cache);
+  UsageSnapshot restored;
+  TEST_ASSERT_TRUE(decode_usage(saved, restored));
+  DeviceState device;
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, false));
+  const auto first = device.pages[0];
+  TEST_ASSERT_FALSE(update_usage_page(device, restored, 1794297999, false));
+  TEST_ASSERT_EQUAL_UINT64(first.data_ts, device.pages[0].data_ts);
+  // Error recovery in the same second must still request a new frame.
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, true));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, false));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298000, false));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("42% used / STALE / 5m"));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298200, true));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("34% used / STALE / 10m"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("0% used / OK / 8m"));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 0, true));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("Clock unknown"));
+  TEST_ASSERT_EQUAL(std::string::npos, device.pages[0].layout_json.find(" / OK / "));
+  TEST_ASSERT_EQUAL_UINT64(1794297660, restored.providers[1].fetched_at);
+  TEST_ASSERT_EQUAL_UINT64(1794298000, restored.providers[1].resets_at);
+  TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_usage(restored).c_str());
+  TEST_ASSERT_FALSE(decode_usage(saved.substr(0, saved.size() - 1), restored));
+  TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_usage(restored).c_str());
+}
+
+void test_only_newer_provider_samples_replace_cache_including_lower_usage_after_source_reset() {
+  UsageSnapshot cache;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
+  JsonDocument doc;
+  deserializeJson(doc, four_response());
+  doc["servedAt"] = 1794297900;
+  doc["providers"][0]["usedPercent"] = 90;
+  doc["providers"][0]["remainingPercent"] = 10;
+  doc["providers"][0]["expiresAt"] = 1794298300;
+  doc["providers"][0]["resetsAt"] = 1794632500;
+  std::string body;
+  serializeJson(doc, body);
+  UsageSnapshot incoming;
+  TEST_ASSERT_TRUE(decode_usage(body, incoming));
+  TEST_ASSERT_FALSE(merge_usage(incoming, cache));
+  incoming.providers[0].fetched_at--;
+  TEST_ASSERT_FALSE(merge_usage(incoming, cache));
+  TEST_ASSERT_EQUAL_FLOAT(33.75, cache.providers[0].used_percent);
+
+  // Codex resets at 08:06:40, independently of any calendar week.
+  deserializeJson(doc, four_response());
+  doc["servedAt"] = 1794298100;
+  doc["providers"][1]["fetchedAt"] = 1794298050;
+  doc["providers"][1]["expiresAt"] = 1794298650;
+  doc["providers"][1]["resetsAt"] = nullptr;
+  doc["providers"][1]["usedPercent"] = 0;
+  doc["providers"][1]["remainingPercent"] = 100;
+  body.clear(); serializeJson(doc, body);
+  TEST_ASSERT_TRUE(decode_usage(body, incoming));
+  TEST_ASSERT_TRUE(merge_usage(incoming, cache));
+  TEST_ASSERT_EQUAL_FLOAT(0, cache.providers[1].used_percent);
+  TEST_ASSERT_EQUAL_UINT64(1794298050, cache.providers[1].fetched_at);
+  TEST_ASSERT_EQUAL_UINT64(1794297600, cache.providers[0].fetched_at);
+  TEST_ASSERT_EQUAL_UINT64(1794297780, cache.providers[3].fetched_at);
+  UsageSnapshot restarted;
+  TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restarted));
+  const auto page = usage_page(restarted, 1794298200, false).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("0% used / OK / 2m / R--"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("34% used / STALE / 10m"));
+}
+void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation() {
+  UsageSnapshot cache, incoming;
+  TEST_ASSERT_TRUE(decode_usage(response(), cache));
+  JsonDocument doc;
+  deserializeJson(doc, response());
+  doc["servedAt"] = 1794298200;
+  doc["providers"][0]["status"] = "stale";
+  doc["providers"][0]["usedPercent"] = 90;
+  doc["providers"][0]["remainingPercent"] = 10;
+  doc["providers"][0]["expiresAt"] = 1794298300;
+  doc["providers"][0]["resetsAt"] = 1794632500;
+  std::string body;
+  serializeJson(doc, body);
+  TEST_ASSERT_TRUE(decode_usage(body, incoming));
+  TEST_ASSERT_TRUE(merge_usage(incoming, cache));
+  auto retained = usage_page(cache, 1794298199, false).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, retained.find("34% used / STALE"));
+  TEST_ASSERT_EQUAL_UINT64(1794297600, cache.providers[0].fetched_at);
+  TEST_ASSERT_EQUAL_UINT64(1794298200, cache.providers[0].expires_at);
+  TEST_ASSERT_EQUAL_UINT64(1794632400, cache.providers[0].resets_at);
+  TEST_ASSERT_TRUE(decode_usage(response(), incoming));
+  TEST_ASSERT_FALSE(merge_usage(incoming, cache));  // equal-time OK cannot undo evidence
+  TEST_ASSERT_TRUE(decode_usage(response(), cache));
+  UsageSnapshot missing;
+  missing.served_at = 1794298000;
+  TEST_ASSERT_TRUE(merge_usage(missing, cache));
+  UsageSnapshot restored;
+  TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restored));
+  retained = usage_page(restored, 1794297999, false).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, retained.find("34% used / STALE"));
+  TEST_ASSERT_EQUAL((int)UsageStatus::Unavailable, (int)restored.providers[1].status);
+  incoming.providers[0].fetched_at = 1794298000;
+  TEST_ASSERT_TRUE(merge_usage(incoming, restored));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, usage_page(restored, 1794298000, false).layout_json.find("34% used / OK"));
+  TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
+  TEST_ASSERT_TRUE(decode_usage(response(), incoming));
+  TEST_ASSERT_TRUE(merge_usage(incoming, cache));
+  const auto partial = usage_page(cache, 1794297900, false).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("34% used / OK"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("42% used / STALE"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("0% used / STALE"));
+  TEST_ASSERT_EQUAL_UINT64(1794297660, cache.providers[1].fetched_at);
+}
+
+void test_persistence_does_not_change_display_rounding_near_a_half_percent() {
+  UsageSnapshot cache;
+  TEST_ASSERT_TRUE(decode_usage(response(), cache));
+  cache.providers[0].used_percent = 49.4999999996;
+  UsageSnapshot restored;
+  TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restored));
+  const auto page = usage_page(restored, 1794297900, false).layout_json;
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("49% used"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("51% left"));
+}
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_validated_snapshot_becomes_truthful_deck_page);
@@ -216,5 +326,9 @@ int main() {
   RUN_TEST(test_stale_unknown_clock_null_reset_and_real_zero_are_honest);
   RUN_TEST(test_four_rows_show_independent_age_status_reset_and_remaining_bars);
   RUN_TEST(test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning);
+  RUN_TEST(test_restart_restores_original_observations_and_offline_expiry_without_redrawing_unchanged_page);
+  RUN_TEST(test_only_newer_provider_samples_replace_cache_including_lower_usage_after_source_reset);
+  RUN_TEST(test_later_stale_or_missing_evidence_retains_values_until_a_new_observation);
+  RUN_TEST(test_persistence_does_not_change_display_rounding_near_a_half_percent);
   return UNITY_END();
 }

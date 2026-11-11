@@ -52,6 +52,12 @@ RTC_DATA_ATTR static bool g_dashboard_snapshot_valid = false;
 RTC_DATA_ATTR static uint64_t g_fetch_retry_not_before_s = 0;
 RTC_DATA_ATTR static bool g_deck_frame_valid = false;
 RTC_DATA_ATTR static bool g_last_deck_stale = false;
+RTC_DATA_ATTR static bool g_usage_fetch_failed = false;
+RTC_DATA_ATTR static uint32_t g_usage_frame_fingerprint = 0;
+RTC_DATA_ATTR static uint64_t g_usage_last_fetch_s = 0;
+RTC_DATA_ATTR static uint32_t g_usage_fetch_fingerprint = 0;
+RTC_DATA_ATTR static uint8_t g_usage_unchanged_fetches = 0;
+static uint64_t g_usage_evaluated_at_s = UINT64_MAX;
 static const char* g_last_result = "boot";
 static bool g_render_pending = false;
 
@@ -97,6 +103,7 @@ static RefreshAppState refresh_app_state() {
       g_fetch_retry_not_before_s,
       g_last_result,
       g_usage,
+      g_usage_fetch_failed,
   };
 }
 
@@ -108,6 +115,11 @@ static void try_enter_deep_sleep() {
   esp_sleep_enable_ext1_wakeup(kWakeButtonMask, ESP_EXT1_WAKEUP_ANY_LOW);
   // Final raw check protects both GPIO18 repeat wakes and GPIO0's boot strap.
   if (buttons::any_down()) return;
+#if RCRLCD_USAGE_ENABLED
+  g_usage_last_fetch_s = g_state.last_fetch_s;
+  g_usage_fetch_fingerprint = g_state.last_fetch_fingerprint;
+  g_usage_unchanged_fetches = g_state.unchanged_fetches;
+#endif
   display_prepare_for_deep_sleep();
   deep_sleep_until(next_probe_wake_epoch((uint64_t)time(nullptr)));
 }
@@ -169,6 +181,9 @@ void render_current() {
   }
   g_deck_frame_valid = true;
   g_last_deck_stale = stale;
+#if RCRLCD_USAGE_ENABLED
+  g_usage_frame_fingerprint = usage_page_fingerprint(rec);
+#endif
 
   if (g_state.last_rendered_id != rec.id ||
       g_state.last_rendered_data_ts != rec.data_ts) {
@@ -270,9 +285,22 @@ static bool deck_stale_edge_due() {
 
 static bool poll_refresh_completion() {
   const DeckViewKey before = deck_visible_state();
-  if (!finish_network_refresh(refresh_app_state())) return false;
+  bool usage_page_changed = false;
+  if (!finish_network_refresh(refresh_app_state(), usage_page_changed)) return false;
   return g_view == View::Dashboard ? dashboard_minute_due()
-                                   : before != deck_visible_state();
+                                   : usage_page_changed || before != deck_visible_state();
+}
+
+static bool poll_usage_freshness() {
+#if RCRLCD_USAGE_ENABLED
+  const uint64_t now = (uint64_t)time(nullptr);
+  if (now == g_usage_evaluated_at_s) return false;
+  g_usage_evaluated_at_s = now;
+  return update_usage_page(g_state, g_usage, now, g_usage_fetch_failed) &&
+         g_view == View::Deck;
+#else
+  return false;
+#endif
 }
 
 struct InteractionDecision {
@@ -444,15 +472,22 @@ void setup() {
   g_state = nvs_load();
 #if RCRLCD_USAGE_ENABLED
   // Do not interpret the legacy Axiom pages cache as an allowance snapshot.
-  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), false)};
+  decode_usage(nvs_load_usage(), g_usage);
+  if (!resumed_from_deep_sleep) {
+    g_usage_fetch_failed = false;
+    g_usage_last_fetch_s = 0;
+    g_usage_fetch_fingerprint = 0;
+    g_usage_unchanged_fetches = 0;
+  }
+  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), g_usage_fetch_failed)};
   g_state.page_index = 0;
-  g_state.last_fetch_s = 0;
-  g_state.last_fetch_fingerprint = 0;
-  g_state.unchanged_fetches = 0;
+  g_state.last_fetch_s = g_usage_last_fetch_s;
+  g_state.last_fetch_fingerprint = g_usage_fetch_fingerprint;
+  g_state.unchanged_fetches = g_usage_unchanged_fetches;
 #endif
   const uint8_t startup_view = startup_view_id(
-      g_state.view_id, RCRLCD_USAGE_ENABLED, resumed_from_deep_sleep);
-  if (g_state.view_id != startup_view) {
+      g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved);
+  if (g_state.view_id != startup_view || !g_state.view_saved) {
     g_state.view_id = startup_view;
     nvs_save_view(g_state.view_id);
   }
@@ -475,6 +510,12 @@ void setup() {
   g_render_pending = !resumed_from_deep_sleep || key_wake ||
                      g_runtime.mode != RuntimeMode::Eco ||
                      dashboard_minute_due();
+#if RCRLCD_USAGE_ENABLED
+  if (g_view == View::Deck && (!g_deck_frame_valid ||
+      usage_page_fingerprint(g_state.pages[0]) != g_usage_frame_fingerprint)) {
+    g_render_pending = true;
+  }
+#endif
   Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s render=%d\n",
                 (int)wake, (int)key_wake, (int)host,
                 runtime_mode_name(g_runtime.mode), (int)g_render_pending);
@@ -486,8 +527,9 @@ void setup() {
 
 void loop() {
   const bool refresh_changed_screen = poll_refresh_completion();
+  const bool freshness_changed_screen = poll_usage_freshness();
   const InteractionDecision interaction = poll_interaction();
-  if (refresh_changed_screen || interaction.screen_changed) {
+  if (refresh_changed_screen || freshness_changed_screen || interaction.screen_changed) {
     render_current_view();
     delay(20);
     return;
