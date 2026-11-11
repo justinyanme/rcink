@@ -1,34 +1,63 @@
 #include <ArduinoJson.h>
 #include <unity.h>
-#include "render/usage.h"
-#include "proto/parser.h"
-#include "render/engine.h"
-#include "render/fonts.h"
+#include <cstdlib>
+#include <ctime>
 #include <functional>
+#include "render/usage.h"
+#include "render/usage_view.h"
 #include "../fixtures/usage_response.h"
 
 using namespace rcpaper;
 
-void test_validated_snapshot_becomes_truthful_deck_page() {
+// Decode what the page record carries: the renderer draws exactly this.
+UsageView view_of(const UsageSnapshot& snapshot, uint64_t now, UsageSync sync = {}) {
+  const PageRecord page = usage_page(snapshot, now, sync);
+  TEST_ASSERT_EQUAL_STRING(kUsagePageId, page.id.c_str());
+  UsageView view;
+  TEST_ASSERT_TRUE(decode_usage_view(page.layout_json, view));
+  TEST_ASSERT_TRUE(view == derive_usage_view(snapshot, now, sync));
+  return view;
+}
+
+UsageProvider live(double used, uint64_t now, uint64_t resets_at) {
+  UsageProvider p;
+  p.status = UsageStatus::Ok;
+  p.used_percent = used;
+  p.fetched_at = now - 180;
+  p.expires_at = now + 420;
+  p.resets_at = resets_at;
+  return p;
+}
+
+void test_validated_snapshot_becomes_a_truthful_road() {
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
   TEST_ASSERT_EQUAL_UINT64(1794297600, snapshot.providers[0].fetched_at);
-  const auto page = usage_page(snapshot, 1794297900, false);
-  TEST_ASSERT_EQUAL_STRING("usage-limits", page.id.c_str());
-  JsonDocument doc;
-  TEST_ASSERT_FALSE(deserializeJson(doc, page.layout_json));
-  const auto root = parse_layout(doc.as<JsonVariantConst>());
-  TEST_ASSERT_EQUAL((int)NodeType::VStack, (int)root.type);
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.layout_json.find("66% left"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.layout_json.find("34% used"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.layout_json.find("Antigravity"));
-  unsigned bars = 0;
-  for (JsonObjectConst row : doc["children"].as<JsonArrayConst>()) {
-    for (JsonObjectConst node : row["children"].as<JsonArrayConst>()) {
-      if (node["type"] == "hbar") { bars++; TEST_ASSERT_EQUAL(66, node["pct"].as<int>()); }
-    }
+  const auto view = view_of(snapshot, 1794297900);
+  const auto& claude = view.rows[0];
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)claude.state);
+  TEST_ASSERT_EQUAL(66, claude.left);
+  TEST_ASSERT_EQUAL_STRING("3d 20h", claude.countdown.c_str());
+  TEST_ASSERT_EQUAL(67, claude.now_px);  // 44.7 % of the week has elapsed
+  TEST_ASSERT_EQUAL(-1, claude.dry_px);
+  TEST_ASSERT_EQUAL_STRING("~24% to spare", claude.verdict.c_str());
+  TEST_ASSERT_EQUAL((int)UsageMood::Comfy, (int)claude.mood);
+  TEST_ASSERT_TRUE(claude.chip.empty());
+  for (size_t i = 1; i < 4; i++) {
+    // Never-observed slots: no number, no car, no guessed allowance.
+    TEST_ASSERT_EQUAL((int)UsageRowState::Unavailable, (int)view.rows[i].state);
+    TEST_ASSERT_EQUAL(-1, view.rows[i].now_px);
+    TEST_ASSERT_EQUAL_STRING("--", view.rows[i].countdown.c_str());
+    TEST_ASSERT_EQUAL_STRING("no data yet", view.rows[i].verdict.c_str());
   }
-  TEST_ASSERT_EQUAL(1, bars);
+  TEST_ASSERT_EQUAL((int)UsageIcon::Spark, (int)view.headline_icon);
+  TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
+  TEST_ASSERT_EQUAL(0, view.pick);
+  TEST_ASSERT_TRUE(view.footer_chip.empty());
+  TEST_ASSERT_EQUAL_STRING("Not synced yet", view.footer_text.c_str());
+  TEST_ASSERT_EQUAL_STRING("Synced 16:05",
+      view_of(snapshot, 1794297900, {false, 1794297900, 0}).footer_text.c_str());
+
   // The .5 boundary catches independently rounded percentages summing to 101.
   JsonDocument half;
   deserializeJson(half, response());
@@ -37,54 +66,13 @@ void test_validated_snapshot_becomes_truthful_deck_page() {
   std::string half_json;
   serializeJson(half, half_json);
   TEST_ASSERT_TRUE(decode_usage(half_json, snapshot));
-  const auto rounded = usage_page(snapshot, 1794297900, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, rounded.find("66% left"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, rounded.find("34% used"));
+  TEST_ASSERT_EQUAL(66, view_of(snapshot, 1794297900).rows[0].left);
 }
-struct UsageMeasurer : Measurer {
-  Size text_size(const TextNode& t) const override {
-    const int width = t.size == TextSize::H2 ? 16 : (t.size == TextSize::Body ? 12 : 8);
-    return {(int16_t)(t.value.size() * width), font_height(t.size, t.weight)};
-  }
-  Size icon_size(const IconNode&) const override { return {0, 0}; }
-  Size image_size(const ImageNode&) const override { return {0, 0}; }
-};
-void assert_in_content(const LaidOutNode& node) {
-  TEST_ASSERT_NOT_EQUAL((int)NodeType::Unknown, (int)node.node->type);
-  TEST_ASSERT_GREATER_OR_EQUAL(0, node.rect.x);
-  TEST_ASSERT_GREATER_OR_EQUAL(0, node.rect.y);
-  TEST_ASSERT_LESS_OR_EQUAL(344, node.rect.x + node.rect.w);
-  TEST_ASSERT_LESS_OR_EQUAL(300, node.rect.y + node.rect.h);
-  for (const auto& child : node.children) assert_in_content(child);
-}
-void test_first_view_fits_beside_existing_sidebar() {
-  UsageSnapshot snapshot;
-  TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
-  JsonDocument doc;
-  deserializeJson(doc, usage_page(snapshot, 1794297900, false).layout_json);
-  const auto root = parse_layout(doc.as<JsonVariantConst>());
-  UsageMeasurer measurer;
-  const auto laid = run_layout(root, {0, 0, 344, 300}, measurer, 0.55f);
-  assert_in_content(laid);
-  unsigned bars = 0;
-  for (const auto& row : laid.children) {
-    for (const auto& node : row.children) {
-      if (node.node->type != NodeType::HBar) continue;
-      bars++;
-      // draw_hbar needs an inset fill area after the renderer's compaction.
-      TEST_ASSERT_GREATER_THAN(4, node.rect.w);
-      TEST_ASSERT_GREATER_THAN(4, node.rect.h);
-      const int fill_width = (node.rect.w - 4) * (int)node.node->as_hbar.pct / 100;
-      TEST_ASSERT_GREATER_THAN(0, fill_width);
-      TEST_ASSERT_GREATER_THAN(0, node.rect.h - 4);
-    }
-  }
-  TEST_ASSERT_EQUAL(1, bars);  // Unavailable slots stay bar-free.
-}
+
 void test_bad_responses_do_not_replace_last_good_visible_values() {
   UsageSnapshot cache;
   TEST_ASSERT_TRUE(decode_usage(response(), cache));
-  const auto original = usage_page(cache, 1794297900, false).layout_json;
+  const auto original = usage_page(cache, 1794297900, {}).layout_json;
   const std::function<void(JsonDocument&)> mutations[] = {
     [](JsonDocument& d) { d["schema"] = "unsupported"; },
     [](JsonDocument& d) { d["extra"] = true; },
@@ -109,15 +97,20 @@ void test_bad_responses_do_not_replace_last_good_visible_values() {
     std::string malformed;
     serializeJson(doc, malformed);
     TEST_ASSERT_FALSE(decode_usage(malformed, cache));
-    TEST_ASSERT_EQUAL_STRING(original.c_str(), usage_page(cache, 1794297900, false).layout_json.c_str());
+    TEST_ASSERT_EQUAL_STRING(original.c_str(), usage_page(cache, 1794297900, {}).layout_json.c_str());
   }
   for (auto body : {std::string("{broken"), response() + "garbage", std::string(4097, ' ')}) {
     TEST_ASSERT_FALSE(decode_usage(body, cache));
   }
-  const auto failed = usage_page(cache, 1794297900, true).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, failed.find("fetch failed"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, failed.find("66% left"));
+  // A failed GET keeps the still-valid sample and says so once, in the footer.
+  const auto failed = view_of(cache, 1794297900, {true, 1794297000, 1794298200});
+  TEST_ASSERT_EQUAL_STRING("SYNC FAILED", failed.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry 16:10", failed.footer_text.c_str());
+  TEST_ASSERT_EQUAL(66, failed.rows[0].left);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)failed.rows[0].state);
+  TEST_ASSERT_EQUAL_STRING("retrying", view_of(cache, 1794297900, {true, 0, 0}).footer_text.c_str());
 }
+
 void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   JsonDocument doc;
   deserializeJson(doc, response());
@@ -129,94 +122,150 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   serializeJson(doc, body);
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(body, snapshot));
-  const auto page = usage_page(snapshot, 1794297900, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("100% left"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("0% used / STALE"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("R--"));
+  auto view = view_of(snapshot, 1794297900);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
+  TEST_ASSERT_EQUAL(100, view.rows[0].left);           // a real zero-used sample
+  TEST_ASSERT_EQUAL_STRING("--", view.rows[0].countdown.c_str());
+  TEST_ASSERT_EQUAL(-1, view.rows[0].now_px);           // null reset: no car position
+  TEST_ASSERT_EQUAL((int)UsageMood::None, (int)view.rows[0].mood);
+  TEST_ASSERT_TRUE(view.rows[0].verdict.empty());       // no projection from stale data
+  TEST_ASSERT_TRUE(view.rows[0].chip.empty());          // every known row is stale: footer/headline speak once
+  TEST_ASSERT_EQUAL(-1, view.pick);
+  TEST_ASSERT_EQUAL_STRING("Nothing fresh to recommend.", view.headline.c_str());
+  view = view_of(snapshot, 1794297900, {true, 1794297000, 0});
+  TEST_ASSERT_EQUAL_STRING("No signal. Numbers from 16:00.", view.headline.c_str());
+
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
-  const auto unknown = usage_page(snapshot, 0, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, unknown.find("Clock unknown"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, unknown.find("STALE"));
-  const auto expired = usage_page(snapshot, 1794298200, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, expired.find("STALE"));
-  const auto unavailable = usage_page(UsageSnapshot{}, 1794297900, false).layout_json;
-  TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("hbar"));
-  TEST_ASSERT_EQUAL(std::string::npos, unavailable.find("% left"));
+  const auto unknown = view_of(snapshot, 0);
+  TEST_ASSERT_EQUAL((int)UsageIcon::Clock, (int)unknown.headline_icon);
+  TEST_ASSERT_EQUAL_STRING("What day is it? Clock not set.", unknown.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("NO CLOCK", unknown.footer_chip.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)unknown.rows[0].state);
+  TEST_ASSERT_EQUAL(-1, unknown.rows[0].now_px);
+  TEST_ASSERT_EQUAL_STRING("--", unknown.rows[0].countdown.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view_of(snapshot, 1794298200).rows[0].state);
+
+  const auto unavailable = view_of(UsageSnapshot{}, 1794297900);
+  for (const auto& row : unavailable.rows) {
+    TEST_ASSERT_EQUAL((int)UsageRowState::Unavailable, (int)row.state);
+    TEST_ASSERT_EQUAL(-1, row.now_px);
+  }
+  TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", unavailable.headline.c_str());
 }
-void test_four_rows_show_independent_age_status_reset_and_remaining_bars() {
+
+void test_four_rows_keep_independent_freshness_position_and_projection() {
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
-  JsonDocument doc;
-  deserializeJson(doc, usage_page(snapshot, 1794298000, false).layout_json);
-  const auto rows = doc["children"].as<JsonArrayConst>();
-  TEST_ASSERT_EQUAL(5, rows.size());
-  const char* names[] = {"Claude", "Codex", "Kimi", "Gemini (Antigravity)"};
-  const char* left[] = {"66% left", "58% left", "100% left", "25% left"};
-  const char* detail[] = {
-    "34% used / OK / 6m / R11/14 05:00Z",
-    "42% used / STALE / 5m / R11/10 08:06Z",
-    "0% used / OK / 4m / R--",
-    "75% used / OK / 3m / R11/15 09:30Z",
-  };
-  const int bars[] = {66, 58, 100, 25};
-  for (unsigned i = 0; i < 4; i++) {
-    const auto row = rows[i + 1]["children"];
-    TEST_ASSERT_EQUAL_STRING(names[i], row[0]["children"][0]["value"]);
-    TEST_ASSERT_EQUAL_STRING(left[i], row[0]["children"][1]["value"]);
-    TEST_ASSERT_EQUAL_STRING(detail[i], row[1]["value"]);
-    TEST_ASSERT_EQUAL(bars[i], row[2]["pct"].as<int>());
-  }
-  // Source expiry affects only that row; fresh GET/servedAt does not alter age.
-  const auto expired = usage_page(snapshot, 1794298380, true).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, expired.find("75% used / STALE / 10m"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, expired.find("0% used / OK / 11m"));
+  const auto view = view_of(snapshot, 1794298000);
+  const int left[] = {66, 58, 100, 25};
+  for (int i = 0; i < 4; i++) TEST_ASSERT_EQUAL(left[i], view.rows[i].left);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[0].state);
+  // Codex's own reset has passed without a new sample: stale, at the flag.
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
+  TEST_ASSERT_EQUAL_STRING("due", view.rows[1].countdown.c_str());
+  TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].now_px);
+  TEST_ASSERT_EQUAL_STRING("5m old", view.rows[1].chip.c_str());
+  // Kimi has no reset time: honest numbers, no position or projection.
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[2].state);
+  TEST_ASSERT_EQUAL(-1, view.rows[2].now_px);
+  TEST_ASSERT_TRUE(view.rows[2].verdict.empty());
+  // Gemini burns 75 % in 28 % of its week: it runs dry days before the reset.
+  const auto& gemini = view.rows[3];
+  TEST_ASSERT_EQUAL_STRING("5d 1h", gemini.countdown.c_str());
+  TEST_ASSERT_EQUAL(42, gemini.now_px);
+  TEST_ASSERT_EQUAL(55, gemini.dry_px);
+  TEST_ASSERT_EQUAL_STRING("dry 4d early", gemini.verdict.c_str());
+  TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)gemini.mood);
+  TEST_ASSERT_EQUAL(0, view.pick);
+
+  // Source expiry is per row; a fresh GET (servedAt) does not refresh ages.
+  const auto later = view_of(snapshot, 1794298380, {true, 1794298000, 1794298680});
+  TEST_ASSERT_EQUAL_STRING("13m old", later.rows[0].chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("12m old", later.rows[1].chip.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)later.rows[2].state);
+  TEST_ASSERT_TRUE(later.rows[2].chip.empty());
+  TEST_ASSERT_EQUAL_STRING("10m old", later.rows[3].chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry 16:18", later.footer_text.c_str());
 }
-void test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning() {
-  UsageSnapshot snapshot;
-  TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
-  UsageMeasurer measurer;
-  for (const uint64_t now : {0ULL, 1794298000ULL, 4102444799ULL}) {
-    for (const bool failed : {false, true}) {
-      JsonDocument doc;
-      deserializeJson(doc, usage_page(snapshot, now, failed).layout_json);
-      const auto root = parse_layout(doc.as<JsonVariantConst>());
-      const auto laid = run_layout(root, {0, 0, 344, 300}, measurer, 0.55f);
-      assert_in_content(laid);
-      unsigned bars = 0;
-      for (const auto& row : laid.children) {
-        for (const auto& node : row.children) {
-          if (node.node->type == NodeType::HBar) {
-            bars++;
-            TEST_ASSERT_GREATER_THAN(4, node.rect.h);
-          }
-        }
-      }
-      TEST_ASSERT_EQUAL(4, bars);
-    }
-  }
+
+void test_headline_recommends_headroom_and_names_who_ran_out() {
+  const uint64_t now = 1794362400;  // 2026-11-11 10:00 SGT
+  UsageSnapshot s;
+  s.providers[0] = live(65.2, now, now + 75 * 3600);
+  s.providers[1] = live(69.8, now, now + 54 * 3600 + 1380);
+  s.providers[2] = live(6.1, now, now + 49 * 3600 + 1680);
+  s.providers[3] = live(11.0, now, now + 74 * 3600 + 960);
+  auto view = view_of(s, now);
+  TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
+  TEST_ASSERT_EQUAL(2, view.pick);  // Kimi: furthest above its even-pace line
+  TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)view.rows[0].mood);
+  TEST_ASSERT_EQUAL_STRING("dry 25h early", view.rows[0].verdict.c_str());
+  TEST_ASSERT_EQUAL_STRING("dry 6h early", view.rows[1].verdict.c_str());
+  TEST_ASSERT_EQUAL_STRING("~91% to spare", view.rows[2].verdict.c_str());
+  TEST_ASSERT_EQUAL((int)UsageMood::Open, (int)view.rows[2].mood);
+
+  s.providers[0] = live(94.3, now, now + 27 * 3600 + 600);
+  s.providers[1] = live(100, now, now + 5 * 3600 + 1200);
+  view = view_of(s, now);
+  TEST_ASSERT_EQUAL((int)UsageMood::Nap, (int)view.headline_face);
+  TEST_ASSERT_EQUAL_STRING("Codex is napping. Try", view.headline.c_str());
+  TEST_ASSERT_EQUAL(2, view.pick);
+  TEST_ASSERT_EQUAL_STRING("out of gas", view.rows[1].verdict.c_str());
+  TEST_ASSERT_EQUAL(view.rows[1].now_px, view.rows[1].dry_px);
+  TEST_ASSERT_EQUAL_STRING("5h", view.rows[1].countdown.c_str());
+  TEST_ASSERT_EQUAL((int)UsageMood::Low, (int)view.rows[0].mood);
+  TEST_ASSERT_EQUAL_STRING("dry 18h early", view.rows[0].verdict.c_str());
+
+  s.providers[1] = live(69.8, now, now + 54 * 3600);
+  view = view_of(s, now);
+  TEST_ASSERT_EQUAL_STRING("Claude is almost out. Try", view.headline.c_str());
+  // A stale napping row is not news; the recommendation stays on fresh data.
+  s.providers[0].status = UsageStatus::Stale;
+  TEST_ASSERT_EQUAL_STRING("Best bet today:", view_of(s, now).headline.c_str());
 }
-void test_restart_restores_original_observations_and_offline_expiry_without_redrawing_unchanged_page() {
+
+void test_frame_stays_put_while_time_passes_within_the_hour() {
+  // Battery-mode redraws must follow meaningful changes, not the minute hand.
+  const uint64_t now = 1794362400;
+  UsageSnapshot s;
+  s.providers[0] = live(40, now, now + 80 * 3600 + 1800);
+  s.providers[1] = live(20, now, now + 30 * 3600 + 1800);
+  s.providers[2] = live(5, now, now + 100 * 3600 + 1800);
+  for (auto& p : s.providers) p.expires_at = now + 7200;
+  const UsageSync sync = {false, now - 60, 0};
+  const auto first = usage_page(s, now, sync).layout_json;
+  for (uint64_t t = now + 60; t <= now + 600; t += 60) {
+    TEST_ASSERT_EQUAL_STRING(first.c_str(), usage_page(s, t, sync).layout_json.c_str());
+  }
+  TEST_ASSERT_NOT_EQUAL(0, first.compare(usage_page(s, now + 3600, sync).layout_json));
+}
+
+void test_restart_restores_original_observations_without_redrawing_unchanged_page() {
   UsageSnapshot cache;
   TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
   const std::string saved = encode_usage(cache);
   UsageSnapshot restored;
   TEST_ASSERT_TRUE(decode_usage(saved, restored));
   DeviceState device;
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, false));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, {}));
   const auto first = device.pages[0];
-  TEST_ASSERT_FALSE(update_usage_page(device, restored, 1794297999, false));
+  TEST_ASSERT_FALSE(update_usage_page(device, restored, 1794297999, {}));
   TEST_ASSERT_EQUAL_UINT64(first.data_ts, device.pages[0].data_ts);
   // Error recovery in the same second must still request a new frame.
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, true));
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, false));
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298000, false));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("42% used / STALE / 5m"));
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298200, true));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("34% used / STALE / 10m"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("0% used / OK / 8m"));
-  TEST_ASSERT_TRUE(update_usage_page(device, restored, 0, true));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, device.pages[0].layout_json.find("Clock unknown"));
-  TEST_ASSERT_EQUAL(std::string::npos, device.pages[0].layout_json.find(" / OK / "));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, {true, 0, 0}));
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794297999, {}));
+  // Codex's reset passes at ...000 while offline: that row turns stale.
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298000, {}));
+  UsageView view;
+  TEST_ASSERT_TRUE(decode_usage_view(device.pages[0].layout_json, view));
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 1794298200, {true, 0, 0}));
+  TEST_ASSERT_TRUE(decode_usage_view(device.pages[0].layout_json, view));
+  TEST_ASSERT_EQUAL_STRING("10m old", view.rows[0].chip.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[2].state);
+  TEST_ASSERT_TRUE(update_usage_page(device, restored, 0, {true, 0, 0}));
+  TEST_ASSERT_TRUE(decode_usage_view(device.pages[0].layout_json, view));
+  for (const auto& row : view.rows) TEST_ASSERT_NOT_EQUAL((int)UsageRowState::Live, (int)row.state);
   TEST_ASSERT_EQUAL_UINT64(1794297660, restored.providers[1].fetched_at);
   TEST_ASSERT_EQUAL_UINT64(1794298000, restored.providers[1].resets_at);
   TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_usage(restored).c_str());
@@ -260,10 +309,14 @@ void test_only_newer_provider_samples_replace_cache_including_lower_usage_after_
   TEST_ASSERT_EQUAL_UINT64(1794297780, cache.providers[3].fetched_at);
   UsageSnapshot restarted;
   TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restarted));
-  const auto page = usage_page(restarted, 1794298200, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("0% used / OK / 2m / R--"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("34% used / STALE / 10m"));
+  const auto view = view_of(restarted, 1794298200);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[1].state);
+  TEST_ASSERT_EQUAL(100, view.rows[1].left);
+  TEST_ASSERT_EQUAL_STRING("--", view.rows[1].countdown.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
+  TEST_ASSERT_EQUAL_STRING("10m old", view.rows[0].chip.c_str());
 }
+
 void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation() {
   UsageSnapshot cache, incoming;
   TEST_ASSERT_TRUE(decode_usage(response(), cache));
@@ -279,8 +332,9 @@ void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation
   serializeJson(doc, body);
   TEST_ASSERT_TRUE(decode_usage(body, incoming));
   TEST_ASSERT_TRUE(merge_usage(incoming, cache));
-  auto retained = usage_page(cache, 1794298199, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, retained.find("34% used / STALE"));
+  auto view = view_of(cache, 1794298199);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
+  TEST_ASSERT_EQUAL(66, view.rows[0].left);
   TEST_ASSERT_EQUAL_UINT64(1794297600, cache.providers[0].fetched_at);
   TEST_ASSERT_EQUAL_UINT64(1794298200, cache.providers[0].expires_at);
   TEST_ASSERT_EQUAL_UINT64(1794632400, cache.providers[0].resets_at);
@@ -292,19 +346,23 @@ void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation
   TEST_ASSERT_TRUE(merge_usage(missing, cache));
   UsageSnapshot restored;
   TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restored));
-  retained = usage_page(restored, 1794297999, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, retained.find("34% used / STALE"));
+  view = view_of(restored, 1794297999);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
+  TEST_ASSERT_EQUAL(66, view.rows[0].left);
   TEST_ASSERT_EQUAL((int)UsageStatus::Unavailable, (int)restored.providers[1].status);
   incoming.providers[0].fetched_at = 1794298000;
   TEST_ASSERT_TRUE(merge_usage(incoming, restored));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, usage_page(restored, 1794298000, false).layout_json.find("34% used / OK"));
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view_of(restored, 1794298000).rows[0].state);
   TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
   TEST_ASSERT_TRUE(decode_usage(response(), incoming));
   TEST_ASSERT_TRUE(merge_usage(incoming, cache));
-  const auto partial = usage_page(cache, 1794297900, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("34% used / OK"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("42% used / STALE"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, partial.find("0% used / STALE"));
+  view = view_of(cache, 1794297900);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[0].state);
+  TEST_ASSERT_EQUAL(66, view.rows[0].left);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
+  TEST_ASSERT_EQUAL(58, view.rows[1].left);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[2].state);
+  TEST_ASSERT_EQUAL(100, view.rows[2].left);
   TEST_ASSERT_EQUAL_UINT64(1794297660, cache.providers[1].fetched_at);
 }
 
@@ -314,21 +372,50 @@ void test_persistence_does_not_change_display_rounding_near_a_half_percent() {
   cache.providers[0].used_percent = 49.4999999996;
   UsageSnapshot restored;
   TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restored));
-  const auto page = usage_page(restored, 1794297900, false).layout_json;
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("49% used"));
-  TEST_ASSERT_NOT_EQUAL(std::string::npos, page.find("51% left"));
+  TEST_ASSERT_EQUAL(51, view_of(restored, 1794297900).rows[0].left);
 }
+
+void test_encoded_view_is_bounded_and_rejects_corruption() {
+  UsageSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
+  const auto json = usage_page(snapshot, 1794298000, {true, 1794298000, 1794298300}).layout_json;
+  TEST_ASSERT_LESS_THAN(1024, json.size());
+  UsageView out, untouched = derive_usage_view(snapshot, 1794298000, {});
+  out = untouched;
+  const std::function<void(JsonDocument&)> mutations[] = {
+    [](JsonDocument& d) { d["schema"] = "rcink.usage-view.v0"; },
+    [](JsonDocument& d) { d["rows"].as<JsonArray>().remove(0); },
+    [](JsonDocument& d) { d["rows"][0]["now"] = kUsageRoadPx + 1; },
+    [](JsonDocument& d) { d["rows"][0]["left"] = 101; },
+    [](JsonDocument& d) { d["rows"][0]["state"] = 3; },
+    [](JsonDocument& d) { d["pick"] = 4; },
+    [](JsonDocument& d) { d["headline"] = std::string(41, 'x'); },
+  };
+  for (const auto& mutate : mutations) {
+    JsonDocument doc;
+    deserializeJson(doc, json);
+    mutate(doc);
+    std::string bad;
+    serializeJson(doc, bad);
+    TEST_ASSERT_FALSE(decode_usage_view(bad, out));
+    TEST_ASSERT_TRUE(out == untouched);
+  }
+}
+
 int main() {
+  setenv("TZ", "SGT-8", 1);  // the device's LOCAL_TZ
+  tzset();
   UNITY_BEGIN();
-  RUN_TEST(test_validated_snapshot_becomes_truthful_deck_page);
-  RUN_TEST(test_first_view_fits_beside_existing_sidebar);
+  RUN_TEST(test_validated_snapshot_becomes_a_truthful_road);
   RUN_TEST(test_bad_responses_do_not_replace_last_good_visible_values);
   RUN_TEST(test_stale_unknown_clock_null_reset_and_real_zero_are_honest);
-  RUN_TEST(test_four_rows_show_independent_age_status_reset_and_remaining_bars);
-  RUN_TEST(test_all_four_rows_fit_at_nominal_font_sizes_even_with_clock_warning);
-  RUN_TEST(test_restart_restores_original_observations_and_offline_expiry_without_redrawing_unchanged_page);
+  RUN_TEST(test_four_rows_keep_independent_freshness_position_and_projection);
+  RUN_TEST(test_headline_recommends_headroom_and_names_who_ran_out);
+  RUN_TEST(test_frame_stays_put_while_time_passes_within_the_hour);
+  RUN_TEST(test_restart_restores_original_observations_without_redrawing_unchanged_page);
   RUN_TEST(test_only_newer_provider_samples_replace_cache_including_lower_usage_after_source_reset);
   RUN_TEST(test_later_stale_or_missing_evidence_retains_values_until_a_new_observation);
   RUN_TEST(test_persistence_does_not_change_display_rounding_near_a_half_percent);
+  RUN_TEST(test_encoded_view_is_bounded_and_rejects_corruption);
   return UNITY_END();
 }

@@ -9,6 +9,7 @@
 #include "sense/battery.h"
 #include "sense/shtc3.h"
 #include "store/nvs.h"
+#include "render/usage_view.h"
 #endif
 
 namespace rcpaper {
@@ -40,6 +41,18 @@ bool render_page(const PageRecord& rec, const LayoutNode& root, bool stale,
                  const DeviceState& state, const BatteryReading& batt,
                  RuntimeMode runtime_mode);
 void render_error(const char* msg, RuntimeMode runtime_mode);
+
+// One frame of the hand-drawn weekly-allowance "road" view. A default frame is
+// the static image (ECO, retained through deep sleep); HOST animation passes
+// `moving` with a millisecond clock, and `sweep` < 1 while a fresh sync rolls
+// the numbers and roads in from zero.
+struct UsageFrame {
+  bool moving = false;
+  uint32_t t_ms = 0;
+  float sweep = 1.0f;
+};
+void render_usage(const UsageView& view, const BatteryReading& batt,
+                  RuntimeMode runtime_mode, const UsageFrame& frame);
 #endif
 
 }  // namespace rcpaper

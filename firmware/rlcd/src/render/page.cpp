@@ -15,6 +15,7 @@
 #include "render/fonts.h"
 #include "render/palette.h"
 #include "render/primitives.h"
+#include "render/canvas.h"
 #endif
 
 namespace rcpaper {
@@ -262,6 +263,10 @@ void display_init(PanelStartup startup) {
 void display_prepare_for_deep_sleep() {
   st7305_prepare_for_deep_sleep();
 }
+
+TFT_eSprite* display_canvas() { return g_canvas_ready ? &g_canvas : nullptr; }
+
+void display_push() { push_canvas(); }
 
 void clear_screen() {
   if (!g_canvas_ready) return;
