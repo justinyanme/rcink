@@ -27,6 +27,7 @@ DeviceState nvs_load() {
   s.page_index            = p.getUChar("idx", 0);
   // Keep the deployed key string stable while using the domain name in code.
   s.view_id               = p.getUChar("mode", 0);
+  s.view_saved            = p.isKey("mode");
   s.last_fetch_s          = p.getULong64("last", 0);
   s.last_fetch_fingerprint = p.getUInt("fp", 0);
   s.unchanged_fetches      = p.getUChar("unch", 0);
@@ -109,6 +110,29 @@ void nvs_save_view(uint8_t view_id) {
   p.begin(NS, false, PART);
   p.putUChar("mode", view_id);
   p.end();
+}
+
+std::string nvs_load_usage() {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return {};
+  const size_t length = p.getBytesLength("usage");
+  std::string json;
+  if (length > 0 && length <= 4096) {
+    json.resize(length);
+    if (p.getBytes("usage", &json[0], length) != length) json.clear();
+  }
+  p.end();
+  return json;
+}
+
+bool nvs_save_usage(const std::string& json) {
+  if (json.empty() || json.size() > 4096) return false;
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return false;
+  // A single NVS blob commit keeps the four validated slots together.
+  const size_t written = p.putBytes("usage", json.data(), json.size());
+  p.end();
+  return written == json.size();
 }
 
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {

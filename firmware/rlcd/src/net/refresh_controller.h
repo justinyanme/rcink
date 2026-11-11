@@ -16,11 +16,12 @@ struct RefreshAppState {
   uint64_t& retry_not_before_s;
   const char*& last_result;
   UsageSnapshot& usage;
+  bool& usage_fetch_failed;
 };
 
 bool refresh_due_now(const RefreshAppState& app);
 bool start_network_refresh(RefreshAppState app);
-bool finish_network_refresh(RefreshAppState app);
+bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed);
 void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
                                             RuntimeMode previous);
 

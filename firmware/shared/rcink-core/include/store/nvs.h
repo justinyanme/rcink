@@ -13,6 +13,7 @@ struct DeviceState {
   std::vector<PageRecord> pages;
   uint8_t  page_index   = 0;
   uint8_t  view_id      = 0;   // target-local View id; 0 means default View
+  bool     view_saved   = false;
   uint64_t last_fetch_s = 0;   // epoch seconds; 0 = never
   uint32_t last_fetch_fingerprint = 0;  // fingerprint of last successful page set
   uint8_t  unchanged_fetches = 0;       // consecutive successful fetches with no content change
@@ -29,6 +30,8 @@ DeviceState nvs_load();
 void nvs_save(const DeviceState& s);
 void nvs_save_progress(uint8_t idx);
 void nvs_save_view(uint8_t view_id);
+std::string nvs_load_usage();
+bool nvs_save_usage(const std::string& json);
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
 
 inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {

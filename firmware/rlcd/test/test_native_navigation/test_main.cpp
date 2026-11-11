@@ -72,14 +72,14 @@ void test_empty_deck_always_returns_dashboard() {
   TEST_ASSERT_EQUAL_UINT(0, previous.page_index);
 }
 
-void test_usage_starts_in_saved_deck_and_wake_navigation_still_reaches_climate() {
+void test_usage_defaults_once_then_restores_climate_across_restart_and_wake() {
   const uint8_t startup = startup_view_id(0, true, false);
   TEST_ASSERT_EQUAL_UINT8(1, startup);
   TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(startup, true, true));
   const NavigationState climate = navigation_after_next_press(View::Deck, 0, 1);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Dashboard),
                           static_cast<uint8_t>(climate.view));
-  // Timer/KEY wakes honor the user's last selection before applying a KEY press.
+  // Cold restarts and timer/KEY wakes honor a saved climate choice.
   TEST_ASSERT_EQUAL_UINT8(0, startup_view_id(0, true, true));
   const NavigationState usage = navigation_after_next_press(climate.view, 0, 1);
   TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck),
@@ -104,7 +104,7 @@ int main() {
   RUN_TEST(test_boot_moves_to_previous_deck_page);
   RUN_TEST(test_boot_returns_home_before_first_deck_page);
   RUN_TEST(test_empty_deck_always_returns_dashboard);
-  RUN_TEST(test_usage_starts_in_saved_deck_and_wake_navigation_still_reaches_climate);
+  RUN_TEST(test_usage_defaults_once_then_restores_climate_across_restart_and_wake);
   RUN_TEST(test_unconfigured_startup_preserves_the_existing_saved_view);
   return UNITY_END();
 }

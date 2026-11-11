@@ -214,10 +214,9 @@ RLCD's Axiom Deck with the private weekly allowance page:
 The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. Climate Dashboard, existing Deck/button navigation and runtime
-power policy are preserved. With #4, cold boot/reboot selects the usage Deck
-and saves it via the existing NVS view key. Timer/KEY deep-sleep wakes restore
-the last selected view; KEY then advances once. Thus a climate selection remains
-usable across battery wakes. KEY/BOOT still navigate Usage ↔ climate; no new
+power policy are preserved. Usage is the default only when no NVS view choice exists. Cold restart and
+Timer/KEY deep-sleep wakes restore the saved view, including climate; KEY then
+advances once. An existing saved climate choice is respected when enabling usage. KEY/BOOT still navigate Usage ↔ climate; no new
 view or network-dependent button action is introduced. Usage `HOST` polls every
 300 seconds after success or failure; unconfigured Axiom `HOST` stays at 900.
 Runtime transitions retain the existing host-loss debounce, active grace window
@@ -248,20 +247,68 @@ HTTPS uses GTS Root R4 (certificate source and fingerprint in
 transfer encoding is rejected. The body is bounded to 4096 bytes with a total
 10-second body deadline. Redirects are refused, so the read key cannot follow a
 Location header. A failed HTTP/status/schema/size/time check preserves the last
-good **in-memory** snapshot and displays `fetch failed`; serial logs expose only
+good snapshot and displays `fetch failed`; serial logs expose only
 sanitized diagnostics/status codes. An unknown clock cannot display fresh rows
 or cause a TLS bypass. No insecure TLS fallback exists.
 
-### Deliberate lifecycle boundary
+### Persistent/offline lifecycle (#5)
 
-#2 keeps source timestamps in RAM and does not persist a usage snapshot into
-the legacy Axiom cache. On reset/deep-sleep wake, values start unavailable until
-a successful refresh. During this slice, freshness is recalculated when building
-a page after a refresh; automatic offline expiry/redraw between refreshes and
-validated restore after restart belong to #5. The five-minute HOST cadence does
-not provide offline freshness transitions between fetches; do not treat #4 as
-completing #5's unattended offline lifecycle. Existing Axiom cache data remains
-intact.
+The main task merges only completely validated responses. A strictly newer
+per-provider `fetchedAt` replaces that slot, including lower usage after a reset.
+Equal/older samples cannot change percentages or timestamps. Equal-time `stale`
+evidence is retained even if the RTC is slightly behind the Worker. A previously
+known provider returned as `unavailable` retains its values marked stale; a
+never-seen provider remains unavailable. Only a newer valid sample clears this
+stale evidence. No login/revocation explanation is inferred.
+
+A single bounded, versioned response blob in the existing `rcpaper` namespace on
+`rcdata` stores merged values and original sampling/expiry/reset times. It uses
+the same decoder on restore; malformed/unsupported/oversized saved data cannot
+partially replace state. Percentages retain double round-trip precision so a
+restart cannot change rounding near a half percent. The legacy Axiom pages blob
+is untouched. Snapshot writes happen after validated changes; duplicates skip
+writes and a failed write retries on a later successful poll. Storage failures
+are reported without payloads; until a commit succeeds the newest values exist
+only in RAM. NVS, RTC and display work remain on the main task.
+
+During ordinary loop/probe wakes, the page re-evaluates source expiry, source
+reset and sampling age without HTTP. Unknown time shows the clock warning and
+stale/unknown age, and the existing RTC/NTP gate still prevents HTTPS without
+usable time; no TLS bypass exists. Only changed visible content is redrawn.
+The retained frame fingerprint avoids pushing an identical frame at a silent
+probe wake. RTC retains fetch/backoff metadata and failure display state across
+deep sleep, preserving the adaptive battery/low-battery policy. No new wake
+source, network button action or retry loop is added. Cold restart immediately
+shows restored values in the saved view before the next network completion.
+
+Local #5 verification (2026-11-11): full native suite **93/93**, including actual
+HTTP consumer failure fixtures (timeout, connectivity, 401/429, stalled/truncated,
+oversized, unsupported/malformed response and unknown clock), production NVS
+serialization with a Preferences IO fixture, restart/view restoration, per-slot
+merge, offline expiry/reset, same-second content changes and precision. Existing
+navigation/runtime/HOST/ECO/low-battery/retained-display policy suites pass.
+These are automated boundaries, not ESP32 TLS handshakes or physical outage tests.
+Production builds with unconfigured and usage-enabled safe placeholders passed;
+only local `.pio/core` and `.pio/uv-cache` were used. The prior config file was
+preserved/restored by rename; no private contents or binaries were inspected.
+
+Deployment/rollback belongs to the supervisor after published-PR review.
+This firmware uses the already-deployed four-slot API; #5 needs no Worker,
+migration, credential or uploader change. Build the reviewed firmware with the
+supervisor-owned configuration and normal verified identity/backup procedure.
+Rollback restores the prior firmware; the separate usage NVS blob and additive
+D1 table may remain. If backend rollback is needed, preserve the unrelated
+production WordPress retry patch. Stop only the allowance LaunchAgent if needed;
+leave the original daily collector, completion state, heatmap and data intact.
+Five-minute source/upload/device schedules remain independent and do not promise
+five-minute end-to-end latency.
+
+The user waived #5 physical outage/disconnection/restart and HOST/ECO acceptance.
+Those checks are **waived, not passed**. No M4, live API, device, flash, secret
+configuration or simulator access was used here. Supervisor focused verification
+also passed native usage/HTTP/persistence/navigation **23/23** and Worker usage/D1
+**9/9**, with clean diff checks. Publication is authorized; root owns fresh
+GPT-6 Astra review of the published PRs, merge and rollout.
 
 ### #3 local handoff
 

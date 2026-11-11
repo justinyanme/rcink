@@ -13,8 +13,8 @@ struct NavigationState {
 };
 
 inline uint8_t startup_view_id(uint8_t saved_view_id, bool usage_enabled,
-                               bool resumed_from_deep_sleep) {
-  return usage_enabled && !resumed_from_deep_sleep ? 1 : saved_view_id;
+                               bool view_saved) {
+  return usage_enabled && !view_saved ? 1 : saved_view_id;
 }
 
 inline NavigationState navigation_after_next_press(

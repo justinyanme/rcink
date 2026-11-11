@@ -60,7 +60,8 @@ bool start_network_refresh(RefreshAppState app) {
   return false;
 }
 
-bool finish_network_refresh(RefreshAppState app) {
+bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
+  usage_page_changed = false;
   RefreshCompletion completion;
   if (!refresh_take(completion)) return false;
 
@@ -70,19 +71,26 @@ bool finish_network_refresh(RefreshAppState app) {
   app.battery = read_battery();
 #if RCRLCD_USAGE_ENABLED
   const bool success = fetch_succeeded(completion.result);
-  if (success) app.usage = completion.usage;
-  PageRecord page = usage_page(app.usage, completion.completed_at_s, !success);
-  if (!app.device.pages.empty() && app.device.pages[0].layout_json == page.layout_json) {
-    page.data_ts = app.device.pages[0].data_ts;
-  }
-  completion.pages = {std::move(page)};
+  app.usage_fetch_failed = !success;
   if (success) {
-    record_successful_fetch(app.device, completion.pages);
+    merge_usage(completion.usage, app.usage);
+    const std::string saved = encode_usage(app.usage);
+    // Retry a failed commit on later successful polls without rewriting duplicates.
+    if (app.usage.served_at != 0 && nvs_load_usage() != saved && !nvs_save_usage(saved)) {
+      Serial.println("[usage] cache save failed; retained in memory only");
+    }
+    // Adaptive backoff follows source observations, not changing age labels.
+    std::vector<PageRecord> observations;
+    for (size_t i = 0; i < app.usage.providers.size(); i++) {
+      PageRecord record;
+      record.id = std::to_string(i);
+      record.data_ts = app.usage.providers[i].fetched_at;
+      observations.push_back(std::move(record));
+    }
+    record_successful_fetch(app.device, observations);
     app.device.last_fetch_s = completion.completed_at_s;
   }
-  app.device.pages = std::move(completion.pages);
-  app.device.page_index = 0;
-  // shortcut: source snapshots live only in RAM in #2; #5 adds validated persistence.
+  usage_page_changed = update_usage_page(app.device, app.usage, completion.completed_at_s, !success);
 #else
   if (fetch_succeeded(completion.result)) {
     record_successful_fetch(app.device, completion.pages);
