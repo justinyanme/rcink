@@ -300,8 +300,9 @@ slots were unavailable. The actual 15,000-byte framebuffer decoded to a readable
 400×300 image with the remaining bar visible and no clipping. These percentages
 are recorded acceptance evidence, not fixed or necessarily current values.
 
-Ticket #2 is **not acceptance-complete**: physical KEY/BOOT navigation and
-on-device display/climate confirmation still await the asynchronous user reply.
+Ticket #2 acceptance is **complete**: the user confirmed that the physical
+display and KEY/BOOT navigation operate normally. This completes the user
+confirmation following the source/API/framebuffer and production-device checks.
 Supervisor retains device, private configuration, M4 and live-service access.
 No periodic uploader is enabled; #3–#5 retain their provider, cadence/startup
 and persistent offline scope.
@@ -310,4 +311,4 @@ For supervisor-owned rollback, stop allowance uploads and restore the
 appropriate prior Worker/firmware while preserving unrelated production fixes.
 The additive D1 table and original daily token uploader/heatmap can remain.
 The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
-0005. Push/PR remain on hold pending the user's physical confirmation.
+0005. Merge and any further deployment remain supervisor-owned.
