@@ -287,20 +287,27 @@ deployments/rollbacks must preserve that patch; its checksum and boundary are
 recorded in Just Ship's `docs/usage-limits.md`. No unrelated WordPress code was
 incorporated, and the original dirty M4 checkout remained untouched.
 
-Supervisor hardware preflight (`i2-hardware-preflight.json`) also verified the
+Supervisor hardware preflight (`i2-hardware-preflight.json`) verified the
 ESP32-S3 identity, 16 MiB flash / 8 MiB PSRAM, and the original full 16 MiB
-backup's SHA256. After reset, serial returned the offline Dashboard in HOST
-with `pages=0`, `env_ok=1`, and `last_fetch=0`. No new firmware was flashed.
+backup's SHA256. With user-provided Wi-Fi, the supervisor then built production
+firmware and flashed that verified board with written-data hash verification.
 
-Ticket #2 is **not acceptance-complete**. Wi-Fi still awaits user input in the
-ignored `firmware/rlcd/include/config.h`; supervisor owns private Wi-Fi/read-key
-configuration, firmware flash, actual ESP32 HTTPS and source/API/framebuffer
-comparison, font/clipping/readability, physical buttons and climate access. Local builds and host HTTPS results do not establish these
-physical-device criteria. No periodic uploader exists or should be enabled for
-#2; #3–#5 retain their provider, cadence/startup and persistent offline scope.
+Device acceptance on 2026-11-11 (`i2-device-acceptance.json`,
+`i2-device-api.json`, `i2-device-usage.png`) passed actual ESP32 authenticated
+GET 200 with CA/hostname verification and NTP. During that run, source/API/layout
+agreed on Claude 63% used / 37% remaining and sampling/reset UTC; the other three
+slots were unavailable. The actual 15,000-byte framebuffer decoded to a readable
+400×300 image with the remaining bar visible and no clipping. These percentages
+are recorded acceptance evidence, not fixed or necessarily current values.
+
+Ticket #2 is **not acceptance-complete**: physical KEY/BOOT navigation and
+on-device display/climate confirmation still await the asynchronous user reply.
+Supervisor retains device, private configuration, M4 and live-service access.
+No periodic uploader is enabled; #3–#5 retain their provider, cadence/startup
+and persistent offline scope.
 
 For supervisor-owned rollback, stop allowance uploads and restore the
 appropriate prior Worker/firmware while preserving unrelated production fixes.
 The additive D1 table and original daily token uploader/heatmap can remain.
 The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
-0005. Push/PR remain on hold pending real-device acceptance.
+0005. Push/PR remain on hold pending the user's physical confirmation.
