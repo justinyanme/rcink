@@ -271,24 +271,36 @@ DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with pl
 DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with platformio==6.1.19 --with esptool==4.9.0 pio run -e waveshare-s3-rlcd
 ```
 
-A read-only host HTTPS probe against `/api/health` using the same root CA,
-User-Agent and HTTP/1.0 received 200 with a Content-Length and Connection: close.
-This checks current service compatibility only; ESP32 HTTPS and the new private
-route have **not** been tested against a live device/deployment.
+As of 2026-11-11, supervisor evidence (`m4-deployment.json`,
+`m4-live-api-results.json`, `supervisor-state.json` and
+`i2-acceptance-evidence.json`) confirms the backend deployed from M4 staging
+based on Just Ship `02ead98`: migration 0004, separate read authentication,
+real cached Claude upload/read-back, duplicate suppression and legacy API/D1
+preservation passed. HTTP/1.0 GET returned bounded JSON with Content-Length and
+no transfer encoding. M4 SSH and M4-native Cloudflare authorization succeeded.
 
-Supervisor still owns review/model selection, live Worker migration/secrets and
-deployment, verifying the running M4 cache-only helper and one-shot source
-upload, board identity/backup, flash, actual source/API/framebuffer comparison,
-font/clipping/readability, buttons and climate access. M4 SSH was unavailable;
-no live source/account values were verified. No device was opened, reset or
-flashed, and no production state or scheduled job was changed.
+GPT-6 Astra reviewed the feature twice. The bar-height finding was fixed in
+rcink `d9d3ebf`; final review of `d9d3ebf` / Just Ship `02ead98` had no actionable
+findings. The staging rollout preserved a pre-existing, already-deployed
+WordPress retry patch absent from the reviewed Just Ship branch. Future Worker
+deployments/rollbacks must preserve that patch; its checksum and boundary are
+recorded in Just Ship's `docs/usage-limits.md`. No unrelated WordPress code was
+incorporated, and the original dirty M4 checkout remained untouched.
 
-For rollback, disable the new uploader and restore prior Worker/firmware
-versions; the additive D1 table can remain. The old daily token uploader and
-heatmap do not need changes. The backend/operator contract is in Just Ship's
-`docs/usage-limits.md` and ADR 0005.
+Supervisor hardware preflight (`i2-hardware-preflight.json`) also verified the
+ESP32-S3 identity, 16 MiB flash / 8 MiB PSRAM, and the original full 16 MiB
+backup's SHA256. After reset, serial returned the offline Dashboard in HOST
+with `pages=0`, `env_ok=1`, and `last_fetch=0`. No new firmware was flashed.
 
-At supervisor handoff, live blockers are confirmed: unavailable M4 SSH, the
-RLCD's offline Wi-Fi settings in `firmware/rlcd/include/config.h`, and expired
-local Cloudflare OAuth. They remain unmet acceptance items; no host networking,
-login or deployment repair was attempted.
+Ticket #2 is **not acceptance-complete**. Wi-Fi still awaits user input in the
+ignored `firmware/rlcd/include/config.h`; supervisor owns private Wi-Fi/read-key
+configuration, firmware flash, actual ESP32 HTTPS and source/API/framebuffer
+comparison, font/clipping/readability, physical buttons and climate access. Local builds and host HTTPS results do not establish these
+physical-device criteria. No periodic uploader exists or should be enabled for
+#2; #3–#5 retain their provider, cadence/startup and persistent offline scope.
+
+For supervisor-owned rollback, stop allowance uploads and restore the
+appropriate prior Worker/firmware while preserving unrelated production fixes.
+The additive D1 table and original daily token uploader/heatmap can remain.
+The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
+0005. Push/PR remain on hold pending real-device acceptance.
