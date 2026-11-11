@@ -436,7 +436,7 @@ and `test_native_navigation` passed **26/26**. Production builds were not repeat
 Only #4 docs changed during this integration closeout. No private config, M4,
 device or live service access occurred during that integration closeout.
 
-### #4 supervisor live rollout and paused acceptance (2026-11-11)
+### #4 supervisor live rollout and user-waived remaining acceptance (2026-11-11)
 
 Reviewed production firmware from rcink `23e8bbf` was flashed with hash
 verification and starts in Usage HOST. Initial all-four-provider values, status
@@ -445,9 +445,11 @@ LaunchAgent from Just Ship `7641c65` is installed; its initial automatic upload
 of four providers succeeded. No new Worker deployment was needed. The existing
 daily job and production WordPress retry patch were verified unchanged.
 
-The user paused acceptance before two subsequent automatic 300-second cycles
-completed, so those criteria are **not passed**. Observation/tail is stopping
-while the automatic service remains running. The user requested commit and
-push now, with no further testing/rebuild/review, PR or merge. Further live
-acceptance remains supervisor-owned; private config and build artifacts stay
-untouched by the builder.
+After initially pausing observation, the user explicitly waived the remaining
+two-subsequent-automatic-300-second-cycle acceptance and requested merge, then
+#5. Those criteria are **waived, not passed**; the initial hardware evidence
+above remains valid. Observation/tail stopped while the automatic service
+remains running. No additional tests, rebuilds or live acceptance are requested.
+Root owns fresh Astra closeout and backend-first merge of the crosslinked PRs.
+Remote CI is not passed: there are zero registered self-hosted runners. Private
+config and build artifacts remain untouched by the builder.
