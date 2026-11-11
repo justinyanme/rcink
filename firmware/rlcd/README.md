@@ -278,7 +278,7 @@ Only the usage page builder/tests and these notes changed. Scheduling, HOST
 polling, startup selection, persistent cache and automatic offline redraw remain
 with #4/#5. #4 is implemented/reviewed separately and is not incorporated here.
 
-### #3 supervisor rollout checkpoint (2026-11-11)
+### #3 completed hardware acceptance (2026-11-11)
 
 The supervisor reports that GPT-6 Astra pre-rollout review passed, followed by
 collector **11/11**, Worker usage **8/8** and native usage **6/6** checks. The
@@ -291,13 +291,34 @@ successful written-data hash check. An external Wi-Fi outage initially produced
 `NO_AP_FOUND`; the user resolved connectivity and the actual device now reports
 **GET 200**. This did not require an implementation change.
 
-Final four-row framebuffer capture/comparison is **pending**. Do not mark #3
-acceptance complete or publish its PRs until the supervisor confirms source/API/
-framebuffer percentages, labels, remaining bars and unclipped 400×300 layout.
-Physical readability and button/climate acceptance remain supervisor-owned.
-Private live configuration and binaries may now be present in this worktree;
-this documentation update neither reads them nor rebuilds firmware. No #4
-scheduling/startup changes or #5 persistence/offline changes are included.
+**#3 hardware acceptance is complete.** Supervisor evidence is recorded in
+`i3-device-acceptance.json`, `i3-device-api.json` and `i3-device-usage.png` for
+reviewed runtime commits rcink `72ee727` / Just Ship `8750ef0`. Actual source/API/
+layout percentages, status, original reset times, source age and complementary
+remaining bars agree for all four providers. The captured remaining values were
+Claude **37%**, Codex **33%**, Kimi **94%** and Gemini **100%**; these are historical
+acceptance observations. The exact 400×300 framebuffer is readable without
+clipping, including `Gemini (Antigravity) 100% left` and the existing sidebar.
+The D1 latest-snapshot table contains exactly **four rows**.
+
+Actual console next reached the climate Dashboard with `env_ok=1`; previous
+returned to Usage. Physical controls were user-confirmed during #2 and their
+input paths are unchanged. No further user confirmation is required for #3.
+
+Fresh focused checks before publication passed native usage **6/6**, collector/
+projection **29/29** and Worker usage/D1 **8/8**. Both branches were fetched and
+rebased onto `origin/main` without changes (rcink base `d9c479c`, Just Ship base
+`16facba`). The reviewed implementation is unchanged; only documentation was
+committed during closeout. No production firmware rebuild or private config/
+binary access occurred in this closeout.
+
+The GitHub workflow requires self-hosted runners, but `justinyanme/rcink` has
+**zero registered runners** and existing CI runs are queued. Remote CI is not
+claimed green; local checks and supervisor hardware evidence are recorded above.
+Merge the companion Just Ship PR **before** this firmware PR. Published-PR Astra
+closeout and merging remain supervisor-owned; no further deployment/device/M4
+operation is part of this closeout. #4 remains separate and #5 remains outside
+this branch.
 
 ### Local evidence and pending acceptance
 
