@@ -48,7 +48,8 @@ void render_error(const char* msg, RuntimeMode runtime_mode);
 // the numbers and roads in from zero.
 struct UsageFrame {
   bool moving = false;
-  uint32_t t_ms = 0;
+  uint32_t tick = 0;   // animation frame counter: drives stepped motion (bob, puffs, lanes)
+  uint32_t t_ms = 0;   // wall time: drives smooth motion (Zz float)
   float sweep = 1.0f;
 };
 void render_usage(const UsageView& view, const BatteryReading& batt,

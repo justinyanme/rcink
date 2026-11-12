@@ -169,4 +169,22 @@ uint32_t usage_page_fingerprint(const PageRecord& page) {
   return hash;
 }
 
+uint64_t usage_refetch_at_s(const UsageSnapshot& snapshot, uint64_t last_fetch_s) {
+  if (last_fetch_s == 0) return 0;
+  uint64_t next = 0;
+  for (const UsageProvider& p : snapshot.providers) {
+    if (p.status == UsageStatus::Unavailable || p.fetched_at == 0) continue;
+    uint64_t at = 0;
+    if (p.expires_at > last_fetch_s) {
+      at = p.expires_at + kUsageExpiryGraceS;  // fresh at the last fetch: refetch as it expires
+    } else if (last_fetch_s < p.fetched_at + kUsageChaseWindowS) {
+      at = last_fetch_s + kUsageChaseRetryS;  // the source is late: check back soon
+    } else {
+      continue;  // long quiet: the normal interval is enough
+    }
+    if (next == 0 || at < next) next = at;
+  }
+  return next;
+}
+
 }  // namespace rcpaper

@@ -12,11 +12,13 @@ namespace rcpaper {
 // shows is derived here, purely, so native tests cover it and the encoded form
 // doubles as the redraw fingerprint: if this model is unchanged, so is the frame.
 //
-// Each provider is a car on a road whose finish flag is that provider's weekly
-// reset. The car sits at the elapsed share of the 7-day window; the solid road
-// ahead is how far this week's average burn rate lasts.
+// Each provider is a car on a road of fuel. The car sits at the share of the
+// weekly allowance already used, so the solid road ahead of it is what is left
+// (the big number) and the pump at the end means empty. A tick under the road
+// marks even pace, the share of the 7-day window already gone: a car behind the
+// tick has room to spare, a car past it is burning fast.
 
-constexpr int16_t kUsageRoadPx = 150;   // road length in pixels (week start .. reset)
+constexpr int16_t kUsageRoadPx = 150;   // road length in pixels (0 % used .. empty)
 constexpr uint64_t kUsageWeekS = 604800;
 
 extern const char* const kUsageProviderNames[4];
@@ -29,8 +31,9 @@ struct UsageRowView {
   UsageRowState state = UsageRowState::Unavailable;
   uint8_t left = 0;           // displayed remaining percent (used rounded once)
   UsageMood mood = UsageMood::None;
-  int16_t now_px = -1;        // car position, -1 when the week position is unknown
-  int16_t dry_px = -1;        // projected empty point, -1 when it lasts to the reset
+  int16_t car_px = -1;        // used share of the road, -1 without data
+  int16_t pace_px = -1;       // even-pace tick (elapsed share of the week), -1 when unknown
+  bool runs_dry = false;      // this week's burn rate empties it before the reset
   std::string countdown = "--";
   std::string verdict;        // "dry 25h early", "~91% to spare", "out of gas", ...
   std::string chip;           // row-specific staleness label, e.g. "3h old"
@@ -48,7 +51,7 @@ struct UsageView {
 
 inline bool operator==(const UsageRowView& a, const UsageRowView& b) {
   return a.state == b.state && a.left == b.left && a.mood == b.mood &&
-         a.now_px == b.now_px && a.dry_px == b.dry_px &&
+         a.car_px == b.car_px && a.pace_px == b.pace_px && a.runs_dry == b.runs_dry &&
          a.countdown == b.countdown && a.verdict == b.verdict && a.chip == b.chip;
 }
 inline bool operator==(const UsageView& a, const UsageView& b) {
