@@ -13,6 +13,7 @@
 #include "config.h"
 #include "net/axiom.h"
 #include "net/usage_client.h"
+#include "net/token_client.h"
 #include "net/usage_config.h"
 #include "net/ntp.h"
 #include "net/wifi.h"
@@ -21,13 +22,15 @@
 namespace rcpaper {
 namespace {
 
-constexpr uint32_t kWorkerStackBytes = 8192;
+// The completion carries a second 30-day snapshot while TLS/HTTP are active.
+constexpr uint32_t kWorkerStackBytes = 12288;
 constexpr UBaseType_t kWorkerPriority = 1;
 
 SemaphoreHandle_t g_mutex = nullptr;
 bool g_busy = false;
 bool g_completion_ready = false;
 uint32_t g_previous_fingerprint = 0;
+bool g_token_due = false;
 RefreshCompletion g_completion;
 
 [[noreturn]] void fatal(const char* message) {
@@ -51,15 +54,26 @@ void unlock() {
   if (xSemaphoreGive(g_mutex) != pdTRUE) fatal("mutex give failed");
 }
 
+bool consume_token_due() {
+  lock();
+  const bool due = g_token_due;
+  g_token_due = false;
+  unlock();
+  return due;
+}
+
 RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
   RefreshCompletion completion;
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
     completion.result = FetchResult::WifiFailed;
+    completion.token_attempted = consume_token_due();
   } else {
     completion.clock_synced = ntp_sync_once(LOCAL_TZ);
 #if RCRLCD_USAGE_ENABLED
     completion.result = usage_fetch(completion.usage) ? FetchResult::Changed : FetchResult::DataFailed;
+    completion.token_attempted = consume_token_due();
+    if (completion.token_attempted) completion.token_ok = token_fetch(completion.token);
 #else
     std::vector<PageRecord> fresh;
     if (!axiom_fetch_pages(fresh) || fresh.empty()) {
@@ -106,8 +120,11 @@ void refresh_flow_init() {
   if (g_mutex == nullptr) fatal("mutex allocation failed");
 }
 
-bool refresh_start(uint32_t previous_fingerprint) {
+bool refresh_start(uint32_t previous_fingerprint, bool token_due) {
   lock();
+  // A BOOT during an Allowance-only run can still join before its second GET.
+  // If that stage already passed, the pending bit triggers an immediate run.
+  if (token_due) g_token_due = true;
   if (g_busy) {
     unlock();
     return false;
@@ -123,6 +140,7 @@ bool refresh_start(uint32_t previous_fingerprint) {
 
   lock();
   g_busy = false;
+  g_token_due = false;  // the ordinary failure gate must not be bypassed forever
   unlock();
   Serial.printf("[refresh] task creation FAILED: code=%ld\n", (long)created);
   return false;
@@ -133,6 +151,13 @@ bool refresh_busy() {
   const bool busy = g_busy;
   unlock();
   return busy;
+}
+
+bool refresh_token_pending() {
+  lock();
+  const bool pending = g_token_due;
+  unlock();
+  return pending;
 }
 
 bool refresh_take(RefreshCompletion& out) {

@@ -89,6 +89,27 @@ void test_usage_defaults_once_then_restores_climate_across_restart_and_wake() {
                           static_cast<uint8_t>(back.view));
 }
 
+void test_two_page_usage_ring_and_boot_sync_in_place() {
+  NavigationState state = {View::Deck, 0};
+  state = navigation_after_next_press(state.view, state.page_index, 2);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(1, state.page_index);  // Allowance -> Token
+  state = navigation_after_next_press(state.view, state.page_index, 2);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Dashboard), static_cast<uint8_t>(state.view));
+  state = navigation_after_next_press(state.view, state.page_index, 2);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(0, state.page_index);  // climate -> Allowance
+
+  for (size_t page = 0; page < 2; page++) {
+    const NavigationState sync = navigation_after_sync_press(View::Deck, page, 2);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(sync.view));
+    TEST_ASSERT_EQUAL_UINT(page, sync.page_index);
+  }
+  const NavigationState dashboard = navigation_after_sync_press(View::Dashboard, 1, 2);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(dashboard.view));
+  TEST_ASSERT_EQUAL_UINT(0, dashboard.page_index);
+}
+
 void test_unconfigured_startup_preserves_the_existing_saved_view() {
   TEST_ASSERT_EQUAL_UINT8(0, startup_view_id(0, false, false));
   TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(1, false, false));
@@ -105,6 +126,7 @@ int main() {
   RUN_TEST(test_boot_returns_home_before_first_deck_page);
   RUN_TEST(test_empty_deck_always_returns_dashboard);
   RUN_TEST(test_usage_defaults_once_then_restores_climate_across_restart_and_wake);
+  RUN_TEST(test_two_page_usage_ring_and_boot_sync_in_place);
   RUN_TEST(test_unconfigured_startup_preserves_the_existing_saved_view);
   return UNITY_END();
 }

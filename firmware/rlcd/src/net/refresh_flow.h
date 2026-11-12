@@ -5,6 +5,7 @@
 
 #include "proto/envelope.h"
 #include "render/usage.h"
+#include "render/token.h"
 
 namespace rcpaper {
 
@@ -19,12 +20,16 @@ struct RefreshCompletion {
   FetchResult result = FetchResult::DataFailed;
   std::vector<PageRecord> pages;
   UsageSnapshot usage;
+  TokenSnapshot token;
+  bool token_attempted = false;
+  bool token_ok = false;
   bool clock_synced = false;
   uint64_t completed_at_s = 0;
 };
 
 void refresh_flow_init();
-bool refresh_start(uint32_t previous_fingerprint);
+bool refresh_start(uint32_t previous_fingerprint, bool token_due = false);
+bool refresh_token_pending();
 bool refresh_busy();
 bool refresh_take(RefreshCompletion& out);
 

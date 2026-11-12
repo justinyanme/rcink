@@ -32,6 +32,8 @@ void nvs_save_progress(uint8_t idx);
 void nvs_save_view(uint8_t view_id);
 std::string nvs_load_usage();
 bool nvs_save_usage(const std::string& json);
+std::string nvs_load_token();
+bool nvs_save_token(const std::string& json);
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
 
 inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {

@@ -135,6 +135,28 @@ bool nvs_save_usage(const std::string& json) {
   return written == json.size();
 }
 
+std::string nvs_load_token() {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return {};
+  const size_t length = p.getBytesLength("token");
+  std::string json;
+  if (length > 0 && length <= 8192) {
+    json.resize(length);
+    if (p.getBytes("token", &json[0], length) != length) json.clear();
+  }
+  p.end();
+  return json;
+}
+
+bool nvs_save_token(const std::string& json) {
+  if (json.empty() || json.size() > 8192) return false;
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return false;
+  const size_t written = p.putBytes("token", json.data(), json.size());
+  p.end();
+  return written == json.size();
+}
+
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {
   // Tiny partial write — keep the render-dedup tuple cheap to update every
   // render. Re-serializing the full pages blob (~15 KB) would defeat the

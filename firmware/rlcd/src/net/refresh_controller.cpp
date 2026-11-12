@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <time.h>
 
+#include <algorithm>
 #include <utility>
 
 #include "config.h"
@@ -10,6 +11,7 @@
 #include "net/usage_config.h"
 #include "power/network_policy.h"
 #include "power/refresh_schedule.h"
+#include "render/token_persistence.h"
 #include "sense/clock.h"
 
 namespace rcpaper {
@@ -52,15 +54,27 @@ bool refresh_due_now(const RefreshAppState& app) {
   };
   if (network_refresh_due(query)) return true;
   const uint64_t early = early_refetch_at(app);
-  return early != 0 && query.clock_valid && now >= early && now >= app.retry_not_before_s;
+  if (early != 0 && query.clock_valid && now >= early && now >= app.retry_not_before_s) return true;
+#if RCRLCD_USAGE_ENABLED
+  // Token cadence never starts a worker; it rides the next Allowance run.
+  // Only an explicit BOOT request that missed the active worker is the exception.
+  return refresh_token_pending();
+#else
+  return false;
+#endif
 }
 
-bool start_network_refresh(RefreshAppState app) {
+bool start_network_refresh(RefreshAppState app, bool force_token) {
+  const bool token_due = RCRLCD_USAGE_ENABLED &&
+      (force_token || token_refresh_due(
+          (uint64_t)time(nullptr), app.token_last_ok_s, app.token_retry_at_s,
+          app.runtime_mode, app.token_fetch_failed));
   if (refresh_busy()) {
+    refresh_start(app.device.last_fetch_fingerprint, token_due);  // join if possible
     Serial.println("[refresh] already running");
     return false;
   }
-  if (refresh_start(app.device.last_fetch_fingerprint)) {
+  if (refresh_start(app.device.last_fetch_fingerprint, token_due)) {
     Serial.println("[refresh] started");
     return true;
   }
@@ -75,8 +89,11 @@ bool start_network_refresh(RefreshAppState app) {
   return false;
 }
 
-bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
+bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
+                            bool& token_succeeded, bool& allowance_page_changed) {
   usage_page_changed = false;
+  token_succeeded = false;
+  allowance_page_changed = false;
   RefreshCompletion completion;
   if (!refresh_take(completion)) return false;
 
@@ -105,6 +122,20 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
     record_successful_fetch(app.device, observations);
     app.device.last_fetch_s = completion.completed_at_s;
   }
+  if (completion.token_attempted) {
+    app.token_fetch_failed = !completion.token_ok;
+    app.token_retry_at_s = completion.token_ok ? 0 : completion.completed_at_s +
+        (app.runtime_mode == RuntimeMode::Host
+            ? kUsageHostFailureRetrySec : kTokenBatteryRefreshIntervalSec);
+    if (completion.token_ok) {
+      app.token = completion.token;
+      app.token_last_ok_s = completion.completed_at_s;
+      token_succeeded = true;
+      if (!persist_token_snapshot(app.token)) {
+        Serial.println("[token] cache save failed; retained in memory only");
+      }
+    }
+  }
 #else
   if (success) {
     record_successful_fetch(app.device, completion.pages);
@@ -122,10 +153,10 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
   app.last_result = fetch_result_name(completion.result);
 
   const uint32_t adaptive = battery_interval(app);
-  const uint32_t cooldown =
-      success
-          ? network_refresh_interval_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED)
-          : network_failure_retry_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED);
+  const uint32_t cooldown = RCRLCD_USAGE_ENABLED
+      ? allowance_refresh_cooldown_sec(app.runtime_mode, adaptive, success)
+      : (success ? network_refresh_interval_sec(app.runtime_mode, adaptive, false)
+                 : network_failure_retry_sec(app.runtime_mode, adaptive, false));
   uint64_t gate = completion.completed_at_s + cooldown;
 #if RCRLCD_USAGE_ENABLED
   if (success) {  // let an expiring or late sample pull the next fetch forward
@@ -137,9 +168,14 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
   app.retry_not_before_s = gate;
 #if RCRLCD_USAGE_ENABLED
   // After the gate is known, so a failure can say when it will retry.
-  usage_page_changed = update_usage_page(
+  allowance_page_changed = update_usage_page(
       app.device, app.usage, completion.completed_at_s,
       {!success, app.device.last_fetch_s, app.retry_not_before_s, false});
+  const bool token_changed = update_token_page(
+      app.device, app.token, completion.completed_at_s,
+      {app.token_fetch_failed, app.token_last_ok_s,
+       std::max(app.token_retry_at_s, app.retry_not_before_s), false});
+  usage_page_changed = allowance_page_changed || token_changed;
 #endif
   Serial.printf("[auto] retry gate %u s result=%u\n",
                 (unsigned)(gate - completion.completed_at_s), (unsigned)completion.result);
@@ -149,6 +185,15 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
 void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
                                             RuntimeMode previous) {
   const uint64_t now = (uint64_t)time(nullptr);
+#if RCRLCD_USAGE_ENABLED
+  if (app.token_fetch_failed) {
+    if (app.runtime_mode == RuntimeMode::Host) {
+      app.token_retry_at_s = token_retry_on_host_entry(app.token_retry_at_s, true);
+    } else if (previous == RuntimeMode::Host) {
+      app.token_retry_at_s = now + kTokenBatteryRefreshIntervalSec;
+    }
+  }
+#endif
   if (app.runtime_mode == RuntimeMode::Host) {
     // A real data host gets its own fixed policy, independent of an older
     // battery-mode cooldown.

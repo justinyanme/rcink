@@ -11,6 +11,8 @@ constexpr uint32_t kUsageHostRefreshIntervalSec = 5 * 60;
 // A powered host retries a failed usage GET quickly: the device's path to the
 // Worker sometimes times out, and a full poll would leave expired numbers up.
 constexpr uint32_t kUsageHostFailureRetrySec = 60;
+constexpr uint32_t kTokenHostRefreshIntervalSec = 15 * 60;
+constexpr uint32_t kTokenBatteryRefreshIntervalSec = 60 * 60;
 
 struct NetworkRefreshQuery {
   uint64_t now_s;
@@ -32,6 +34,33 @@ inline uint32_t network_failure_retry_sec(
     RuntimeMode mode, uint32_t adaptive_interval_sec, bool usage_enabled = false) {
   if (mode == RuntimeMode::Host && usage_enabled) return kUsageHostFailureRetrySec;
   return network_refresh_interval_sec(mode, adaptive_interval_sec, usage_enabled);
+}
+
+// Only Allowance success/failure controls the shared Allowance worker gate.
+// Token has a separate retry clock and may ride the next scheduled run.
+inline uint32_t allowance_refresh_cooldown_sec(
+    RuntimeMode mode, uint32_t adaptive_interval_sec, bool allowance_succeeded) {
+  return allowance_succeeded
+      ? network_refresh_interval_sec(mode, adaptive_interval_sec, true)
+      : network_failure_retry_sec(mode, adaptive_interval_sec, true);
+}
+
+inline uint64_t token_retry_on_host_entry(uint64_t retry_at_s, bool token_failed) {
+  return token_failed ? 0 : retry_at_s;
+}
+
+// Token rides in Allowance worker runs, but has its own success clock. Battery
+// modes fetch no more often than hourly; a failed attempt becomes eligible at
+// the shared retry gate regardless of the last successful Token response.
+inline bool token_refresh_due(uint64_t now_s, uint64_t last_ok_s,
+                              uint64_t retry_at_s, RuntimeMode mode,
+                              bool last_attempt_failed) {
+  if (last_attempt_failed) return now_s >= retry_at_s;
+  if (last_ok_s == 0) return true;
+  if (now_s < last_ok_s) return false;
+  const uint32_t interval = mode == RuntimeMode::Host
+      ? kTokenHostRefreshIntervalSec : kTokenBatteryRefreshIntervalSec;
+  return now_s - last_ok_s >= interval;
 }
 
 inline bool network_refresh_due(const NetworkRefreshQuery& query) {

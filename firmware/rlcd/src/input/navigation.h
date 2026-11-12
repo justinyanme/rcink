@@ -26,6 +26,16 @@ inline NavigationState navigation_after_next_press(
   return {View::Dashboard, 0};
 }
 
+// In the usage build BOOT syncs the visible Deck page in place. From climate
+// it retains the established behavior of opening Allowance before syncing.
+inline NavigationState navigation_after_sync_press(
+    View view, size_t page_index, size_t page_count) {
+  if (view == View::Deck && page_index < page_count) {
+    return {View::Deck, page_index};
+  }
+  return {View::Deck, 0};
+}
+
 inline NavigationState navigation_after_previous_press(
     View view, size_t page_index, size_t page_count) {
   if (page_count == 0) return {View::Dashboard, 0};
