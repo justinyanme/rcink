@@ -29,6 +29,7 @@ struct UsageSync {
   bool fetch_failed;
   uint64_t last_ok_s;   // completion time of the last successful GET, 0 if none
   uint64_t retry_at_s;  // next scheduled attempt after a failure, 0 if unknown
+  bool syncing;         // a sync the user asked for (BOOT) is in flight
 };
 
 constexpr const char* kUsagePageId = "usage-limits";

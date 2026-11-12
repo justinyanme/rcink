@@ -141,6 +141,13 @@ press powers on, long press powers off, and normal taps do not reach the app.
 |---|---|---|
 | **KEY** (GPIO18) tap | Page 1 | next page; last page → Dashboard |
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
+| **BOOT** tap, usage build | Usage + sync now | sync now |
+
+In the usage build KEY alone toggles Usage ⇄ climate, so BOOT means "sync now":
+it shows the Usage page and starts a fetch immediately, ignoring the poll/retry
+gate. The footer reads `SYNCING · fetching now` until the fetch completes (a
+fetch already in flight is awaited, not doubled); a success then replays the
+drive-in sweep.
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
 advances exactly once through Dashboard ⇄ Page 1 ⇄ … ⇄ Page N; its eventual
@@ -152,7 +159,7 @@ a panel reset or intermediate blank frame.
 
 ## Console
 
-- `f` network refresh (Wi-Fi → NTP/RTC + Axiom fetch)
+- `f` network refresh (Wi-Fi → NTP/RTC + Axiom fetch; the usage build runs BOOT's "sync now")
 - `r` re-render current View
 - `m` toggle Dashboard ↔ Deck View
 - `n` next through Dashboard/Deck ring
@@ -219,9 +226,11 @@ Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. Climate Dashboard, existing Deck/button navigation and runtime
 power policy are preserved. Usage is the default only when no NVS view choice exists. Cold restart and
 Timer/KEY deep-sleep wakes restore the saved view, including climate; KEY then
-advances once. An existing saved climate choice is respected when enabling usage. KEY/BOOT still navigate Usage ↔ climate; no new
-view or network-dependent button action is introduced. Usage `HOST` polls every
-300 seconds after success or failure; unconfigured Axiom `HOST` stays at 900.
+advances once. An existing saved climate choice is respected when enabling usage. KEY navigates Usage ↔ climate and BOOT
+syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
+retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
+a failure the retry gate alone schedules the next attempt, so the footer's
+`retry HH:MM` is when it really happens, even soon after a success.
 Runtime transitions retain the existing host-loss debounce, active grace window
 and refresh-gate adjustment. Battery adaptive/low-battery intervals are unchanged.
 Console `f` remains the manual network refresh; button navigation never fetches.
@@ -271,7 +280,7 @@ Synced 11:34                        [batt] 99% HOST
   outline car. A single stale row gets its own `3h old` chip. When every known
   row is stale the screen says it once: `No new numbers since HH:MM.` with an
   `OLD DATA` footer (`checked HH:MM`) when the GET worked but the source has
-  gone quiet, or `No signal. Numbers from HH:MM.` with `SYNC FAILED` when it
+  gone quiet, or `Can't sync. Numbers from HH:MM.` with `SYNC FAILED` when it
   did not. An untrusted clock shows `What day is it? Clock not set.` and no
   pace ticks. Never-observed rows show `--` and `no data yet`, with no car.
 - Source samples expire 10 minutes after they are taken, but the source, its
@@ -300,10 +309,14 @@ uv run tools/bake_usage_logos.py --check  # verify the header is current
 
 HTTPS uses GTS Root R4 (certificate source and fingerprint in
 `src/net/usage_ca.h`), hostname validation, the existing RTC/NTP clock gate,
-`rcink-rlcd/1.0` User-Agent and JSON Accept header. Connect/TLS/read deadlines are
-10 seconds each. HTTP/1.0 requests close-delimited identity bodies; unexpected
-transfer encoding is rejected. The body is bounded to 4096 bytes with a total
-10-second body deadline. Redirects are refused, so the read key cannot follow a
+`rcink-rlcd/1.0` User-Agent and JSON Accept header. The TCP connect deadline is
+10 seconds; TLS handshake, response headers and the body get 20 seconds each.
+On the device's Wi-Fi (measured 2026-11-12: ~250 ms RTT with loss to
+Cloudflare) a handshake takes 5-10 s, about 1 s of it certificate checks, so
+10-second deadlines failed roughly one fetch in six. `[usage] GET status=N after
+M ms` logs each request's time. HTTP/1.0 requests close-delimited identity
+bodies; unexpected transfer encoding is rejected. The body is bounded to 4096
+bytes. Redirects are refused, so the read key cannot follow a
 Location header. A failed HTTP/status/schema/size/time check preserves the last
 good snapshot and displays `SYNC FAILED`; serial logs expose only
 sanitized diagnostics/status codes. An unknown clock cannot display fresh rows

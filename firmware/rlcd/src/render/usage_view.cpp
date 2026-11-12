@@ -147,7 +147,7 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
     // The device can only see that the source has gone quiet, not why.
     view.headline_icon = sync.fetch_failed ? UsageIcon::Face : UsageIcon::Clock;
     view.headline_face = sync.fetch_failed ? UsageMood::Low : UsageMood::None;
-    view.headline = (sync.fetch_failed ? "No signal. Numbers from " : "No new numbers since ") +
+    view.headline = (sync.fetch_failed ? "Can't sync. Numbers from " : "No new numbers since ") +
                     local_hhmm(newest_sample) + ".";
   } else {
     int pick = -1, nap = -1, low = -1;
@@ -179,7 +179,10 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
     view.pick = (int8_t)pick;
   }
 
-  if (!clock) {
+  if (sync.syncing) {  // acknowledge the press; the fetch takes several seconds
+    view.footer_chip = "SYNCING";
+    view.footer_text = "fetching now";
+  } else if (!clock) {
     view.footer_chip = "NO CLOCK";
     view.footer_text = "waiting for NTP";
   } else if (sync.fetch_failed) {

@@ -50,7 +50,7 @@ void test_http_failures_keep_last_good_values_and_recovery_uses_original_source_
     TEST_ASSERT_EQUAL_STRING("SYNC FAILED", failed.footer_chip.c_str());
     TEST_ASSERT_EQUAL(66, failed.rows[0].left);
     TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)failed.rows[0].state);
-    TEST_ASSERT_LESS_OR_EQUAL(10000, test_millis);
+    TEST_ASSERT_LESS_OR_EQUAL(20000, test_millis);  // a stalled body is still bounded
   }
   reset_http();
   TEST_ASSERT_TRUE(usage_fetch(cache));
