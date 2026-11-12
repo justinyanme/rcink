@@ -6,6 +6,7 @@
 #include "sense/battery.h"
 #include "store/nvs.h"
 #include "render/usage.h"
+#include "render/token.h"
 
 namespace rcpaper {
 
@@ -17,11 +18,16 @@ struct RefreshAppState {
   const char*& last_result;
   UsageSnapshot& usage;
   bool& usage_fetch_failed;
+  TokenSnapshot& token;
+  bool& token_fetch_failed;
+  uint64_t& token_last_ok_s;
+  uint64_t& token_retry_at_s;
 };
 
 bool refresh_due_now(const RefreshAppState& app);
-bool start_network_refresh(RefreshAppState app);
-bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed);
+bool start_network_refresh(RefreshAppState app, bool force_token = false);
+bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
+                            bool& token_succeeded);
 void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
                                             RuntimeMode previous);
 

@@ -10,6 +10,7 @@
 #include "sense/shtc3.h"
 #include "store/nvs.h"
 #include "render/usage_view.h"
+#include "render/token_view.h"
 #endif
 
 namespace rcpaper {
@@ -54,6 +55,13 @@ struct UsageFrame {
 };
 void render_usage(const UsageView& view, const BatteryReading& batt,
                   RuntimeMode runtime_mode, const UsageFrame& frame);
+
+// Token animates only its 0.9 s entry/sync sweep; there is no idle motion.
+struct TokenFrame {
+  float sweep = 1.0f;
+};
+void render_token(const TokenView& view, const BatteryReading& batt,
+                  RuntimeMode runtime_mode, const TokenFrame& frame);
 #endif
 
 }  // namespace rcpaper

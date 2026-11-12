@@ -156,10 +156,13 @@ PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, const UsageSy
 bool update_usage_page(DeviceState& device, const UsageSnapshot& snapshot,
                        uint64_t now, const UsageSync& sync) {
   PageRecord page = usage_page(snapshot, now, sync);
-  if (device.pages.size() == 1 && device.pages[0].id == page.id &&
-      device.pages[0].layout_json == page.layout_json) return false;
-  device.pages = {std::move(page)};
-  device.page_index = 0;
+  for (PageRecord& existing : device.pages) {
+    if (existing.id != kUsagePageId) continue;
+    if (existing.layout_json == page.layout_json) return false;
+    existing = std::move(page);
+    return true;  // Preserve the visible page when Token is also present.
+  }
+  device.pages.insert(device.pages.begin(), std::move(page));
   return true;
 }
 

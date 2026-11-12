@@ -87,6 +87,20 @@ void test_a_failed_attempt_retries_at_its_gate_even_soon_after_a_success() {
   TEST_ASSERT_FALSE(network_refresh_due(query));
 }
 
+void test_token_cadence_is_independent_and_battery_never_exceeds_hourly() {
+  TEST_ASSERT_TRUE(token_refresh_due(1000, 0, 0, RuntimeMode::Host, false));
+  TEST_ASSERT_FALSE(token_refresh_due(1899, 1000, 0, RuntimeMode::Host, false));
+  TEST_ASSERT_TRUE(token_refresh_due(1900, 1000, 0, RuntimeMode::Host, false));
+  TEST_ASSERT_FALSE(token_refresh_due(4599, 1000, 0, RuntimeMode::Active, false));
+  TEST_ASSERT_TRUE(token_refresh_due(4600, 1000, 0, RuntimeMode::Active, false));
+  TEST_ASSERT_FALSE(token_refresh_due(4599, 1000, 0, RuntimeMode::Eco, false));
+  TEST_ASSERT_TRUE(token_refresh_due(4600, 1000, 0, RuntimeMode::Eco, false));
+  TEST_ASSERT_FALSE(token_refresh_due(1059, 1000, 1060, RuntimeMode::Host, true));
+  TEST_ASSERT_TRUE(token_refresh_due(1060, 1000, 1060, RuntimeMode::Host, true));
+  TEST_ASSERT_FALSE(token_refresh_due(1100, 1000, 4600, RuntimeMode::Eco, true));
+  TEST_ASSERT_TRUE(token_refresh_due(4600, 1000, 4600, RuntimeMode::Eco, true));
+}
+
 void test_usage_does_not_change_battery_low_battery_or_axiom_cadence() {
   const uint32_t low_battery = adaptive_refresh_interval_sec(1800, 2, 19, true);
   for (bool usage : {false, true}) {
@@ -106,6 +120,7 @@ int main() {
   RUN_TEST(test_empty_cache_or_invalid_clock_fetches_after_cooldown);
   RUN_TEST(test_usage_host_fetches_every_five_minutes_and_retries_a_failure_after_one);
   RUN_TEST(test_a_failed_attempt_retries_at_its_gate_even_soon_after_a_success);
+  RUN_TEST(test_token_cadence_is_independent_and_battery_never_exceeds_hourly);
   RUN_TEST(test_usage_does_not_change_battery_low_battery_or_axiom_cadence);
   return UNITY_END();
 }

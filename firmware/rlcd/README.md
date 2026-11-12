@@ -84,9 +84,11 @@ Screen/network cadence:
   battery/STALE state, polarity, or runtime badge changes.
 - Silent probe wakes and unchanged fetches do not push a frame.
 - Producer normally publishes every 15 minutes. Axiom `HOST` fetches every 15
-  minutes; configured usage `HOST` fetches every 300 seconds, including after a
-  failed attempt. `ACTIVE`/`ECO` keep adaptive 30
-  min → 1 h → 2 h intervals; low battery may extend that to 4 h.
+  minutes; configured Allowance `HOST` fetches every 300 seconds. Token rides in
+  the same worker/Wi-Fi session every 15 minutes in `HOST`, and no more often
+  than hourly in battery modes. BOOT always fetches both. A failed HOST fetch
+  retries after 60 seconds. `ACTIVE`/`ECO` keep adaptive 30 min → 1 h → 2 h
+  intervals; low battery may extend that to 4 h.
 - Wi-Fi/NTP/Axiom work runs as one background refresh. The main loop continues
   polling USB SOF, buttons, and the console; state/NVS/RTC/display reconciliation
   stays serialized on the main task after the worker finishes.
@@ -143,11 +145,12 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 | **BOOT** tap, usage build | Usage + sync now | sync now |
 
-In the usage build KEY alone toggles Usage ⇄ climate, so BOOT means "sync now":
-it shows the Usage page and starts a fetch immediately, ignoring the poll/retry
-gate. The footer reads `SYNCING · fetching now` until the fetch completes (a
-fetch already in flight is awaited, not doubled); a success then replays the
-drive-in sweep.
+In the usage build KEY cycles Allowance → Token → climate Dashboard → Allowance.
+BOOT means "sync now": on either Deck page it stays on that page and fetches both
+Allowance and Token immediately; on climate it opens Allowance and syncs. The
+visible page's footer reads `SYNCING · fetching now` until the fetch completes
+(a fetch already in flight is joined where possible, not doubled); a successful
+Token sync then replays its 0.9-second sweep in HOST.
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
 advances exactly once through Dashboard ⇄ Page 1 ⇄ … ⇄ Page N; its eventual
@@ -244,6 +247,35 @@ observation under its original expiry. Unobserved slots show `--` and Unavailabl
 without allowance bars. Used is rounded once and remaining is its integer
 complement. Bars represent remaining.
 
+#### Token page
+
+The Deck's second page is a hand-drawn 400×300 Token view
+(`src/render/token_render.cpp`) backed by the pure codec and view model in
+`src/render/token.cpp` and `src/render/token_view.cpp`. It fetches the private
+`GET /api/usage-tokens` at the same origin as `RCRLCD_USAGE_URL`, using the same
+read key and bounded HTTPS policy as Allowance. Its schema is
+`rcink.token-usage.v1`; all daily and lifetime values decode as 64-bit integers.
+
+- Claude, Codex and Gemini use the Allowance names/logos. Each row shows its
+  last-seven-day total, today versus the mean of the seven complete days before
+  it, a per-row-scaled 30-day bar chart, and lifetime `ODO`. Today's bar is
+  hollow and the Usual-day marker is dotted. All-zero rows remain explicit.
+- The headline reports a material Provider on a tear, otherwise the busiest
+  Provider this week, or waits when every seven-day total is zero. OLD DATA or a
+  Token failure suppresses the tear headline without hiding retained numbers.
+- The footer independently reports `Synced HH:MM`, `OLD DATA · M4 HH:MM`,
+  `SYNC FAILED · retry HH:MM`, or `SYNCING`. Allowance and Token failures do not
+  contaminate each other's page.
+- At local midnight the pure view shifts the cached series and appends a zero
+  today; it never relabels yesterday. The last complete validated response has
+  its own bounded, versioned `token` NVS blob, restored on boot/wake and written
+  only when its encoded contents change.
+- HOST alone animates a 0.9-second left-to-right bar sweep and odometer roll on
+  page entry or Token sync. There is no idle Token animation; ACTIVE/ECO and
+  retained deep-sleep frames are static.
+- Console `q` on this page prints its `rcink.token-view.v1` `layout_json`, which
+  is also the redraw fingerprint and contains the shifted series and bar model.
+
 #### Road view
 
 The usage page is hand-drawn full-screen (`src/render/usage_render.cpp`), not a
@@ -315,8 +347,8 @@ On the device's Wi-Fi (measured 2026-11-12: ~250 ms RTT with loss to
 Cloudflare) a handshake takes 5-10 s, about 1 s of it certificate checks, so
 10-second deadlines failed roughly one fetch in six. `[usage] GET status=N after
 M ms` logs each request's time. HTTP/1.0 requests close-delimited identity
-bodies; unexpected transfer encoding is rejected. The body is bounded to 4096
-bytes. Redirects are refused, so the read key cannot follow a
+bodies; unexpected transfer encoding is rejected. Bodies are bounded to 4096 bytes for
+Allowance and 8192 bytes for Token. Redirects are refused, so the read key cannot follow a
 Location header. A failed HTTP/status/schema/size/time check preserves the last
 good snapshot and displays `SYNC FAILED`; serial logs expose only
 sanitized diagnostics/status codes. An unknown clock cannot display fresh rows

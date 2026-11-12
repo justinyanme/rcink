@@ -25,6 +25,7 @@
 #include "render/deck_view.h"
 #include "render/diagnostics.h"
 #include "render/page.h"
+#include "render/token_view.h"
 #include "sense/battery.h"
 #include "sense/clock.h"
 #include "sense/rtc.h"
@@ -37,6 +38,7 @@ namespace rcpaper {
 // offline; network refreshes resync the RTC and update the secondary Deck.
 DeviceState g_state;
 UsageSnapshot g_usage;
+TokenSnapshot g_token;
 BatteryReading g_battery;
 Shtc3Reading g_env;
 View g_view = View::Dashboard;
@@ -53,6 +55,9 @@ RTC_DATA_ATTR static uint64_t g_fetch_retry_not_before_s = 0;
 RTC_DATA_ATTR static bool g_deck_frame_valid = false;
 RTC_DATA_ATTR static bool g_last_deck_stale = false;
 RTC_DATA_ATTR static bool g_usage_fetch_failed = false;
+RTC_DATA_ATTR static bool g_token_fetch_failed = false;
+RTC_DATA_ATTR static uint64_t g_token_last_ok_s = 0;
+RTC_DATA_ATTR static uint64_t g_token_retry_at_s = 0;
 RTC_DATA_ATTR static uint32_t g_usage_frame_fingerprint = 0;
 RTC_DATA_ATTR static uint64_t g_usage_last_fetch_s = 0;
 RTC_DATA_ATTR static uint32_t g_usage_fetch_fingerprint = 0;
@@ -77,6 +82,11 @@ static uint32_t g_usage_tick = 0;
 static bool g_usage_sync_requested = false;
 static std::string g_usage_view_json;
 static UsageView g_usage_view;
+static bool g_token_sweeping = false;
+static uint32_t g_token_sweep_start_ms = 0;
+static uint32_t g_token_last_frame_ms = 0;
+static std::string g_token_view_json;
+static TokenView g_token_view;
 #endif
 static bool g_render_pending = false;
 
@@ -123,6 +133,10 @@ static RefreshAppState refresh_app_state() {
       g_last_result,
       g_usage,
       g_usage_fetch_failed,
+      g_token,
+      g_token_fetch_failed,
+      g_token_last_ok_s,
+      g_token_retry_at_s,
   };
 }
 
@@ -147,6 +161,12 @@ static void try_enter_deep_sleep() {
 static UsageSync usage_sync() {
   return {g_usage_fetch_failed, g_state.last_fetch_s, g_fetch_retry_not_before_s,
           g_usage_sync_requested};
+}
+
+static TokenSync token_sync() {
+  const uint64_t retry = g_token_retry_at_s > g_fetch_retry_not_before_s
+      ? g_token_retry_at_s : g_fetch_retry_not_before_s;
+  return {g_token_fetch_failed, g_token_last_ok_s, retry, g_usage_sync_requested};
 }
 
 static bool usage_animating() {
@@ -178,6 +198,29 @@ static UsageFrame usage_frame() {
   return frame;
 }
 
+static bool token_animating() {
+  return g_usage_animation && g_runtime.mode == RuntimeMode::Host;
+}
+
+static void start_token_sweep() {
+  if (!token_animating()) return;
+  g_token_sweeping = true;
+  g_token_sweep_start_ms = millis();
+}
+
+static TokenFrame token_frame() {
+  TokenFrame frame;
+  if (!token_animating() || !g_token_sweeping) return frame;
+  const uint32_t elapsed = millis() - g_token_sweep_start_ms;
+  if (elapsed >= kUsageSweepMs) {
+    g_token_sweeping = false;
+  } else {
+    const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
+    frame.sweep = 1.0f - rest * rest * rest;
+  }
+  return frame;
+}
+
 // Draw exactly the model that was fingerprinted into the page record.
 static bool draw_usage_page(const PageRecord& rec) {
   if (rec.layout_json != g_usage_view_json) {
@@ -187,6 +230,17 @@ static bool draw_usage_page(const PageRecord& rec) {
     g_usage_view_json = rec.layout_json;
   }
   render_usage(g_usage_view, g_battery, g_runtime.mode, usage_frame());
+  return true;
+}
+
+static bool draw_token_page(const PageRecord& rec) {
+  if (rec.layout_json != g_token_view_json) {
+    TokenView view;
+    if (!decode_token_view(rec.layout_json, view)) return false;
+    g_token_view = view;
+    g_token_view_json = rec.layout_json;
+  }
+  render_token(g_token_view, g_battery, g_runtime.mode, token_frame());
   return true;
 }
 #endif
@@ -244,6 +298,15 @@ void render_current() {
       return;
     }
     Serial.printf("[render] usage road in %u ms\n", (unsigned)(millis() - t0));
+  } else if (rec.id == kTokenPageId) {
+    const uint32_t t0 = millis();
+    if (!draw_token_page(rec)) {
+      g_last_result = "token-view-invalid";
+      render_error("token view decode failed", g_runtime.mode);
+      g_deck_frame_valid = false;
+      return;
+    }
+    Serial.printf("[render] token bars in %u ms\n", (unsigned)(millis() - t0));
   } else
 #endif
   {
@@ -320,7 +383,12 @@ void toggle_view() {
 
 void apply_navigation(const NavigationState& next) {
 #if RCRLCD_USAGE_ENABLED
-  if (next.view == View::Deck && g_view != View::Deck) start_usage_sweep();
+  if (next.view == View::Deck &&
+      (g_view != View::Deck || next.page_index != g_state.page_index) &&
+      next.page_index < g_state.pages.size()) {
+    if (g_state.pages[next.page_index].id == kTokenPageId) start_token_sweep();
+    else start_usage_sweep();
+  }
 #endif
   if (next.page_index != g_state.page_index) {
     g_state.page_index = next.page_index;
@@ -340,15 +408,20 @@ void navigate_previous() {
 }
 
 #if RCRLCD_USAGE_ENABLED
-// BOOT with usage: Usage <-> climate needs only KEY, so BOOT means "show usage
-// and sync now". It ignores the poll/retry gate; a sync already in flight is
-// awaited rather than doubled. The caller redraws.
+// BOOT syncs the visible Deck page in place; from climate it opens Allowance.
+// Both GETs are forced in the same worker/Wi-Fi session. An in-flight refresh is
+// joined where possible rather than doubled. The caller redraws.
 static void request_usage_sync() {
-  apply_navigation({View::Deck, 0});
+  apply_navigation(navigation_after_sync_press(
+      g_view, g_state.page_index, g_state.pages.size()));
   g_usage_sync_requested = true;
-  start_network_refresh(refresh_app_state());
-  if (!refresh_busy()) g_usage_sync_requested = false;  // the task could not start
-  update_usage_page(g_state, g_usage, (uint64_t)time(nullptr), usage_sync());
+  start_network_refresh(refresh_app_state(), true);
+  if (!refresh_busy() && !refresh_token_pending()) {
+    g_usage_sync_requested = false;  // the task could not start
+  }
+  const uint64_t now = (uint64_t)time(nullptr);
+  update_usage_page(g_state, g_usage, now, usage_sync());
+  update_token_page(g_state, g_token, now, token_sync());
 }
 #endif
 
@@ -382,10 +455,24 @@ static bool deck_stale_edge_due() {
 static bool poll_refresh_completion() {
   const DeckViewKey before = deck_visible_state();
   bool usage_page_changed = false;
-  if (!finish_network_refresh(refresh_app_state(), usage_page_changed)) return false;
+  bool token_succeeded = false;
+  if (!finish_network_refresh(refresh_app_state(), usage_page_changed,
+                              token_succeeded)) return false;
 #if RCRLCD_USAGE_ENABLED
-  g_usage_sync_requested = false;  // the completion already redrew without SYNCING
-  if (usage_page_changed && !g_usage_fetch_failed && g_view == View::Deck) start_usage_sweep();
+  // A very late BOOT may have missed the active worker's Token GET. Keep the
+  // requested-sync footer up while the queued follow-up run starts.
+  g_usage_sync_requested = refresh_token_pending();
+  if (g_usage_sync_requested) {
+    const uint64_t now = (uint64_t)time(nullptr);
+    update_usage_page(g_state, g_usage, now, usage_sync());
+    update_token_page(g_state, g_token, now, token_sync());
+    usage_page_changed = true;
+  }
+  if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
+    const std::string& id = g_state.pages[g_state.page_index].id;
+    if (id == kTokenPageId && token_succeeded) start_token_sweep();
+    if (id == kUsagePageId && usage_page_changed && !g_usage_fetch_failed) start_usage_sweep();
+  }
 #endif
   return g_view == View::Dashboard ? dashboard_minute_due()
                                    : usage_page_changed || before != deck_visible_state();
@@ -396,8 +483,9 @@ static bool poll_usage_freshness() {
   const uint64_t now = (uint64_t)time(nullptr);
   if (now == g_usage_evaluated_at_s) return false;
   g_usage_evaluated_at_s = now;
-  return update_usage_page(g_state, g_usage, now, usage_sync()) &&
-         g_view == View::Deck;
+  const bool allowance_changed = update_usage_page(g_state, g_usage, now, usage_sync());
+  const bool token_changed = update_token_page(g_state, g_token, now, token_sync());
+  return (allowance_changed || token_changed) && g_view == View::Deck;
 #else
   return false;
 #endif
@@ -416,6 +504,20 @@ static void poll_usage_animation() {
   g_usage_last_frame_ms = now;
   g_usage_tick++;
   draw_usage_page(g_state.pages[g_state.page_index]);
+#endif
+}
+
+// Token has no idle motion: HOST draws only the 0.9 s entry/sync sweep, then
+// leaves the final static frame untouched. ECO/ACTIVE always take sweep == 1.
+static void poll_token_animation() {
+#if RCRLCD_USAGE_ENABLED
+  if (g_view != View::Deck || !g_deck_frame_valid || !g_token_sweeping ||
+      !token_animating() || g_state.page_index >= g_state.pages.size() ||
+      g_state.pages[g_state.page_index].id != kTokenPageId) return;
+  const uint32_t now = millis();
+  if (now - g_token_last_frame_ms < kUsageFrameMs) return;
+  g_token_last_frame_ms = now;
+  draw_token_page(g_state.pages[g_state.page_index]);
 #endif
 }
 
@@ -609,8 +711,12 @@ void setup() {
 #if RCRLCD_USAGE_ENABLED
   // Do not interpret the legacy Axiom pages cache as an allowance snapshot.
   decode_usage(nvs_load_usage(), g_usage);
+  decode_token(nvs_load_token(), g_token);
   if (!resumed_from_deep_sleep) {
     g_usage_fetch_failed = false;
+    g_token_fetch_failed = false;
+    g_token_last_ok_s = 0;
+    g_token_retry_at_s = 0;
     g_usage_last_fetch_s = 0;
     g_usage_fetch_fingerprint = 0;
     g_usage_unchanged_fetches = 0;
@@ -618,8 +724,12 @@ void setup() {
   g_state.last_fetch_s = g_usage_last_fetch_s;
   g_state.last_fetch_fingerprint = g_usage_fetch_fingerprint;
   g_state.unchanged_fetches = g_usage_unchanged_fetches;
-  g_state.pages = {usage_page(g_usage, (uint64_t)time(nullptr), usage_sync())};
-  g_state.page_index = 0;
+  const uint64_t now = (uint64_t)time(nullptr);
+  g_state.pages = {
+      usage_page(g_usage, now, usage_sync()),
+      token_page(g_token, now, token_sync()),
+  };
+  if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 #endif
   const uint8_t startup_view = startup_view_id(
       g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved);
@@ -642,13 +752,17 @@ void setup() {
     g_fetch_retry_not_before_s = 0;
   }
   if (key_wake) navigate_next();
+#if RCRLCD_USAGE_ENABLED
+  if (!resumed_from_deep_sleep && g_view == View::Deck &&
+      g_state.pages[g_state.page_index].id == kTokenPageId) start_token_sweep();
+#endif
 
   g_render_pending = !resumed_from_deep_sleep || key_wake ||
                      g_runtime.mode != RuntimeMode::Eco ||
                      dashboard_minute_due();
 #if RCRLCD_USAGE_ENABLED
   if (g_view == View::Deck && (!g_deck_frame_valid ||
-      usage_page_fingerprint(g_state.pages[0]) != g_usage_frame_fingerprint)) {
+      usage_page_fingerprint(g_state.pages[g_state.page_index]) != g_usage_frame_fingerprint)) {
     g_render_pending = true;
   }
 #endif
@@ -690,6 +804,7 @@ void loop() {
   }
 
   poll_usage_animation();
+  poll_token_animation();
 
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
       refresh_due_now(refresh_app_state())) {

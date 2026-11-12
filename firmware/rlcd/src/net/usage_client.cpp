@@ -21,10 +21,11 @@ constexpr int kReadTimeoutMs = 20000;
 constexpr uint32_t kBodyDeadlineMs = 20000;
 }  // namespace
 
-bool usage_fetch(UsageSnapshot& out) {
-  if (!wall_clock_is_valid() || strncmp(RCRLCD_USAGE_URL, "https://", 8) != 0 ||
+bool usage_get_json(const char* url, size_t maximum_bytes, const char* log_label,
+                    std::string& body) {
+  if (!wall_clock_is_valid() || strncmp(url, "https://", 8) != 0 ||
       strlen(RCRLCD_USAGE_READ_KEY) == 0) {
-    Serial.println("[usage] HTTPS configuration or clock unavailable");
+    Serial.printf("[%s] HTTPS configuration or clock unavailable\n", log_label);
     return false;
   }
   WiFiClientSecure client;
@@ -37,7 +38,7 @@ bool usage_fetch(UsageSnapshot& out) {
   // Request close-delimited identity encoding; read the body ourselves with a
   // total deadline, since HTTPClient's stream-copy loop can wait indefinitely.
   http.useHTTP10(true);
-  if (!http.begin(client, RCRLCD_USAGE_URL)) return false;
+  if (!http.begin(client, url)) return false;
   const char* headers[] = {"Content-Type", "Transfer-Encoding"};
   http.collectHeaders(headers, 2);
   http.setUserAgent("rcink-rlcd/1.0");
@@ -46,18 +47,19 @@ bool usage_fetch(UsageSnapshot& out) {
   http.addHeader("X-Usage-Read-Key", RCRLCD_USAGE_READ_KEY);
   const uint32_t started_ms = millis();
   const int status = http.GET();
-  Serial.printf("[usage] GET status=%d after %u ms\n", status, (unsigned)(millis() - started_ms));
+  Serial.printf("[%s] GET status=%d after %u ms\n", log_label, status,
+                (unsigned)(millis() - started_ms));
   String media = http.header("Content-Type");
   const int separator = media.indexOf(';');
   if (separator >= 0) media = media.substring(0, separator);
   media.trim();
   const int declared = http.getSize();
   if (status != 200 || !media.equalsIgnoreCase("application/json") ||
-      http.header("Transfer-Encoding").length() != 0 || declared > (int)kUsageMaximumBytes) {
+      http.header("Transfer-Encoding").length() != 0 || declared > (int)maximum_bytes) {
     http.end();
     return false;
   }
-  std::string body;
+  body.clear();
   body.reserve(declared > 0 ? declared : 1024);
   WiFiClient* stream = http.getStreamPtr();
   const uint32_t deadline = millis() + kBodyDeadlineMs;
@@ -68,7 +70,7 @@ bool usage_fetch(UsageSnapshot& out) {
       uint8_t buffer[256];
       const int read = stream->read(buffer, std::min(available, (int)sizeof(buffer)));
       if (read > 0) body.append((const char*)buffer, read);
-      if (body.size() > kUsageMaximumBytes) break;
+      if (body.size() > maximum_bytes) break;
       if (declared >= 0 && body.size() >= (size_t)declared) {
         complete = body.size() == (size_t)declared;
         break;
@@ -81,8 +83,18 @@ bool usage_fetch(UsageSnapshot& out) {
     }
   }
   http.end();
-  if (!complete || !decode_usage(body, out)) {
-    Serial.println("[usage] incomplete, oversized, or invalid response; keeping cache");
+  if (!complete) {
+    Serial.printf("[%s] incomplete or oversized response; keeping cache\n", log_label);
+    return false;
+  }
+  return true;
+}
+
+bool usage_fetch(UsageSnapshot& out) {
+  std::string body;
+  if (!usage_get_json(RCRLCD_USAGE_URL, kUsageMaximumBytes, "usage", body)) return false;
+  if (!decode_usage(body, out)) {
+    Serial.println("[usage] invalid response; keeping cache");
     return false;
   }
   return true;
