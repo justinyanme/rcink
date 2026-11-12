@@ -11,6 +11,7 @@
 #include "net/usage_config.h"
 #include "power/network_policy.h"
 #include "power/refresh_schedule.h"
+#include "render/token_persistence.h"
 #include "sense/clock.h"
 
 namespace rcpaper {
@@ -55,10 +56,9 @@ bool refresh_due_now(const RefreshAppState& app) {
   const uint64_t early = early_refetch_at(app);
   if (early != 0 && query.clock_valid && now >= early && now >= app.retry_not_before_s) return true;
 #if RCRLCD_USAGE_ENABLED
-  if (refresh_token_pending()) return true;  // a late BOOT joined the next run
-  return query.clock_valid && now >= app.retry_not_before_s &&
-         token_refresh_due(now, app.token_last_ok_s, app.token_retry_at_s,
-                           app.runtime_mode, app.token_fetch_failed);
+  // Token cadence never starts a worker; it rides the next Allowance run.
+  // Only an explicit BOOT request that missed the active worker is the exception.
+  return refresh_token_pending();
 #else
   return false;
 #endif
@@ -131,8 +131,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
       app.token = completion.token;
       app.token_last_ok_s = completion.completed_at_s;
       token_succeeded = true;
-      const std::string saved = encode_token(app.token);
-      if (nvs_load_token() != saved && !nvs_save_token(saved)) {
+      if (!persist_token_snapshot(app.token)) {
         Serial.println("[token] cache save failed; retained in memory only");
       }
     }

@@ -265,6 +265,22 @@ void test_midnight_shift_always_uses_worker_utc8_date() {
   TEST_ASSERT_EQUAL_STRING("1.78B", shifted.rows[0].seven_day.c_str());
 }
 
+void test_unknown_clock_suppresses_tear_and_never_formats_epoch_retry() {
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  for (TokenProvider& provider : snapshot.providers) provider.days.fill(0);
+  for (size_t i = 22; i <= 28; i++) snapshot.providers[0].days[i] = 100;
+  snapshot.providers[0].days[29] = 150;
+  TEST_ASSERT_EQUAL_STRING("Claude is on a tear today",
+      view_of(snapshot, 1794446400ULL).headline.c_str());
+
+  const TokenView unknown = view_of(snapshot, 0, {true, 0, 60, false});
+  TEST_ASSERT_EQUAL_STRING("Busiest this week: Claude", unknown.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("NO CLOCK", unknown.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("waiting for NTP", unknown.footer_text.c_str());
+  TEST_ASSERT_TRUE(unknown.rows[0].shifted_days == snapshot.providers[0].days);
+}
+
 void test_number_format_uses_at_most_three_significant_digits() {
   TEST_ASSERT_EQUAL_STRING("0", format_tokens(0).c_str());
   TEST_ASSERT_EQUAL_STRING("940", format_tokens(940).c_str());
@@ -294,6 +310,7 @@ int main() {
   RUN_TEST(test_percent_label_caps_above_999_percent);
   RUN_TEST(test_never_synced_is_waiting_not_old_data);
   RUN_TEST(test_midnight_shift_always_uses_worker_utc8_date);
+  RUN_TEST(test_unknown_clock_suppresses_tear_and_never_formats_epoch_retry);
   RUN_TEST(test_number_format_uses_at_most_three_significant_digits);
   return UNITY_END();
 }

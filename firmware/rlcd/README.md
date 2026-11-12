@@ -86,8 +86,10 @@ Screen/network cadence:
 - Producer normally publishes every 15 minutes. Axiom `HOST` fetches every 15
   minutes; configured Allowance `HOST` fetches every 300 seconds. Token rides in
   the same worker/Wi-Fi session every 15 minutes in `HOST`, and no more often
-  than hourly in battery modes. BOOT always fetches both. A failed HOST fetch
-  retries after 60 seconds. `ACTIVE`/`ECO` keep adaptive 30 min → 1 h → 2 h
+  than hourly in battery modes. BOOT always fetches both. A failed Allowance
+  HOST fetch retries after 60 seconds. A Token-only failure waits for the next
+  Allowance run, with the footer showing that actual retry time. `ACTIVE`/`ECO`
+  keep adaptive 30 min → 1 h → 2 h
   intervals; low battery may extend that to 4 h.
 - Wi-Fi/NTP/Axiom work runs as one background refresh. The main loop continues
   polling USB SOF, buttons, and the console; state/NVS/RTC/display reconciliation
@@ -229,8 +231,8 @@ Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. Climate Dashboard, existing Deck/button navigation and runtime
 power policy are preserved. Usage is the default only when no NVS view choice exists. Cold restart and
 Timer/KEY deep-sleep wakes restore the saved view, including climate; KEY then
-advances once. An existing saved climate choice is respected when enabling usage. KEY navigates Usage ↔ climate and BOOT
-syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
+advances once. An existing saved climate choice is respected when enabling usage. KEY cycles
+Allowance → Token → climate Dashboard → Allowance and BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
 retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
 a failure the retry gate alone schedules the next attempt, so the footer's
 `retry HH:MM` is when it really happens, even soon after a success.

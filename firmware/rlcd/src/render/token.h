@@ -38,6 +38,7 @@ constexpr const char* kTokenPageId = "token-usage";
 
 bool decode_token(const std::string& json, TokenSnapshot& out);
 std::string encode_token(const TokenSnapshot& snapshot);
+bool token_content_equal(const TokenSnapshot& a, const TokenSnapshot& b);
 PageRecord token_page(const TokenSnapshot& snapshot, uint64_t now, const TokenSync& sync);
 bool update_token_page(DeviceState& device, const TokenSnapshot& snapshot,
                        uint64_t now, const TokenSync& sync);

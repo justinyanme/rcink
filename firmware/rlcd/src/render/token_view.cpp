@@ -154,7 +154,8 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
                             const TokenSync& sync) {
   TokenView view;
   const int64_t elapsed = elapsed_local_days(snapshot.today, now);
-  const bool has_snapshot = snapshot.served_at != 0;
+  const bool clock_valid = now >= kClockMinimum;
+  const bool has_snapshot = !snapshot.today.empty();
   const bool old_data = has_snapshot &&
       (snapshot.required_source_collected_at == 0 ||
        (now >= kClockMinimum && now > snapshot.required_source_collected_at &&
@@ -173,7 +174,7 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   }
 
   int tear = -1;
-  if (!old_data && !sync.fetch_failed) {
+  if (clock_valid && !old_data && !sync.fetch_failed) {
     for (size_t p = 0; p < kTokenProviderCount; p++) {
       const auto& days = view.rows[p].shifted_days;
       const long double usual = complete_day_sum(days) / 7.0L;
@@ -197,6 +198,9 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   if (sync.syncing) {
     view.footer_chip = "SYNCING";
     view.footer_text = "fetching now";
+  } else if (!clock_valid) {
+    view.footer_chip = "NO CLOCK";
+    view.footer_text = "waiting for NTP";
   } else if (sync.fetch_failed) {
     view.footer_chip = "SYNC FAILED";
     view.footer_text = sync.retry_at_s > now ? "retry " + local_hhmm(sync.retry_at_s) : "retrying";

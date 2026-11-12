@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include "render/token.h"
+#include "render/token_persistence.h"
 #include "../fixtures/token_response.h"
 #include "../support/Arduino.h"
 // Keep production NVS serialization and keys; replace only ESP Preferences IO.
@@ -46,9 +47,32 @@ void test_token_blob_rejects_failed_oversized_and_corrupt_writes_or_restores() {
   TEST_ASSERT_TRUE(nvs_load_token().empty());
 }
 
+void test_token_persistence_skips_served_at_only_changes() {
+  nvs_fixture::values.clear();
+  nvs_fixture::fail_write = false;
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  TEST_ASSERT_TRUE(persist_token_snapshot(snapshot));
+
+  TokenSnapshot newer = snapshot;
+  newer.served_at += 60;
+  TEST_ASSERT_TRUE(token_content_equal(snapshot, newer));
+  TEST_ASSERT_TRUE(persist_token_snapshot(newer));
+  TokenSnapshot stored;
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), stored));
+  TEST_ASSERT_EQUAL_UINT64(snapshot.served_at, stored.served_at);  // no rewrite
+
+  newer.providers[0].days[0]++;
+  TEST_ASSERT_TRUE(persist_token_snapshot(newer));
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), stored));
+  TEST_ASSERT_EQUAL_UINT64(newer.served_at, stored.served_at);
+  TEST_ASSERT_EQUAL_UINT64(newer.providers[0].days[0], stored.providers[0].days[0]);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_token_blob_round_trips_separately_from_allowance_and_axiom);
   RUN_TEST(test_token_blob_rejects_failed_oversized_and_corrupt_writes_or_restores);
+  RUN_TEST(test_token_persistence_skips_served_at_only_changes);
   return UNITY_END();
 }

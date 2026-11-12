@@ -20,6 +20,10 @@ constexpr int16_t kTokenTopBaseline = 14;
 constexpr int16_t kTokenTotalBaseline = 50;
 constexpr int16_t kTokenChartBottom = 53;
 constexpr int16_t kTokenTodayBaseline = 71;
+constexpr int16_t kTokenChipPadding = 3;
+constexpr int16_t kTokenModeGap = 4;
+constexpr int16_t kTokenBatteryGap = 4;
+constexpr int16_t kTokenFooterTextGap = 6;
 
 struct TokenBox {
   int16_t left;
@@ -43,6 +47,43 @@ struct TokenRowGeometry {
   TokenBox today;
   TokenBox odometer;
 };
+
+struct TokenFooterWidths {
+  int16_t status_chip;
+  int16_t status_text;
+  int16_t runtime_chip;
+  int16_t battery_text;
+};
+
+struct TokenFooterGeometry {
+  TokenBox status;
+  TokenBox battery;
+};
+
+inline TokenFooterGeometry token_footer_geometry(const TokenFooterWidths& text) {
+  const int16_t status_right = 12 + text.status_chip + 2 * kTokenChipPadding +
+                               kTokenFooterTextGap + text.status_text;
+  const int16_t battery_left = kTokenChartRight -
+      (text.runtime_chip + 2 * kTokenChipPadding) - kTokenModeGap -
+      text.battery_text - kTokenBatteryGap - 24;
+  return {
+      {12, 279, status_right, 299},
+      {battery_left, 279, kTokenChartRight, 299},
+  };
+}
+
+struct TokenHeadlineGeometry {
+  TokenBox headline;
+  TokenBox since;
+};
+
+inline TokenHeadlineGeometry token_headline_geometry(int16_t headline_width,
+                                                     int16_t since_width) {
+  return {
+      {28, 0, (int16_t)(28 + headline_width), 24},
+      {(int16_t)(kTokenChartRight - since_width), 0, kTokenChartRight, 24},
+  };
+}
 
 inline TokenRowGeometry token_row_geometry(size_t index, const TokenTextWidths& text) {
   const int16_t top = kTokenRowTop + (int16_t)index * kTokenRowPitch;

@@ -45,8 +45,38 @@ void test_worst_case_token_rows_have_real_glyph_and_element_gaps() {
   }
 }
 
+void test_footer_worst_cases_clear_the_battery_and_runtime_block() {
+  // Actual FreeSans widths: SYNC FAILED/ACTIVE are the widest chip/mode pair,
+  // and 100% is the widest battery label (therefore covers every 0-100% value).
+  const TokenFooterWidths failure = {122, 86, 68, 46};
+  const TokenFooterGeometry failed = token_footer_geometry(failure);
+  TEST_ASSERT_GREATER_OR_EQUAL(4, failed.battery.left - failed.status.right);
+
+  const TokenFooterGeometry old = token_footer_geometry({94, 75, 68, 46});
+  TEST_ASSERT_GREATER_OR_EQUAL(4, old.battery.left - old.status.right);
+  const TokenFooterGeometry syncing = token_footer_geometry({85, 101, 68, 46});
+  TEST_ASSERT_GREATER_OR_EQUAL(4, syncing.battery.left - syncing.status.right);
+
+  for (int16_t runtime : {51, 68, 39}) {  // HOST, ACTIVE, ECO
+    const TokenFooterGeometry each = token_footer_geometry({122, 86, runtime, 46});
+    TEST_ASSERT_GREATER_OR_EQUAL(4, each.battery.left - each.status.right);
+    TEST_ASSERT_LESS_OR_EQUAL(400, each.battery.right);
+  }
+}
+
+void test_lifetime_origin_label_clears_every_headline() {
+  // Busiest this week: Gemini is actually one px wider than the named tear
+  // headline, so cover both. The origin label is FreeSans Regular9, 108 px.
+  const TokenHeadlineGeometry widest = token_headline_geometry(221, 108);
+  TEST_ASSERT_GREATER_OR_EQUAL(4, widest.since.left - widest.headline.right);
+  const TokenHeadlineGeometry tear = token_headline_geometry(213, 108);
+  TEST_ASSERT_GREATER_OR_EQUAL(4, tear.since.left - tear.headline.right);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_worst_case_token_rows_have_real_glyph_and_element_gaps);
+  RUN_TEST(test_footer_worst_cases_clear_the_battery_and_runtime_block);
+  RUN_TEST(test_lifetime_origin_label_clears_every_headline);
   return UNITY_END();
 }

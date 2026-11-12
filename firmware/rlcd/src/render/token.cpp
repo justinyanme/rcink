@@ -121,4 +121,14 @@ std::string encode_token(const TokenSnapshot& snapshot) {
   return json;
 }
 
+bool token_content_equal(const TokenSnapshot& a, const TokenSnapshot& b) {
+  if (a.today != b.today ||
+      a.required_source_collected_at != b.required_source_collected_at) return false;
+  for (size_t p = 0; p < kTokenProviderCount; p++) {
+    if (a.providers[p].days != b.providers[p].days ||
+        a.providers[p].lifetime != b.providers[p].lifetime) return false;
+  }
+  return true;
+}
+
 }  // namespace rcpaper

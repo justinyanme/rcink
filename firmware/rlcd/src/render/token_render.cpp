@@ -80,9 +80,9 @@ void pixels(const char* const (&rows)[N], int16_t x, int16_t y) {
 }
 
 int16_t chip(const char* value, int16_t x, int16_t baseline) {
-  const int16_t width = text_w(value, 9, true) + 10;
+  const int16_t width = text_w(value, 9, true) + 2 * kTokenChipPadding;
   rect(x, baseline - 15, width, 19);
-  text(value, x + 5, baseline, 9, true, Align::Left, kPaper);
+  text(value, x + kTokenChipPadding, baseline, 9, true, Align::Left, kPaper);
   return width;
 }
 
@@ -97,6 +97,7 @@ void headline(const TokenView& view) {
   if (view.headline_pick >= 0) pixels(kSpark, 12, 6);
   text(view.headline.c_str(), view.headline_pick >= 0 ? 28 : 12, 18, 9,
        view.headline_pick >= 0);
+  text("since Sep '25", kTokenChartRight, 18, 9, false, Align::Right);
   rect(12, 24, 376, 1);
 }
 
@@ -155,22 +156,23 @@ void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mo
   rect(12, 275, 376, 1);
   constexpr int16_t baseline = 294;
   int16_t right = 388;
-  const int16_t mode_w = text_w(runtime_mode_name(mode), 9, true) + 10;
+  const int16_t mode_w = text_w(runtime_mode_name(mode), 9, true) +
+                         2 * kTokenChipPadding;
   chip(runtime_mode_name(mode), right - mode_w, baseline);
-  right -= mode_w + 8;
+  right -= mode_w + kTokenModeGap;
   char percent[8];
   std::snprintf(percent, sizeof(percent), battery.ok ? "%u%%" : "--%%",
                 (unsigned)battery.pct);
   text(percent, right, baseline, 9, false, Align::Right);
-  right -= text_w(percent, 9) + 6;
+  right -= text_w(percent, 9) + kTokenBatteryGap;
   const int16_t x = right - 24;
   g->drawRect(x, 283, 22, 12, kInk);
   rect(x + 22, 287, 2, 4);
   if (battery.ok) rect(x + 2, 285, (18 * std::min<unsigned>(battery.pct, 100) + 50) / 100, 8);
   if (!view.footer_chip.empty()) {
     const int16_t width = chip(view.footer_chip.c_str(), 12, baseline);
-    rect(12 + width + 4, baseline - 5, 2, 2);
-    text(view.footer_text.c_str(), 12 + width + 9, baseline, 9);
+    rect(12 + width + 3, baseline - 5, 2, 2);
+    text(view.footer_text.c_str(), 12 + width + kTokenFooterTextGap, baseline, 9);
   } else {
     text(view.footer_text.c_str(), 12, baseline, 9);
   }
