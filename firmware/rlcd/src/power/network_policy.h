@@ -36,6 +36,19 @@ inline uint32_t network_failure_retry_sec(
   return network_refresh_interval_sec(mode, adaptive_interval_sec, usage_enabled);
 }
 
+// Only Allowance success/failure controls the shared Allowance worker gate.
+// Token has a separate retry clock and may ride the next scheduled run.
+inline uint32_t allowance_refresh_cooldown_sec(
+    RuntimeMode mode, uint32_t adaptive_interval_sec, bool allowance_succeeded) {
+  return allowance_succeeded
+      ? network_refresh_interval_sec(mode, adaptive_interval_sec, true)
+      : network_failure_retry_sec(mode, adaptive_interval_sec, true);
+}
+
+inline uint64_t token_retry_on_host_entry(uint64_t retry_at_s, bool token_failed) {
+  return token_failed ? 0 : retry_at_s;
+}
+
 // Token rides in Allowance worker runs, but has its own success clock. Battery
 // modes fetch no more often than hourly; a failed attempt becomes eligible at
 // the shared retry gate regardless of the last successful Token response.

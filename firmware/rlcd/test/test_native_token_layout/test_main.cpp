@@ -19,9 +19,9 @@ bool overlaps(const TokenBox& a, const TokenBox& b) {
 
 void test_worst_case_token_rows_have_real_glyph_and_element_gaps() {
   // FreeSans advances used by the device, measured from its GFX glyph tables:
-  // Gemini Bold9=61; 999B Bold24=111; the worst today line Regular9=267 plus
-  // four pixels for the manually drawn middle dot; ODO+999B Bold9=91.
-  const TokenTextWidths worst = {61, 111, 271, 91};
+  // Gemini Bold9=61; widest 99.9M/9.99M Bold24=131; the capped worst today
+  // line Regular9=278 plus four for the drawn dot; ODO+999B Bold9=91.
+  const TokenTextWidths worst = {61, 131, 282, 91};
   for (size_t i = 0; i < kTokenProviderCount; i++) {
     const TokenRowGeometry row = token_row_geometry(i, worst);
     TEST_ASSERT_GREATER_OR_EQUAL(2, vertical_gap(row.provider, row.total));

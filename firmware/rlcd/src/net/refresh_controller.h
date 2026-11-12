@@ -27,7 +27,7 @@ struct RefreshAppState {
 bool refresh_due_now(const RefreshAppState& app);
 bool start_network_refresh(RefreshAppState app, bool force_token = false);
 bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
-                            bool& token_succeeded);
+                            bool& token_succeeded, bool& allowance_page_changed);
 void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
                                             RuntimeMode previous);
 

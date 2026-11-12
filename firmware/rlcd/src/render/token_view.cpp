@@ -66,13 +66,9 @@ int64_t elapsed_local_days(const std::string& server_today, uint64_t now) {
   if (now < kClockMinimum) return 0;
   int year, month, day;
   if (!parse_date(server_today, year, month, day)) return 0;
-  const time_t instant = (time_t)now;
-  std::tm local = {};
-  localtime_r(&instant, &local);
   const int64_t server = days_from_civil(year, (unsigned)month, (unsigned)day);
-  const int64_t device = days_from_civil(local.tm_year + 1900,
-                                         (unsigned)local.tm_mon + 1,
-                                         (unsigned)local.tm_mday);
+  // The Worker defines today in Asia/Shanghai, independent of device chrome TZ.
+  const int64_t device = (int64_t)(now + 8 * 3600) / 86400;
   return device > server ? device - server : 0;
 }
 
@@ -99,6 +95,8 @@ void shift_days(const TokenProvider& provider, int64_t elapsed, TokenRowView& ro
     else row.bars[i] = (uint8_t)std::max<long>(1, std::lround(
         (long double)row.shifted_days[i] * kTokenChartPx / maximum));
   }
+  // A 1-2 px drawRect has no interior; keep today's hollow bar distinguishable.
+  row.bars[29] = std::max<uint8_t>(3, row.bars[29]);
   row.usual_px = usual > 0 && maximum > 0
       ? (uint8_t)std::max<long>(1, std::lround(usual * kTokenChartPx / maximum)) : 0;
 
@@ -108,9 +106,10 @@ void shift_days(const TokenProvider& provider, int64_t elapsed, TokenRowView& ro
   } else {
     const long double percent = (long double)row.shifted_days[29] * 100.0L / usual;
     char percent_label[40];
-    std::snprintf(percent_label, sizeof(percent_label), "%.0Lf", percent);
+    if (percent > 999) std::snprintf(percent_label, sizeof(percent_label), "999%%+");
+    else std::snprintf(percent_label, sizeof(percent_label), "%.0Lf%%", percent);
     char label[160];
-    std::snprintf(label, sizeof(label), "today %s · %s%% of a usual day",
+    std::snprintf(label, sizeof(label), "today %s · %s of a usual day",
                   today.c_str(), percent_label);
     row.today = label;
   }
@@ -155,9 +154,11 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
                             const TokenSync& sync) {
   TokenView view;
   const int64_t elapsed = elapsed_local_days(snapshot.today, now);
-  const bool old_data = snapshot.required_source_collected_at == 0 ||
-      (now >= kClockMinimum && now > snapshot.required_source_collected_at &&
-       now - snapshot.required_source_collected_at > kOldSourceAgeS);
+  const bool has_snapshot = snapshot.served_at != 0;
+  const bool old_data = has_snapshot &&
+      (snapshot.required_source_collected_at == 0 ||
+       (now >= kClockMinimum && now > snapshot.required_source_collected_at &&
+        now - snapshot.required_source_collected_at > kOldSourceAgeS));
   long double combined_usual = 0;
   uint64_t busiest_total = 0;
   int busiest = -1;

@@ -98,7 +98,8 @@ void test_derived_values_include_zero_filled_days_and_all_zero_gemini() {
   TEST_ASSERT_EQUAL_STRING("Busiest this week: Codex", view.headline.c_str());
   TEST_ASSERT_EQUAL(1, view.headline_pick);
   TEST_ASSERT_EQUAL(30, view.rows[0].bars.size());
-  TEST_ASSERT_EQUAL(0, view.rows[2].bars[29]);
+  TEST_ASSERT_EQUAL(3, view.rows[0].bars[29]);  // small today stays hollow, not solid
+  TEST_ASSERT_EQUAL(3, view.rows[2].bars[29]);  // even zero today has a hollow outline
   TEST_ASSERT_EQUAL(0, view.rows[2].usual_px);
   TEST_ASSERT_EQUAL_STRING("Synced 09:20", view.footer_text.c_str());
   TEST_ASSERT_TRUE(view.footer_chip.empty());
@@ -223,6 +224,47 @@ void test_two_page_updates_preserve_token_selection_and_dedup_static_frames() {
   TEST_ASSERT_EQUAL(1, device.page_index);
 }
 
+void test_percent_label_caps_above_999_percent() {
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  for (TokenProvider& provider : snapshot.providers) provider.days.fill(0);
+  for (size_t i = 22; i <= 28; i++) snapshot.providers[0].days[i] = 100;
+  snapshot.providers[0].days[29] = 999;
+  TEST_ASSERT_EQUAL_STRING("today 999 · 999% of a usual day",
+      view_of(snapshot, 1794446400ULL).rows[0].today.c_str());
+  snapshot.providers[0].days[29] = 1000;
+  TEST_ASSERT_EQUAL_STRING("today 1K · 999%+ of a usual day",
+      view_of(snapshot, 1794446400ULL).rows[0].today.c_str());
+}
+
+void test_never_synced_is_waiting_not_old_data() {
+  const TokenView empty = view_of(TokenSnapshot{}, 1794446400ULL);
+  TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", empty.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("Not synced yet", empty.footer_text.c_str());
+  TEST_ASSERT_TRUE(empty.footer_chip.empty());
+
+  TokenSnapshot received;
+  TEST_ASSERT_TRUE(decode_token(token_response(), received));
+  received.required_source_collected_at = 0;
+  const TokenView old = view_of(received, 1794446400ULL);
+  TEST_ASSERT_EQUAL_STRING("OLD DATA", old.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("M4 --:--", old.footer_text.c_str());
+}
+
+void test_midnight_shift_always_uses_worker_utc8_date() {
+  setenv("TZ", "UTC0", 1);
+  tzset();
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  // 16:01 UTC is already 00:01 on November 13 in Asia/Shanghai.
+  const TokenView shifted = view_of(snapshot, local_epoch(2026, 11, 12, 16, 1));
+  setenv("TZ", "SGT-8", 1);
+  tzset();
+  TEST_ASSERT_EQUAL_UINT64(28000000ULL, shifted.rows[0].shifted_days[28]);
+  TEST_ASSERT_EQUAL_UINT64(0ULL, shifted.rows[0].shifted_days[29]);
+  TEST_ASSERT_EQUAL_STRING("1.78B", shifted.rows[0].seven_day.c_str());
+}
+
 void test_number_format_uses_at_most_three_significant_digits() {
   TEST_ASSERT_EQUAL_STRING("0", format_tokens(0).c_str());
   TEST_ASSERT_EQUAL_STRING("940", format_tokens(940).c_str());
@@ -249,6 +291,9 @@ int main() {
   RUN_TEST(test_local_midnight_shifts_days_and_makes_new_today_zero);
   RUN_TEST(test_extreme_64_bit_today_share_does_not_overflow_to_negative);
   RUN_TEST(test_two_page_updates_preserve_token_selection_and_dedup_static_frames);
+  RUN_TEST(test_percent_label_caps_above_999_percent);
+  RUN_TEST(test_never_synced_is_waiting_not_old_data);
+  RUN_TEST(test_midnight_shift_always_uses_worker_utc8_date);
   RUN_TEST(test_number_format_uses_at_most_three_significant_digits);
   return UNITY_END();
 }

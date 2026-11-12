@@ -111,7 +111,7 @@ void chart(const TokenRowView& row, int16_t top, float sweep) {
   for (size_t i = 0; i < visible; i++) {
     int16_t height = row.bars[i];
     const bool today = i == kTokenDays - 1;
-    if (today && height == 0) height = 3;  // an empty, incomplete day stays visible
+    if (today) height = std::max<int16_t>(3, height);  // preserve a hollow interior
     if (height == 0) continue;
     const int16_t x = kChartX + (int16_t)i * kBarPitch;
     if (today) {

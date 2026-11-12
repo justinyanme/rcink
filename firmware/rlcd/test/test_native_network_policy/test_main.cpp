@@ -101,6 +101,21 @@ void test_token_cadence_is_independent_and_battery_never_exceeds_hourly() {
   TEST_ASSERT_TRUE(token_refresh_due(4600, 1000, 4600, RuntimeMode::Eco, true));
 }
 
+void test_token_failure_keeps_allowance_on_its_own_five_minute_gate() {
+  // Allowance succeeded while Token failed. Only Allowance controls its gate;
+  // Token remains eligible at its own 60-second retry and can ride a later run.
+  TEST_ASSERT_EQUAL_UINT32(300, allowance_refresh_cooldown_sec(
+      RuntimeMode::Host, 7200, true));
+  TEST_ASSERT_TRUE(token_refresh_due(1060, 1000, 1060, RuntimeMode::Host, true));
+  TEST_ASSERT_EQUAL_UINT32(60, allowance_refresh_cooldown_sec(
+      RuntimeMode::Host, 7200, false));
+}
+
+void test_entering_host_clears_a_battery_token_retry() {
+  TEST_ASSERT_EQUAL_UINT64(0, token_retry_on_host_entry(4600, true));
+  TEST_ASSERT_EQUAL_UINT64(4600, token_retry_on_host_entry(4600, false));
+}
+
 void test_usage_does_not_change_battery_low_battery_or_axiom_cadence() {
   const uint32_t low_battery = adaptive_refresh_interval_sec(1800, 2, 19, true);
   for (bool usage : {false, true}) {
@@ -121,6 +136,8 @@ int main() {
   RUN_TEST(test_usage_host_fetches_every_five_minutes_and_retries_a_failure_after_one);
   RUN_TEST(test_a_failed_attempt_retries_at_its_gate_even_soon_after_a_success);
   RUN_TEST(test_token_cadence_is_independent_and_battery_never_exceeds_hourly);
+  RUN_TEST(test_token_failure_keeps_allowance_on_its_own_five_minute_gate);
+  RUN_TEST(test_entering_host_clears_a_battery_token_retry);
   RUN_TEST(test_usage_does_not_change_battery_low_battery_or_axiom_cadence);
   return UNITY_END();
 }

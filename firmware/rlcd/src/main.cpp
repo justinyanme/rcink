@@ -17,6 +17,7 @@
 #include "net/refresh_flow.h"
 #include "net/wifi.h"
 #include "net/usage_config.h"
+#include "power/network_policy.h"
 #include "power/runtime_policy.h"
 #include "power/sleep.h"
 #include "power/wake_schedule.h"
@@ -456,8 +457,9 @@ static bool poll_refresh_completion() {
   const DeckViewKey before = deck_visible_state();
   bool usage_page_changed = false;
   bool token_succeeded = false;
+  bool allowance_page_changed = false;
   if (!finish_network_refresh(refresh_app_state(), usage_page_changed,
-                              token_succeeded)) return false;
+                              token_succeeded, allowance_page_changed)) return false;
 #if RCRLCD_USAGE_ENABLED
   // A very late BOOT may have missed the active worker's Token GET. Keep the
   // requested-sync footer up while the queued follow-up run starts.
@@ -471,7 +473,7 @@ static bool poll_refresh_completion() {
   if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[g_state.page_index].id;
     if (id == kTokenPageId && token_succeeded) start_token_sweep();
-    if (id == kUsagePageId && usage_page_changed && !g_usage_fetch_failed) start_usage_sweep();
+    if (id == kUsagePageId && allowance_page_changed && !g_usage_fetch_failed) start_usage_sweep();
   }
 #endif
   return g_view == View::Dashboard ? dashboard_minute_due()
@@ -750,6 +752,10 @@ void setup() {
   g_runtime = initial_runtime_state(runtime_boot);
   if (g_runtime.mode == RuntimeMode::Host) {
     g_fetch_retry_not_before_s = 0;
+#if RCRLCD_USAGE_ENABLED
+    g_token_retry_at_s = token_retry_on_host_entry(
+        g_token_retry_at_s, g_token_fetch_failed);
+#endif
   }
   if (key_wake) navigate_next();
 #if RCRLCD_USAGE_ENABLED
