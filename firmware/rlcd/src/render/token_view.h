@@ -8,7 +8,7 @@
 
 namespace rcpaper {
 
-constexpr uint8_t kTokenChartPx = 36;
+constexpr uint8_t kTokenChartPx = 30;
 extern const char* const kTokenProviderNames[kTokenProviderCount];
 
 struct TokenRowView {

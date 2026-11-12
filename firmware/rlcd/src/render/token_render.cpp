@@ -13,14 +13,15 @@
 
 #include "render/canvas.h"
 #include "render/page.h"
+#include "render/token_layout.h"
 #include "render/usage_logos.h"
 
 namespace rcpaper {
 namespace {
 constexpr uint16_t kInk = 0x0000;
 constexpr uint16_t kPaper = 0xFFFF;
-constexpr int16_t kChartX = 202;
-constexpr int16_t kChartRight = 388;
+constexpr int16_t kChartX = kTokenChartX;
+constexpr int16_t kChartRight = kTokenChartRight;
 constexpr int16_t kBarPitch = 6;
 constexpr int16_t kBarWidth = 4;
 
@@ -47,6 +48,22 @@ void text(const char* value, int16_t x, int16_t baseline, int pt,
   g->setTextDatum(align == Align::Left ? L_BASELINE : R_BASELINE);
   g->setTextColor(color);
   g->drawString(value, x, baseline);
+}
+
+// FreeSans GFX has no U+00B7 glyph. Preserve the wording and draw its dot.
+void text_with_dots(const std::string& value, int16_t x, int16_t baseline, int pt) {
+  const std::string separator = "\xC2\xB7";
+  const size_t at = value.find(separator);
+  if (at == std::string::npos) {
+    text(value.c_str(), x, baseline, pt);
+    return;
+  }
+  const std::string left = value.substr(0, at);
+  const std::string right = value.substr(at + separator.size());
+  text(left.c_str(), x, baseline, pt);
+  const int16_t dot_x = x + text_w(left.c_str(), pt) + 1;
+  g->fillRect(dot_x, baseline - 5, 2, 2, kInk);
+  text(right.c_str(), dot_x + 3, baseline, pt);
 }
 
 void rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color = kInk) {
@@ -84,7 +101,7 @@ void headline(const TokenView& view) {
 }
 
 void chart(const TokenRowView& row, int16_t top, float sweep) {
-  const int16_t bottom = top + 47;
+  const int16_t bottom = top + kTokenChartBottom;
   for (int16_t x = kChartX; x < kChartRight; x += 4) g->drawPixel(x, bottom, kInk);
   if (row.usual_px > 0) {
     const int16_t y = bottom - row.usual_px;
@@ -107,20 +124,19 @@ void chart(const TokenRowView& row, int16_t top, float sweep) {
 }
 
 void row(size_t i, const TokenRowView& row, const TokenFrame& frame) {
-  const int16_t top = 26 + (int16_t)i * 82;
+  const int16_t top = kTokenRowTop + (int16_t)i * kTokenRowPitch;
   if (i > 0) rect(12, top - 1, 376, 1);
   g->drawBitmap(12, top + 18, kLogos[i]->bits, kLogos[i]->w, kLogos[i]->h, kInk);
-  text(kTokenProviderNames[i], 48, top + 18, 12, true);
+  text(kTokenProviderNames[i], kTokenTextX, top + kTokenTopBaseline, 9, true);
   if (i == 2) {
-    g->drawBitmap(48 + text_w(kTokenProviderNames[i], 12, true) + 6, top + 6,
+    g->drawBitmap(kTokenTextX + text_w(kTokenProviderNames[i], 9, true) + 6, top + 2,
                   usage_logos::kAntigravity12.bits, usage_logos::kAntigravity12.w,
                   usage_logos::kAntigravity12.h, kInk);
   }
-  text(row.seven_day.c_str(), 48, top + 50, 24, true);
-  const int16_t label_x = 48 + text_w(row.seven_day.c_str(), 24, true) + 7;
-  text("7 days", label_x, top + 48, 9);
+  text("7 days", kTokenSevenDaysX, top + kTokenTopBaseline, 9);
+  text(row.seven_day.c_str(), kTokenTextX, top + kTokenTotalBaseline, 24, true);
   chart(row, top, frame.sweep);
-  text(row.today.c_str(), 48, top + 70, 9);
+  text_with_dots(row.today, kTokenTextX, top + kTokenTodayBaseline, 9);
   std::string odo = row.lifetime;
   if (frame.sweep < 1.0f) {
     const long double rolled = (long double)row.lifetime_value * frame.sweep;
@@ -128,9 +144,11 @@ void row(size_t i, const TokenRowView& row, const TokenFrame& frame) {
         ? std::numeric_limits<uint64_t>::max() : (uint64_t)rolled;
     odo = format_tokens(value);
   }
-  const int16_t value_w = text_w(odo.c_str(), 12, true);
-  text("ODO", 388 - value_w - 7, top + 70, 9, false, Align::Right);
-  text(odo.c_str(), 388, top + 70, 12, true, Align::Right);
+  const int16_t value_w = text_w(odo.c_str(), 9, true);
+  text("ODO", kTokenChartRight - value_w - 7, top + kTokenTopBaseline,
+       9, false, Align::Right);
+  text(odo.c_str(), kTokenChartRight, top + kTokenTopBaseline,
+       9, true, Align::Right);
 }
 
 void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mode) {
@@ -151,7 +169,8 @@ void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mo
   if (battery.ok) rect(x + 2, 285, (18 * std::min<unsigned>(battery.pct, 100) + 50) / 100, 8);
   if (!view.footer_chip.empty()) {
     const int16_t width = chip(view.footer_chip.c_str(), 12, baseline);
-    text(view.footer_text.c_str(), 12 + width + 6, baseline, 9);
+    rect(12 + width + 4, baseline - 5, 2, 2);
+    text(view.footer_text.c_str(), 12 + width + 9, baseline, 9);
   } else {
     text(view.footer_text.c_str(), 12, baseline, 9);
   }
