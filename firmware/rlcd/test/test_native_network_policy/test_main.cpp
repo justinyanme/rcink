@@ -53,7 +53,7 @@ void test_empty_cache_or_invalid_clock_fetches_after_cooldown() {
   TEST_ASSERT_FALSE(network_refresh_due(query));
 }
 
-void test_usage_host_fetch_and_failed_retry_wait_five_minutes() {
+void test_usage_host_fetches_every_five_minutes_and_retries_a_failure_after_one() {
   NetworkRefreshQuery query = {};
   query.now_s = 1299;
   query.last_fetch_s = 1000;
@@ -62,12 +62,29 @@ void test_usage_host_fetch_and_failed_retry_wait_five_minutes() {
   TEST_ASSERT_FALSE(network_refresh_due(query));
   query.now_s = 1300;
   TEST_ASSERT_TRUE(network_refresh_due(query));
-  // A failed request keeps last success but starts a full scheduled cooldown.
+  // A failed request keeps the last success; a powered host retries a minute later
+  // instead of leaving expired numbers up for a full poll.
+  TEST_ASSERT_EQUAL_UINT32(60, network_failure_retry_sec(RuntimeMode::Host, 7200, true));
   query.retry_not_before_s = 1300 + network_failure_retry_sec(RuntimeMode::Host, 7200, true);
-  query.now_s = 1599;
+  query.now_s = 1359;
   TEST_ASSERT_FALSE(network_refresh_due(query));
-  query.now_s = 1600;
+  query.now_s = 1360;
   TEST_ASSERT_TRUE(network_refresh_due(query));
+}
+
+void test_a_failed_attempt_retries_at_its_gate_even_soon_after_a_success() {
+  NetworkRefreshQuery query = {};
+  query.last_fetch_s = 1000;  // success
+  query.clock_valid = true;
+  query.interval_sec = 300;
+  query.retry_not_before_s = 1100;  // a failure at 1040 + 60 s; the screen says "retry" then
+  query.last_attempt_failed = true;
+  query.now_s = 1099;
+  TEST_ASSERT_FALSE(network_refresh_due(query));
+  query.now_s = 1100;
+  TEST_ASSERT_TRUE(network_refresh_due(query));
+  query.last_attempt_failed = false;  // after a success the poll interval still applies
+  TEST_ASSERT_FALSE(network_refresh_due(query));
 }
 
 void test_usage_does_not_change_battery_low_battery_or_axiom_cadence() {
@@ -87,7 +104,8 @@ int main() {
   RUN_TEST(test_battery_modes_keep_adaptive_refresh_interval);
   RUN_TEST(test_cache_age_and_retry_cooldown_both_gate_fetches);
   RUN_TEST(test_empty_cache_or_invalid_clock_fetches_after_cooldown);
-  RUN_TEST(test_usage_host_fetch_and_failed_retry_wait_five_minutes);
+  RUN_TEST(test_usage_host_fetches_every_five_minutes_and_retries_a_failure_after_one);
+  RUN_TEST(test_a_failed_attempt_retries_at_its_gate_even_soon_after_a_success);
   RUN_TEST(test_usage_does_not_change_battery_low_battery_or_axiom_cadence);
   return UNITY_END();
 }

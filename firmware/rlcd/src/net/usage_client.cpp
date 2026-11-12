@@ -11,6 +11,16 @@
 #include "sense/clock.h"
 
 namespace rcpaper {
+namespace {
+// The device's Wi-Fi path to the Worker has been measured at ~250 ms RTT with
+// loss: a TLS handshake there takes 5-10 s (cert checks are ~1 s of it), so 10 s
+// deadlines failed about one fetch in six. The fetch runs off the UI task.
+constexpr int kConnectTimeoutMs = 10000;
+constexpr int kHandshakeTimeoutS = 20;
+constexpr int kReadTimeoutMs = 20000;
+constexpr uint32_t kBodyDeadlineMs = 20000;
+}  // namespace
+
 bool usage_fetch(UsageSnapshot& out) {
   if (!wall_clock_is_valid() || strncmp(RCRLCD_USAGE_URL, "https://", 8) != 0 ||
       strlen(RCRLCD_USAGE_READ_KEY) == 0) {
@@ -19,10 +29,10 @@ bool usage_fetch(UsageSnapshot& out) {
   }
   WiFiClientSecure client;
   client.setCACert(kUsageRootCa);
-  client.setHandshakeTimeout(10);
+  client.setHandshakeTimeout(kHandshakeTimeoutS);
   HTTPClient http;
-  http.setConnectTimeout(10000);
-  http.setTimeout(10000);
+  http.setConnectTimeout(kConnectTimeoutMs);
+  http.setTimeout(kReadTimeoutMs);
   http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
   // Request close-delimited identity encoding; read the body ourselves with a
   // total deadline, since HTTPClient's stream-copy loop can wait indefinitely.
@@ -34,8 +44,9 @@ bool usage_fetch(UsageSnapshot& out) {
   http.addHeader("Accept", "application/json");
   http.addHeader("Accept-Encoding", "identity");
   http.addHeader("X-Usage-Read-Key", RCRLCD_USAGE_READ_KEY);
+  const uint32_t started_ms = millis();
   const int status = http.GET();
-  Serial.printf("[usage] GET status=%d\n", status);
+  Serial.printf("[usage] GET status=%d after %u ms\n", status, (unsigned)(millis() - started_ms));
   String media = http.header("Content-Type");
   const int separator = media.indexOf(';');
   if (separator >= 0) media = media.substring(0, separator);
@@ -49,7 +60,7 @@ bool usage_fetch(UsageSnapshot& out) {
   std::string body;
   body.reserve(declared > 0 ? declared : 1024);
   WiFiClient* stream = http.getStreamPtr();
-  const uint32_t deadline = millis() + 10000;
+  const uint32_t deadline = millis() + kBodyDeadlineMs;
   bool complete = false;
   while ((int32_t)(millis() - deadline) < 0) {
     const int available = stream->available();

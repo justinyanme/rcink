@@ -73,6 +73,8 @@ static uint32_t g_usage_last_frame_ms = 0;
 // would alias (the car would skip a bob every ~1.6 s); keyed to this, each frame
 // moves exactly one step.
 static uint32_t g_usage_tick = 0;
+// BOOT asked for a sync that has not completed yet; the footer says SYNCING.
+static bool g_usage_sync_requested = false;
 static std::string g_usage_view_json;
 static UsageView g_usage_view;
 #endif
@@ -143,7 +145,8 @@ static void try_enter_deep_sleep() {
 
 #if RCRLCD_USAGE_ENABLED
 static UsageSync usage_sync() {
-  return {g_usage_fetch_failed, g_state.last_fetch_s, g_fetch_retry_not_before_s};
+  return {g_usage_fetch_failed, g_state.last_fetch_s, g_fetch_retry_not_before_s,
+          g_usage_sync_requested};
 }
 
 static bool usage_animating() {
@@ -336,6 +339,19 @@ void navigate_previous() {
       g_view, g_state.page_index, g_state.pages.size()));
 }
 
+#if RCRLCD_USAGE_ENABLED
+// BOOT with usage: Usage <-> climate needs only KEY, so BOOT means "show usage
+// and sync now". It ignores the poll/retry gate; a sync already in flight is
+// awaited rather than doubled. The caller redraws.
+static void request_usage_sync() {
+  apply_navigation({View::Deck, 0});
+  g_usage_sync_requested = true;
+  start_network_refresh(refresh_app_state());
+  if (!refresh_busy()) g_usage_sync_requested = false;  // the task could not start
+  update_usage_page(g_state, g_usage, (uint64_t)time(nullptr), usage_sync());
+}
+#endif
+
 static DeckViewKey deck_visible_state() {
   DeckViewKey visible = {
       "", 0, g_state.page_index, g_state.pages.size(),
@@ -368,6 +384,7 @@ static bool poll_refresh_completion() {
   bool usage_page_changed = false;
   if (!finish_network_refresh(refresh_app_state(), usage_page_changed)) return false;
 #if RCRLCD_USAGE_ENABLED
+  g_usage_sync_requested = false;  // the completion already redrew without SYNCING
   if (usage_page_changed && !g_usage_fetch_failed && g_view == View::Deck) start_usage_sweep();
 #endif
   return g_view == View::Dashboard ? dashboard_minute_due()
@@ -416,8 +433,13 @@ static InteractionDecision poll_interaction() {
     activity = true;
   }
   if (events.boot_tap) {
+#if RCRLCD_USAGE_ENABLED
+    Serial.println("[btn] BOOT -> sync now");
+    request_usage_sync();
+#else
     Serial.println("[btn] BOOT -> previous");
     navigate_previous();
+#endif
     activity = true;
   }
 
@@ -454,7 +476,12 @@ void console_dispatch(char c) {
       break;
     case 'f':
       Serial.println("[console] network refresh");
+#if RCRLCD_USAGE_ENABLED
+      request_usage_sync();  // same path as BOOT
+      render_current_view();
+#else
       start_network_refresh(refresh_app_state());
+#endif
       break;
     case 'r':
       Serial.println("[console] render");

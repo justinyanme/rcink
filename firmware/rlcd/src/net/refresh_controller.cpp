@@ -48,6 +48,7 @@ bool refresh_due_now(const RefreshAppState& app) {
       app.device.pages.empty(),
       wall_clock_is_valid(),
       current_interval(app),
+      app.usage_fetch_failed,
   };
   if (network_refresh_due(query)) return true;
   const uint64_t early = early_refetch_at(app);
@@ -138,7 +139,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
   // After the gate is known, so a failure can say when it will retry.
   usage_page_changed = update_usage_page(
       app.device, app.usage, completion.completed_at_s,
-      {!success, app.device.last_fetch_s, app.retry_not_before_s});
+      {!success, app.device.last_fetch_s, app.retry_not_before_s, false});
 #endif
   Serial.printf("[auto] retry gate %u s result=%u\n",
                 (unsigned)(gate - completion.completed_at_s), (unsigned)completion.result);

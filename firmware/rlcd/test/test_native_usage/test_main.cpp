@@ -111,6 +111,12 @@ void test_bad_responses_do_not_replace_last_good_visible_values() {
   TEST_ASSERT_EQUAL(66, failed.rows[0].left);
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)failed.rows[0].state);
   TEST_ASSERT_EQUAL_STRING("retrying", view_of(cache, 1794297900, {true, 0, 0}).footer_text.c_str());
+  // A requested sync in flight says so, over both a failure and a missing clock.
+  for (uint64_t now : {(uint64_t)1794297900, (uint64_t)0}) {
+    const auto syncing = view_of(cache, now, {true, 1794297000, 1794298200, true});
+    TEST_ASSERT_EQUAL_STRING("SYNCING", syncing.footer_chip.c_str());
+    TEST_ASSERT_EQUAL_STRING("fetching now", syncing.footer_text.c_str());
+  }
 }
 
 void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
@@ -142,7 +148,7 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   TEST_ASSERT_EQUAL_STRING("OLD DATA", view.footer_chip.c_str());
   TEST_ASSERT_EQUAL_STRING("checked 16:04", view.footer_text.c_str());
   view = view_of(snapshot, 1794297900, {true, 1794297000, 0});
-  TEST_ASSERT_EQUAL_STRING("No signal. Numbers from 16:00.", view.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("Can't sync. Numbers from 16:00.", view.headline.c_str());
   TEST_ASSERT_EQUAL_STRING("SYNC FAILED", view.footer_chip.c_str());
 
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
