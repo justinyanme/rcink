@@ -44,9 +44,11 @@ is used only as a sprite/font engine (its ILI9341 setup is never driven against
 real hardware). CJK in the Deck View renders via U8g2 + a baked WenQuanYi GB2312
 font.
 
-Both builds currently boot in dark polarity (`RCRLCD_DEFAULT_DARK_MODE=1`):
-the final packed 1 bpp frame is inverted after normal black-on-white rendering.
-Use console `i` to toggle light/dark live and redraw the current screen.
+Both builds boot in light polarity (`RCRLCD_DEFAULT_DARK_MODE=0`): black ink
+on a white background, exactly as rendered. Setting the flag to `1` inverts the
+final packed 1 bpp frame for white-on-black. Use console `i` to toggle
+light/dark live and redraw the current screen; the toggle is not persisted, so
+every boot and wake returns to the build default.
 The default production environment retains the last ST7305 frame during deep
 sleep. `waveshare-s3-rlcd-dev` uses the same state machine but never sleeps, for
 recovery and development.
@@ -242,35 +244,51 @@ model's JSON, which is both what gets drawn and the redraw fingerprint.
 
 ```
 * Best bet today: [K] Kimi                         <- headline
-[logo]  34%  Claude                    dry 14h early
-             ......... [car]=====-=====x   |> 2d 18h
+[logo]  34%  Claude                     ~6% to spare
+             ..........[car]=|========  [pump] (o) 2d 1h
 ...
-Synced 18:19                        [batt] 99% HOST
+Synced 11:34                        [batt] 99% HOST
 ```
 
-- Each provider is a car on a 150 px road whose checkered flag is that
-  provider's own weekly reset. The car sits at the elapsed share of the
-  604800-second window; dots behind it are the week already gone.
-- The solid road ahead is how far this week's *average* burn rate lasts. Running
-  out before the flag shows an `x` and `dry 14h early` (days from 48 h); lasting
-  shows the projected leftover, e.g. `~92% to spare`. `out of gas` means 0 %.
-  Fewer than ~3.4 hours into a week shows `new week` instead of a projection.
+- Each provider is a car on a 150 px road of fuel that ends at a pump. The car
+  sits at the share of the weekly allowance already **used**, so the dots behind
+  it are what is gone and the solid road ahead is what is left — the same
+  amount as the big number. A car parked at the pump is out.
+- The tick under the road is **even pace**: the elapsed share of that
+  provider's own 604800-second window. A car behind its tick has room to spare;
+  a car past it is burning faster than the week allows. The clock and
+  countdown at the right are the time until the allowance refills.
+- The verdict projects this week's *average* burn rate to the reset:
+  `dry 14h early` (bold; days from 48 h) or the leftover, e.g. `~92% to spare`.
+  `out of gas` means 0 %. Fewer than ~3.4 hours into a week shows `new week`.
 - The headline picks the fresh provider with the most room above its even-pace
   share (remaining % minus time-left %, remaining > 10 %). When a fresh provider
   is at 0 % or ≤ 10 % it says `Codex is napping. Try ...` / `... is almost out`.
 - Remaining ≤ 10 % is drawn inverted. Countdowns are hour-granular (`2d 18h`,
-  `17h`, minutes only in the last hour) so the frame changes about hourly, not
-  every minute. The footer shows `Synced HH:MM`, or `SYNC FAILED retry HH:MM`.
-- Stale data loses its personality: no projection, a hatched road and an
-  outline car. When every known row is stale, the headline says
-  `No signal. Numbers from HH:MM.` once; a single stale row gets its own
-  `3h old` chip. An untrusted clock shows `What day is it? Clock not set.` and
-  no positions. Never-observed rows show `--` and `no data yet`, with no car.
+  `17h`, minutes only in the last hour) and the pace tick moves one pixel about
+  every 67 minutes, so the frame changes about hourly, not every minute.
+- Stale data loses its personality: no projection, a hatched road and a parked
+  outline car. A single stale row gets its own `3h old` chip. When every known
+  row is stale the screen says it once: `No new numbers since HH:MM.` with an
+  `OLD DATA` footer (`checked HH:MM`) when the GET worked but the source has
+  gone quiet, or `No signal. Numbers from HH:MM.` with `SYNC FAILED` when it
+  did not. An untrusted clock shows `What day is it? Clock not set.` and no
+  pace ticks. Never-observed rows show `--` and `no data yet`, with no car.
+- Source samples expire 10 minutes after they are taken, but the source, its
+  uploader and the device each run their own 5-minute schedule. In `HOST` the
+  device therefore refetches 10 s after a sample that was fresh at the last
+  fetch expires, then every 60 s while the source is late, until 30 minutes
+  after that sample; then it falls back to the normal 5-minute poll. Battery
+  modes keep their adaptive schedule.
 - Gemini is Antigravity's Gemini weekly pool, marked by the small arch logo.
-- In `HOST` only, the view animates at 8 fps (lane marks scroll, cars bob and
-  puff, `Zz` floats) and numbers/roads roll in from zero for 0.9 s after a
-  successful sync or when entering the view. ECO/ACTIVE draw the static frame,
-  which is also what deep sleep retains. A frame takes ~36 ms on device.
+- In `HOST` only, the view animates at ~7 fps (lane marks scroll, cars bob and
+  puff, `Zz` floats), and for 0.9 s after a successful sync or when entering
+  the view each car drives in from the start while its number burns down from
+  100. ECO/ACTIVE draw the static frame,
+  which is also what deep sleep retains. A frame takes ~36 ms on device; the
+  loop delivers one every ~135 ms, so stepped motion advances per drawn frame
+  (not per millisecond) to avoid aliasing stalls. Stale and napping cars stay
+  parked on purpose.
 
 Logos are 1-bit bitmaps baked from the single-colour SVGs in
 `tools/usage_logos/` (lobe-icons; marks belong to their owners):

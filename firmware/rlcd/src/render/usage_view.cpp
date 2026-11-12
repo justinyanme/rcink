@@ -13,7 +13,7 @@ const char* const kUsageProviderNames[4] = {"Claude", "Codex", "Kimi", "Gemini"}
 namespace {
 constexpr uint64_t kClockMinimum = 1704067200;
 constexpr size_t kMaxLabel = 40;
-constexpr const char* kViewSchema = "rcink.usage-view.v1";
+constexpr const char* kViewSchema = "rcink.usage-view.v2";
 
 std::string local_hhmm(uint64_t epoch_s) {
   const time_t instant = (time_t)epoch_s;
@@ -55,17 +55,17 @@ UsageMood mood_for(int left, double pace) {
   return UsageMood::Open;
 }
 
-// Project this week's average burn rate forward from the car's position.
+// Project this week's average burn rate forward to the reset.
 void project(UsageRowView& row, int used, double pace) {
   const double elapsed = 1.0 - pace / 100.0;
-  if (row.left == 0) { row.dry_px = row.now_px; row.verdict = "out of gas"; return; }
+  if (row.left == 0) { row.runs_dry = true; row.verdict = "out of gas"; return; }
   if (elapsed <= 0.02) { row.verdict = "new week"; return; }
   const double rate = used / elapsed;  // percent per week
   const double empty_at = rate > 0 ? elapsed + row.left / rate : 2.0;
   const double hours_early = (1.0 - empty_at) * 168.0;
   char buf[24];
   if (hours_early >= 1.0) {
-    row.dry_px = (int16_t)std::lround(empty_at * kUsageRoadPx);
+    row.runs_dry = true;
     const long hours = std::lround(hours_early);
     if (hours >= 48) std::snprintf(buf, sizeof(buf), "dry %ldd early", std::lround(hours / 24.0));
     else std::snprintf(buf, sizeof(buf), "dry %ldh early", hours);
@@ -105,6 +105,7 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
     newest_sample = std::max(newest_sample, p.fetched_at);
     const int used = std::min(100, std::max(0, (int)std::round(p.used_percent)));
     row.left = (uint8_t)(100 - used);
+    row.car_px = (int16_t)std::lround(used * kUsageRoadPx / 100.0);
     const bool stale = p.status == UsageStatus::Stale || !clock || now + 300 < p.fetched_at ||
         now >= p.expires_at || (p.resets_at != 0 && now >= p.resets_at);
     row.state = stale ? UsageRowState::Stale : UsageRowState::Live;
@@ -114,16 +115,16 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
         const uint64_t remaining = p.resets_at - now;
         const double share_left = std::min(1.0, (double)remaining / kUsageWeekS);
         pace[i] = share_left * 100.0;
-        row.now_px = (int16_t)std::lround((1.0 - share_left) * kUsageRoadPx);
+        row.pace_px = (int16_t)std::lround((1.0 - share_left) * kUsageRoadPx);
         row.countdown = countdown_label(remaining);
       } else {
-        row.now_px = kUsageRoadPx;
+        row.pace_px = kUsageRoadPx;
         row.countdown = "due";
       }
     }
     if (stale) continue;  // no moods or projections from numbers we no longer trust
     row.mood = mood_for(row.left, pace[i]);
-    if (row.now_px >= 0 && pace[i] >= 0) project(row, used, pace[i]);
+    if (pace[i] >= 0) project(row, used, pace[i]);
   }
   all_stale = any && all_stale;
 
@@ -142,10 +143,12 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
     view.headline_icon = UsageIcon::Face;
     view.headline_face = UsageMood::Pace;
     view.headline = "Waiting for the first numbers.";
-  } else if (sync.fetch_failed && all_stale) {
-    view.headline_icon = UsageIcon::Face;
-    view.headline_face = UsageMood::Low;
-    view.headline = "No signal. Numbers from " + local_hhmm(newest_sample) + ".";
+  } else if (all_stale) {
+    // The device can only see that the source has gone quiet, not why.
+    view.headline_icon = sync.fetch_failed ? UsageIcon::Face : UsageIcon::Clock;
+    view.headline_face = sync.fetch_failed ? UsageMood::Low : UsageMood::None;
+    view.headline = (sync.fetch_failed ? "No signal. Numbers from " : "No new numbers since ") +
+                    local_hhmm(newest_sample) + ".";
   } else {
     int pick = -1, nap = -1, low = -1;
     double best = -1e9;
@@ -182,6 +185,10 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
   } else if (sync.fetch_failed) {
     view.footer_chip = "SYNC FAILED";
     view.footer_text = sync.retry_at_s > now ? "retry " + local_hhmm(sync.retry_at_s) : "retrying";
+  } else if (all_stale) {
+    // "Synced" would read as fresh; the GET worked but the numbers are old.
+    view.footer_chip = "OLD DATA";
+    view.footer_text = sync.last_ok_s ? "checked " + local_hhmm(sync.last_ok_s) : "not synced yet";
   } else if (sync.last_ok_s == 0) {
     view.footer_text = "Not synced yet";
   } else {
@@ -205,8 +212,9 @@ std::string encode_usage_view(const UsageView& view) {
     o["state"] = (int)row.state;
     o["left"] = (int)row.left;
     o["mood"] = (int)row.mood;
-    o["now"] = (int)row.now_px;
-    o["dry"] = (int)row.dry_px;
+    o["car"] = (int)row.car_px;
+    o["pace"] = (int)row.pace_px;
+    o["dry"] = row.runs_dry;
     o["countdown"] = row.countdown;
     o["verdict"] = row.verdict;
     o["chip"] = row.chip;
@@ -242,10 +250,12 @@ bool decode_usage_view(const std::string& json, UsageView& out) {
     row.left = (uint8_t)value;
     if (!ranged(o["mood"], 0, (int)UsageMood::Nap, value)) return false;
     row.mood = (UsageMood)value;
-    if (!ranged(o["now"], -1, kUsageRoadPx, value)) return false;
-    row.now_px = (int16_t)value;
-    if (!ranged(o["dry"], -1, kUsageRoadPx, value)) return false;
-    row.dry_px = (int16_t)value;
+    if (!ranged(o["car"], -1, kUsageRoadPx, value)) return false;
+    row.car_px = (int16_t)value;
+    if (!ranged(o["pace"], -1, kUsageRoadPx, value)) return false;
+    row.pace_px = (int16_t)value;
+    if (!o["dry"].is<bool>()) return false;
+    row.runs_dry = o["dry"].as<bool>();
     if (!small_string(o["countdown"], row.countdown) ||
         !small_string(o["verdict"], row.verdict) ||
         !small_string(o["chip"], row.chip)) return false;

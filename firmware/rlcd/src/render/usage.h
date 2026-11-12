@@ -45,4 +45,15 @@ bool update_usage_page(DeviceState& device, const UsageSnapshot& snapshot,
                        uint64_t now, const UsageSync& sync);
 uint32_t usage_page_fingerprint(const PageRecord& page);
 
+// Source samples expire ten minutes after they are taken, while the source,
+// its uploader and this device each run on their own five-minute schedule, so
+// a plain five-minute poll often shows expired numbers. With a USB host, look
+// again as soon as a sample that was fresh at the last fetch expires; if the
+// source is late, keep looking every minute until it has been quiet for half an
+// hour after its sample. Returns 0 when nothing calls for an early fetch.
+constexpr uint64_t kUsageExpiryGraceS = 10;
+constexpr uint64_t kUsageChaseRetryS = 60;
+constexpr uint64_t kUsageChaseWindowS = 30 * 60;
+uint64_t usage_refetch_at_s(const UsageSnapshot& snapshot, uint64_t last_fetch_s);
+
 }  // namespace rcpaper

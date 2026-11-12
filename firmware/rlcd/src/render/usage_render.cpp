@@ -2,8 +2,9 @@
 //
 // Layout (y grows down):  0-24 headline + rule, four 62 px provider rows from
 // y=26, 275 footer rule, footer baseline 294. Each row: 28 px logo, remaining
-// percent right-aligned at x=128, name/verdict line, a 150 px road from x=162
-// to the reset flag, and the countdown at the right edge.
+// percent right-aligned at x=128, name/verdict line, a 150 px fuel road from
+// x=162 to the pump (car at the used share, pace tick underneath), and the
+// reset countdown at the right edge.
 #ifdef ARDUINO
 
 #include <Arduino.h>
@@ -25,7 +26,7 @@ constexpr uint16_t kInk = 0x0000;
 constexpr uint16_t kPaper = 0xFFFF;
 constexpr int16_t kRoadX0 = 162;
 constexpr int16_t kRoadX1 = kRoadX0 + kUsageRoadPx;
-static_assert(kRoadX1 == 312, "road, flag and the widest countdown must fit in 388 px");
+static_assert(kRoadX1 == 312, "road, pump, reset icon and the widest countdown must fit in 388 px");
 
 TFT_eSprite* g = nullptr;  // canvas for the frame being drawn
 
@@ -110,6 +111,13 @@ const char* const kXMark[] = {"##...##", ".##.##.", "..###..", ".##.##.", "##...
 const char* const kRing1[] = {".#.", "#.#", ".#."};
 const char* const kRing2[] = {".##.", "#..#", "#..#", ".##."};
 const char* const kWheel[] = {".###.", "#####", "##.##", "#####", ".###."};
+// End of the road: reaching the pump means the allowance is used up.
+const char* const kPump[] = {
+    "#######...", "#.....#.#.", "#.....#..#", "#.....#..#", "#######..#", "#######..#", "#######.##",
+    "#######.#.", "#######...", "#######...", "#######...", "#######...", "#########.",
+};
+// Even pace: where the car would be if the week's allowance were spread evenly.
+const char* const kPaceMark[] = {"..#..", ".###.", "#####"};
 
 struct Px { int8_t x, y; };
 // Paper pixels punched out of kDisc for each mood.
@@ -161,14 +169,6 @@ void car(int16_t x, int16_t y, bool ghost) {
   pix(kWheel, x + 14, y + 8);
 }
 
-void flag(int16_t x, int16_t y) {
-  rect(x, y, 1, 17);
-  for (int16_t j = 0; j < 8; j++)
-    for (int16_t i = 0; i < 10; i++)
-      if (((i / 2) + (j / 2)) % 2 == 0) g->drawPixel(x + 1 + i, y + j, kInk);
-  outline(x + 1, y, 10, 8);
-}
-
 void zz(int16_t x, int16_t y, const UsageFrame& f) {
   const int16_t bob = f.moving ? (int16_t)lroundf(sinf(f.t_ms / 1000.0f * 2.5f) * 1.5f) : 0;
   text("z", x, y + bob, 9, true);
@@ -185,7 +185,7 @@ void headline(const UsageView& v, const UsageFrame& f) {
   int16_t x = 12;
   switch (v.headline_icon) {
     case UsageIcon::Spark:
-      if (f.moving && (f.t_ms / 500) % 2) pix(kSparkSmall, x, 6);
+      if (f.moving && (f.tick / 4) % 2) pix(kSparkSmall, x, 6);
       else pix(kSpark, x, 6);
       x += 14;
       break;
@@ -230,8 +230,8 @@ void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_
     text("--", right + 20, baseline, 24, true, Align::Right);
     return;
   }
-  char s[8];
-  std::snprintf(s, sizeof(s), "%d", (int)lroundf(r.left * sweep));
+  char s[8];  // the sweep burns down from a full tank while the car drives in
+  std::snprintf(s, sizeof(s), "%d", (int)lroundf(100.0f - (100 - r.left) * sweep));
   const int16_t nw = text_w(s, 24, true), pw = text_w("%", 12, true);
   const bool low = r.left <= 10;
   const uint16_t color = low ? kPaper : kInk;
@@ -242,46 +242,38 @@ void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_
 
 void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
   const int16_t x0 = kRoadX0, x1 = kRoadX1;
-  flag(x1 + 4, y - 10);
-  if (r.state == UsageRowState::Unavailable) {
+  pix(kPump, x1 + 4, y - 6);  // base level with the road's bottom edge
+  if (r.state == UsageRowState::Unavailable || r.car_px < 0) {
     for (int16_t x = x0; x < x1; x += 6) rect(x, y + 3, 2, 1);
     return;
   }
-  if (r.now_px < 0) {  // week position unknown: no car, no projection
-    for (int16_t x = x0; x < x1; x += 6) rect(x, y + 2, 3, 3);
-    return;
-  }
-  const int16_t now_x = x0 + r.now_px;
-  for (int16_t x = x0; x < now_x; x += 4) rect(x, y + 3, 2, 1);  // the week behind you
-  const int16_t reach = now_x + (int16_t)lroundf((x1 - now_x) * f.sweep);
   const bool stale = r.state == UsageRowState::Stale;
   const bool moving = f.moving && !stale && r.mood != UsageMood::Nap;
-  if (stale) {
-    if (reach > now_x) {
-      hatch(now_x, y, reach - now_x, 7);
-      rect(now_x, y, reach - now_x, 1);
-      rect(now_x, y + 6, reach - now_x, 1);
-    }
-  } else {
-    const int16_t end_x = r.dry_px >= 0 ? std::max<int16_t>(now_x, x0 + r.dry_px) : x1;
-    const int16_t solid_end = std::min(end_x, reach);
-    if (solid_end > now_x) {
-      rect(now_x, y, solid_end - now_x, 7);
-      const int phase = moving ? (int)((f.t_ms / 42) % 10) : 0;  // ~24 px/s lane marks
-      for (int16_t x = now_x + 2; x < solid_end - 2; x++)
-        if ((x - now_x + phase) % 10 < 5) g->drawPixel(x, y + 3, kPaper);
-    }
-    if (r.dry_px >= 0 && reach > end_x) {
-      const bool nap = r.mood == UsageMood::Nap;
-      if (!nap) pix(kXMark, end_x + 2, y + 1);
-      for (int16_t x = end_x + (nap ? 4 : 12); x < std::min(x1, reach) - 2; x += 8) rect(x, y + 2, 4, 3);
+  const int16_t car_at = x0 + (int16_t)lroundf(r.car_px * f.sweep);
+  for (int16_t x = x0; x < car_at; x += 4) rect(x, y + 3, 2, 1);  // allowance already burned
+  if (x1 > car_at) {  // what is left
+    if (stale) {
+      hatch(car_at, y, x1 - car_at, 7);
+      rect(car_at, y, x1 - car_at, 1);
+      rect(car_at, y + 6, x1 - car_at, 1);
+    } else {
+      rect(car_at, y, x1 - car_at, 7);
+      const int phase = moving ? (int)((f.tick * 3) % 10) : 0;  // 3 px per frame
+      for (int16_t x = car_at + 2; x < x1 - 2; x++)
+        if ((x - car_at + phase) % 10 < 5) g->drawPixel(x, y + 3, kPaper);
     }
   }
-  const int16_t car_x = std::max<int16_t>(x0 - 8, std::min<int16_t>(now_x - 11, x1 - 22));
-  const int16_t bob = moving ? (int16_t)((f.t_ms / 125) % 2) : 0;
+  if (r.pace_px >= 0) {  // cut through the road so the tick reads on solid, hatch and dots
+    const int16_t px = x0 + r.pace_px;
+    rect(px - 1, y, 3, 7, kPaper);
+    rect(px, y, 1, 8);
+    pix(kPaceMark, px - 2, y + 8);
+  }
+  const int16_t car_x = std::max<int16_t>(x0 - 8, std::min<int16_t>(car_at - 11, x1 - 22));
+  const int16_t bob = moving ? (int16_t)(f.tick % 2) : 0;
   car(car_x, y - 13 - bob, stale);
   if (moving) {
-    const int k = (int)((f.t_ms / 250) % 2);
+    const int k = (int)((f.tick / 2) % 2);
     pix(kRing1, car_x - 5 - k * 2, y - 6 - k);
     if (k) pix(kRing2, car_x - 11, y - 9);
   }
@@ -300,10 +292,12 @@ void row(size_t i, const UsageRowView& r, const UsageFrame& f) {
   if (!r.chip.empty()) {
     chip(r.chip.c_str(), 388, top + 21, Align::Right);
   } else if (!r.verdict.empty() && r.state != UsageRowState::Stale) {
-    text(r.verdict.c_str(), 388, top + 21, 9, r.dry_px >= 0, Align::Right);
+    text(r.verdict.c_str(), 388, top + 21, 9, r.runs_dry, Align::Right);
   }
   road(r, top + 38, f);
   text(r.countdown.c_str(), 388, top + 45, 9, false, Align::Right);
+  // Clock before the countdown: time until the allowance refills.
+  if (r.countdown != "--") pix(kClockIcon, 388 - text_w(r.countdown.c_str(), 9) - 12, top + 35);
 }
 
 }  // namespace

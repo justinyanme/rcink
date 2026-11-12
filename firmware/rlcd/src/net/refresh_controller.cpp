@@ -26,18 +26,32 @@ uint32_t current_interval(const RefreshAppState& app) {
                                       RCRLCD_USAGE_ENABLED);
 }
 
+// HOST only: battery modes keep their adaptive schedule.
+uint64_t early_refetch_at(const RefreshAppState& app) {
+#if RCRLCD_USAGE_ENABLED
+  if (app.runtime_mode != RuntimeMode::Host) return 0;
+  return usage_refetch_at_s(app.usage, app.device.last_fetch_s);
+#else
+  (void)app;
+  return 0;
+#endif
+}
+
 }  // namespace
 
 bool refresh_due_now(const RefreshAppState& app) {
+  const uint64_t now = (uint64_t)time(nullptr);
   const NetworkRefreshQuery query = {
-      (uint64_t)time(nullptr),
+      now,
       app.device.last_fetch_s,
       app.retry_not_before_s,
       app.device.pages.empty(),
       wall_clock_is_valid(),
       current_interval(app),
   };
-  return network_refresh_due(query);
+  if (network_refresh_due(query)) return true;
+  const uint64_t early = early_refetch_at(app);
+  return early != 0 && query.clock_valid && now >= early && now >= app.retry_not_before_s;
 }
 
 bool start_network_refresh(RefreshAppState app) {
@@ -111,15 +125,23 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed) {
       success
           ? network_refresh_interval_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED)
           : network_failure_retry_sec(app.runtime_mode, adaptive, RCRLCD_USAGE_ENABLED);
-  app.retry_not_before_s = completion.completed_at_s + cooldown;
+  uint64_t gate = completion.completed_at_s + cooldown;
+#if RCRLCD_USAGE_ENABLED
+  if (success) {  // let an expiring or late sample pull the next fetch forward
+    const uint64_t early = early_refetch_at(app);
+    const uint64_t soonest = completion.completed_at_s + kUsageChaseRetryS;
+    if (early != 0 && early < gate) gate = early > soonest ? early : soonest;
+  }
+#endif
+  app.retry_not_before_s = gate;
 #if RCRLCD_USAGE_ENABLED
   // After the gate is known, so a failure can say when it will retry.
   usage_page_changed = update_usage_page(
       app.device, app.usage, completion.completed_at_s,
       {!success, app.device.last_fetch_s, app.retry_not_before_s});
 #endif
-  Serial.printf("[auto] retry gate %u s result=%u\n", (unsigned)cooldown,
-                (unsigned)completion.result);
+  Serial.printf("[auto] retry gate %u s result=%u\n",
+                (unsigned)(gate - completion.completed_at_s), (unsigned)completion.result);
   return true;
 }
 

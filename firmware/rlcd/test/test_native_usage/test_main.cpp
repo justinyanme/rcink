@@ -38,15 +38,17 @@ void test_validated_snapshot_becomes_a_truthful_road() {
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)claude.state);
   TEST_ASSERT_EQUAL(66, claude.left);
   TEST_ASSERT_EQUAL_STRING("3d 20h", claude.countdown.c_str());
-  TEST_ASSERT_EQUAL(67, claude.now_px);  // 44.7 % of the week has elapsed
-  TEST_ASSERT_EQUAL(-1, claude.dry_px);
+  TEST_ASSERT_EQUAL(51, claude.car_px);   // 34 % used: the road ahead is the 66 % left
+  TEST_ASSERT_EQUAL(67, claude.pace_px);  // 44.7 % of the week has elapsed
+  TEST_ASSERT_FALSE(claude.runs_dry);
   TEST_ASSERT_EQUAL_STRING("~24% to spare", claude.verdict.c_str());
   TEST_ASSERT_EQUAL((int)UsageMood::Comfy, (int)claude.mood);
   TEST_ASSERT_TRUE(claude.chip.empty());
   for (size_t i = 1; i < 4; i++) {
     // Never-observed slots: no number, no car, no guessed allowance.
     TEST_ASSERT_EQUAL((int)UsageRowState::Unavailable, (int)view.rows[i].state);
-    TEST_ASSERT_EQUAL(-1, view.rows[i].now_px);
+    TEST_ASSERT_EQUAL(-1, view.rows[i].car_px);
+    TEST_ASSERT_EQUAL(-1, view.rows[i].pace_px);
     TEST_ASSERT_EQUAL_STRING("--", view.rows[i].countdown.c_str());
     TEST_ASSERT_EQUAL_STRING("no data yet", view.rows[i].verdict.c_str());
   }
@@ -126,14 +128,22 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
   TEST_ASSERT_EQUAL(100, view.rows[0].left);           // a real zero-used sample
   TEST_ASSERT_EQUAL_STRING("--", view.rows[0].countdown.c_str());
-  TEST_ASSERT_EQUAL(-1, view.rows[0].now_px);           // null reset: no car position
+  TEST_ASSERT_EQUAL(0, view.rows[0].car_px);            // nothing used: car at the start
+  TEST_ASSERT_EQUAL(-1, view.rows[0].pace_px);          // null reset: no pace tick
   TEST_ASSERT_EQUAL((int)UsageMood::None, (int)view.rows[0].mood);
   TEST_ASSERT_TRUE(view.rows[0].verdict.empty());       // no projection from stale data
   TEST_ASSERT_TRUE(view.rows[0].chip.empty());          // every known row is stale: footer/headline speak once
   TEST_ASSERT_EQUAL(-1, view.pick);
-  TEST_ASSERT_EQUAL_STRING("Nothing fresh to recommend.", view.headline.c_str());
+  // The GET worked but every number is old: say so instead of "Synced".
+  TEST_ASSERT_EQUAL_STRING("No new numbers since 16:00.", view.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("OLD DATA", view.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("not synced yet", view.footer_text.c_str());
+  view = view_of(snapshot, 1794297900, {false, 1794297840, 0});
+  TEST_ASSERT_EQUAL_STRING("OLD DATA", view.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("checked 16:04", view.footer_text.c_str());
   view = view_of(snapshot, 1794297900, {true, 1794297000, 0});
   TEST_ASSERT_EQUAL_STRING("No signal. Numbers from 16:00.", view.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("SYNC FAILED", view.footer_chip.c_str());
 
   TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
   const auto unknown = view_of(snapshot, 0);
@@ -141,14 +151,15 @@ void test_stale_unknown_clock_null_reset_and_real_zero_are_honest() {
   TEST_ASSERT_EQUAL_STRING("What day is it? Clock not set.", unknown.headline.c_str());
   TEST_ASSERT_EQUAL_STRING("NO CLOCK", unknown.footer_chip.c_str());
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)unknown.rows[0].state);
-  TEST_ASSERT_EQUAL(-1, unknown.rows[0].now_px);
+  TEST_ASSERT_EQUAL(51, unknown.rows[0].car_px);   // the sample is still what was used
+  TEST_ASSERT_EQUAL(-1, unknown.rows[0].pace_px);  // but where the week stands is unknown
   TEST_ASSERT_EQUAL_STRING("--", unknown.rows[0].countdown.c_str());
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view_of(snapshot, 1794298200).rows[0].state);
 
   const auto unavailable = view_of(UsageSnapshot{}, 1794297900);
   for (const auto& row : unavailable.rows) {
     TEST_ASSERT_EQUAL((int)UsageRowState::Unavailable, (int)row.state);
-    TEST_ASSERT_EQUAL(-1, row.now_px);
+    TEST_ASSERT_EQUAL(-1, row.car_px);
   }
   TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", unavailable.headline.c_str());
 }
@@ -160,20 +171,24 @@ void test_four_rows_keep_independent_freshness_position_and_projection() {
   const int left[] = {66, 58, 100, 25};
   for (int i = 0; i < 4; i++) TEST_ASSERT_EQUAL(left[i], view.rows[i].left);
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[0].state);
-  // Codex's own reset has passed without a new sample: stale, at the flag.
+  // Codex's own reset has passed without a new sample: stale, pace at the end.
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
   TEST_ASSERT_EQUAL_STRING("due", view.rows[1].countdown.c_str());
-  TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].now_px);
+  TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].pace_px);
+  TEST_ASSERT_EQUAL(63, view.rows[1].car_px);
   TEST_ASSERT_EQUAL_STRING("5m old", view.rows[1].chip.c_str());
-  // Kimi has no reset time: honest numbers, no position or projection.
+  // Kimi has no reset time: honest numbers, no pace tick or projection.
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[2].state);
-  TEST_ASSERT_EQUAL(-1, view.rows[2].now_px);
+  TEST_ASSERT_EQUAL(0, view.rows[2].car_px);
+  TEST_ASSERT_EQUAL(-1, view.rows[2].pace_px);
   TEST_ASSERT_TRUE(view.rows[2].verdict.empty());
-  // Gemini burns 75 % in 28 % of its week: it runs dry days before the reset.
+  // Gemini burns 75 % in 28 % of its week: the car is far past the pace tick
+  // and it runs dry days before the reset.
   const auto& gemini = view.rows[3];
   TEST_ASSERT_EQUAL_STRING("5d 1h", gemini.countdown.c_str());
-  TEST_ASSERT_EQUAL(42, gemini.now_px);
-  TEST_ASSERT_EQUAL(55, gemini.dry_px);
+  TEST_ASSERT_EQUAL(113, gemini.car_px);
+  TEST_ASSERT_EQUAL(42, gemini.pace_px);
+  TEST_ASSERT_TRUE(gemini.runs_dry);
   TEST_ASSERT_EQUAL_STRING("dry 4d early", gemini.verdict.c_str());
   TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)gemini.mood);
   TEST_ASSERT_EQUAL(0, view.pick);
@@ -211,7 +226,8 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   TEST_ASSERT_EQUAL_STRING("Codex is napping. Try", view.headline.c_str());
   TEST_ASSERT_EQUAL(2, view.pick);
   TEST_ASSERT_EQUAL_STRING("out of gas", view.rows[1].verdict.c_str());
-  TEST_ASSERT_EQUAL(view.rows[1].now_px, view.rows[1].dry_px);
+  TEST_ASSERT_TRUE(view.rows[1].runs_dry);
+  TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].car_px);  // parked at the pump
   TEST_ASSERT_EQUAL_STRING("5h", view.rows[1].countdown.c_str());
   TEST_ASSERT_EQUAL((int)UsageMood::Low, (int)view.rows[0].mood);
   TEST_ASSERT_EQUAL_STRING("dry 18h early", view.rows[0].verdict.c_str());
@@ -222,6 +238,25 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   // A stale napping row is not news; the recommendation stays on fresh data.
   s.providers[0].status = UsageStatus::Stale;
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view_of(s, now).headline.c_str());
+}
+
+void test_host_refetches_when_samples_expire_and_chases_a_late_source() {
+  const uint64_t t = 1794362400;
+  UsageSnapshot s;
+  TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, t));  // nothing observed yet
+  s.providers[0] = live(40, t, t + 86400);                // expires at t + 420
+  s.providers[1] = live(20, t, t + 86400);
+  s.providers[1].expires_at = t + 300;
+  TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, 0));  // never fetched: normal path
+  // Fresh at the last fetch: look again just after the earliest expiry.
+  TEST_ASSERT_EQUAL_UINT64(t + 300 + kUsageExpiryGraceS, usage_refetch_at_s(s, t));
+  // That fetch found the same expired sample: the source is late, check back in a minute.
+  TEST_ASSERT_EQUAL_UINT64(t + 310 + kUsageChaseRetryS, usage_refetch_at_s(s, t + 310));
+  // Half an hour after the sample, a quiet source falls back to the normal interval.
+  s.providers[0].expires_at = t;
+  const uint64_t quiet = s.providers[1].fetched_at + kUsageChaseWindowS;
+  TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, quiet));
+  TEST_ASSERT_NOT_EQUAL(0, usage_refetch_at_s(s, quiet - 1));
 }
 
 void test_frame_stays_put_while_time_passes_within_the_hour() {
@@ -383,9 +418,11 @@ void test_encoded_view_is_bounded_and_rejects_corruption() {
   UsageView out, untouched = derive_usage_view(snapshot, 1794298000, {});
   out = untouched;
   const std::function<void(JsonDocument&)> mutations[] = {
-    [](JsonDocument& d) { d["schema"] = "rcink.usage-view.v0"; },
+    [](JsonDocument& d) { d["schema"] = "rcink.usage-view.v1"; },  // old time-based road
     [](JsonDocument& d) { d["rows"].as<JsonArray>().remove(0); },
-    [](JsonDocument& d) { d["rows"][0]["now"] = kUsageRoadPx + 1; },
+    [](JsonDocument& d) { d["rows"][0]["car"] = kUsageRoadPx + 1; },
+    [](JsonDocument& d) { d["rows"][0]["pace"] = -2; },
+    [](JsonDocument& d) { d["rows"][0]["dry"] = 1; },
     [](JsonDocument& d) { d["rows"][0]["left"] = 101; },
     [](JsonDocument& d) { d["rows"][0]["state"] = 3; },
     [](JsonDocument& d) { d["pick"] = 4; },
@@ -411,6 +448,7 @@ int main() {
   RUN_TEST(test_stale_unknown_clock_null_reset_and_real_zero_are_honest);
   RUN_TEST(test_four_rows_keep_independent_freshness_position_and_projection);
   RUN_TEST(test_headline_recommends_headroom_and_names_who_ran_out);
+  RUN_TEST(test_host_refetches_when_samples_expire_and_chases_a_late_source);
   RUN_TEST(test_frame_stays_put_while_time_passes_within_the_hour);
   RUN_TEST(test_restart_restores_original_observations_without_redrawing_unchanged_page);
   RUN_TEST(test_only_newer_provider_samples_replace_cache_including_lower_usage_after_source_reset);

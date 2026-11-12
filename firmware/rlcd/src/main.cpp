@@ -68,6 +68,11 @@ static bool g_usage_animation = true;
 static bool g_usage_sweeping = false;
 static uint32_t g_usage_sweep_start_ms = 0;
 static uint32_t g_usage_last_frame_ms = 0;
+// Advances once per quiet animation frame. The loop delivers frames every
+// ~135 ms rather than exactly kUsageFrameMs, so stepped motion keyed to millis()
+// would alias (the car would skip a bob every ~1.6 s); keyed to this, each frame
+// moves exactly one step.
+static uint32_t g_usage_tick = 0;
 static std::string g_usage_view_json;
 static UsageView g_usage_view;
 #endif
@@ -156,6 +161,7 @@ static UsageFrame usage_frame() {
   if (!usage_animating()) return frame;
   const uint32_t now = millis();
   frame.moving = true;
+  frame.tick = g_usage_tick;
   frame.t_ms = now;
   if (g_usage_sweeping) {
     const uint32_t elapsed = now - g_usage_sweep_start_ms;
@@ -391,6 +397,7 @@ static void poll_usage_animation() {
   const uint32_t now = millis();
   if (now - g_usage_last_frame_ms < kUsageFrameMs) return;
   g_usage_last_frame_ms = now;
+  g_usage_tick++;
   draw_usage_page(g_state.pages[g_state.page_index]);
 #endif
 }
