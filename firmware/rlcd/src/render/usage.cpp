@@ -13,7 +13,6 @@
 
 namespace rcpaper {
 namespace {
-const char* kIds[] = {"claude", "codex", "kimi", "gemini"};
 constexpr uint64_t kClockMinimum = 1704067200;
 
 bool exact(JsonVariantConst value, std::initializer_list<const char*> fields) {
@@ -28,6 +27,13 @@ bool epoch(JsonVariantConst value) {
 bool percent(JsonVariantConst value) {
   return value.is<double>() && std::isfinite(value.as<double>()) &&
          value.as<double>() >= 0 && value.as<double>() <= 100;
+}
+bool provider_id(JsonVariantConst value, std::string& out) {
+  if (!value.is<const char*>()) return false;
+  out = value.as<const char*>();
+  if (out.empty() || out.size() > kUsageMaxIdLength) return false;
+  for (const char c : out) if (c < '!' || c > '~') return false;  // printable ASCII
+  return true;
 }
 
 // ArduinoJson accepts a valid JSON prefix; retain the cursor to reject trailing garbage.
@@ -50,7 +56,23 @@ std::string precise_percent(double value) {
   std::snprintf(buffer, sizeof(buffer), "%.17g", value);
   return buffer;
 }
+
+size_t find_provider(const UsageSnapshot& snapshot, const std::string& id) {
+  for (size_t i = 0; i < snapshot.count; i++)
+    if (snapshot.providers[i].id == id) return i;
+  return snapshot.count;
+}
 }  // namespace
+
+std::string usage_provider_name(const std::string& id) {
+  if (id == "claude") return "Claude";
+  if (id == "codex") return "Codex";
+  if (id == "kimi") return "Kimi";
+  if (id == "gemini") return "Gemini";
+  std::string name = id;
+  if (name[0] >= 'a' && name[0] <= 'z') name[0] = (char)(name[0] - 'a' + 'A');
+  return name;
+}
 
 bool decode_usage(const std::string& json, UsageSnapshot& out) {
   if (json.empty() || json.size() > kUsageMaximumBytes) return false;
@@ -62,15 +84,19 @@ bool decode_usage(const std::string& json, UsageSnapshot& out) {
     if (c != ' ' && c != '\n' && c != '\r' && c != '\t') return false;
   }
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (!exact(root, {"schema", "servedAt", "providers"}) || root["schema"] != "rcink.usage-limits.v1" ||
-      !epoch(root["servedAt"]) || !root["providers"].is<JsonArrayConst>() || root["providers"].size() != 4) return false;
+  if (!exact(root, {"schema", "servedAt", "providers"}) || root["schema"] != "rcink.usage-limits.v2" ||
+      !epoch(root["servedAt"]) || !root["providers"].is<JsonArrayConst>() ||
+      root["providers"].size() > kUsageMaxProviders) return false;
   UsageSnapshot next;
+  next.count = root["providers"].size();
   next.served_at = root["servedAt"].as<uint64_t>();
-  for (size_t i = 0; i < 4; i++) {
+  for (size_t i = 0; i < next.count; i++) {
     const auto row = root["providers"][i];
+    std::string id;
     if (!exact(row, {"id", "status", "usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"}) ||
-        row["id"] != kIds[i]) return false;
+        !provider_id(row["id"], id) || find_provider(next, id) < next.count) return false;
     auto& target = next.providers[i];
+    target.id = id;
     if (row["status"] == "unavailable") {
       for (auto field : {"usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"}) {
         if (!row[field].isNull()) return false;
@@ -98,13 +124,13 @@ bool decode_usage(const std::string& json, UsageSnapshot& out) {
 
 std::string encode_usage(const UsageSnapshot& snapshot) {
   JsonDocument doc;
-  doc["schema"] = "rcink.usage-limits.v1";
+  doc["schema"] = "rcink.usage-limits.v2";
   doc["servedAt"] = snapshot.served_at;
   JsonArray rows = doc["providers"].to<JsonArray>();
-  for (size_t i = 0; i < 4; i++) {
+  for (size_t i = 0; i < snapshot.count; i++) {
     const auto& provider = snapshot.providers[i];
     JsonObject row = rows.add<JsonObject>();
-    row["id"] = kIds[i];
+    row["id"] = provider.id;
     if (provider.status == UsageStatus::Unavailable) {
       row["status"] = "unavailable";
       for (auto field : {"usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"}) row[field] = nullptr;
@@ -127,17 +153,37 @@ std::string encode_usage(const UsageSnapshot& snapshot) {
 
 bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache) {
   bool changed = false;
-  for (size_t i = 0; i < 4; i++) {
-    if (incoming.providers[i].status != UsageStatus::Unavailable &&
-        incoming.providers[i].fetched_at > cache.providers[i].fetched_at) {
-      cache.providers[i] = incoming.providers[i];
+  // Accounts the source no longer reports drop out of the cache (and the
+  // frame) instead of lingering as forever-stale rows.
+  for (size_t i = 0; i < cache.count;) {
+    if (find_provider(incoming, cache.providers[i].id) < incoming.count) { i++; continue; }
+    for (size_t j = i + 1; j < cache.count; j++) cache.providers[j - 1] = cache.providers[j];
+    cache.providers[--cache.count] = UsageProvider{};
+    changed = true;
+  }
+  for (size_t i = 0; i < incoming.count; i++) {
+    const UsageProvider& next = incoming.providers[i];
+    const size_t slot = find_provider(cache, next.id);
+    if (slot == cache.count) {
+      // New account upstream: show it immediately, even before its first
+      // successful observation.
+      if (cache.count < kUsageMaxProviders) {
+        cache.providers[cache.count++] = next;
+        changed = true;
+      }
+      continue;
+    }
+    UsageProvider& current = cache.providers[slot];
+    if (next.status != UsageStatus::Unavailable &&
+        next.fetched_at > current.fetched_at) {
+      current = next;
       changed = true;
-    } else if (cache.providers[i].status == UsageStatus::Ok &&
-               (incoming.providers[i].status == UsageStatus::Unavailable ||
-                (incoming.providers[i].fetched_at == cache.providers[i].fetched_at &&
-                 incoming.providers[i].status == UsageStatus::Stale))) {
+    } else if (current.status == UsageStatus::Ok &&
+               (next.status == UsageStatus::Unavailable ||
+                (next.fetched_at == current.fetched_at &&
+                 next.status == UsageStatus::Stale))) {
       // Later authenticated reads may know a reset/expiry before the local RTC.
-      cache.providers[i].status = UsageStatus::Stale;
+      current.status = UsageStatus::Stale;
       changed = true;
     }
   }
@@ -175,7 +221,8 @@ uint32_t usage_page_fingerprint(const PageRecord& page) {
 uint64_t usage_refetch_at_s(const UsageSnapshot& snapshot, uint64_t last_fetch_s) {
   if (last_fetch_s == 0) return 0;
   uint64_t next = 0;
-  for (const UsageProvider& p : snapshot.providers) {
+  for (size_t i = 0; i < snapshot.count; i++) {
+    const UsageProvider& p = snapshot.providers[i];
     if (p.status == UsageStatus::Unavailable || p.fetched_at == 0) continue;
     uint64_t at = 0;
     if (p.expires_at > last_fetch_s) {

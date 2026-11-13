@@ -39,7 +39,7 @@ void test_http_failures_keep_last_good_values_and_recovery_uses_original_source_
       case 4: http_fixture::stalled = true; break;
       case 5: http_fixture::body = std::string(4097, ' '); break;
       case 6: http_fixture::declared = 4097; break;
-      case 7: http_fixture::body.replace(http_fixture::body.find("rcink.usage-limits.v1"), 20, "unsupported"); break;
+      case 7: http_fixture::body.replace(http_fixture::body.find("rcink.usage-limits.v2"), 20, "unsupported"); break;
       case 8: http_fixture::body = "{broken"; break;
       case 9: http_fixture::declared = http_fixture::body.size() + 20; break;
       case 10: http_fixture::transfer = "chunked"; break;

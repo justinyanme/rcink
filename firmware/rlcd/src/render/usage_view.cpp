@@ -8,12 +8,10 @@
 
 namespace rcpaper {
 
-const char* const kUsageProviderNames[4] = {"Claude", "Codex", "Kimi", "Gemini"};
-
 namespace {
 constexpr uint64_t kClockMinimum = 1704067200;
 constexpr size_t kMaxLabel = 40;
-constexpr const char* kViewSchema = "rcink.usage-view.v2";
+constexpr const char* kViewSchema = "rcink.usage-view.v3";
 
 std::string local_hhmm(uint64_t epoch_s) {
   const time_t instant = (time_t)epoch_s;
@@ -92,14 +90,16 @@ bool ranged(JsonVariantConst value, int lo, int hi, int& out) {
 UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
                             const UsageSync& sync) {
   UsageView view;
+  view.count = snapshot.count;
   const bool clock = now >= kClockMinimum;
-  double pace[4] = {-1, -1, -1, -1};
+  double pace[kUsageMaxProviders] = {-1, -1, -1, -1};
   uint64_t newest_sample = 0;
   bool any = false, all_stale = true;
 
-  for (size_t i = 0; i < 4; i++) {
+  for (size_t i = 0; i < snapshot.count; i++) {
     const UsageProvider& p = snapshot.providers[i];
     UsageRowView& row = view.rows[i];
+    row.id = p.id;
     if (p.status == UsageStatus::Unavailable) { row.verdict = "no data yet"; continue; }
     any = true;
     newest_sample = std::max(newest_sample, p.fetched_at);
@@ -129,7 +129,7 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
   all_stale = any && all_stale;
 
   // Name the odd one out; when everything is stale the footer says it once.
-  for (size_t i = 0; i < 4; i++) {
+  for (size_t i = 0; i < snapshot.count; i++) {
     UsageRowView& row = view.rows[i];
     if (row.state != UsageRowState::Stale || all_stale) continue;
     const uint64_t fetched = snapshot.providers[i].fetched_at;
@@ -152,23 +152,23 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
   } else {
     int pick = -1, nap = -1, low = -1;
     double best = -1e9;
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < view.count; i++) {
       const UsageRowView& row = view.rows[i];
       if (row.state != UsageRowState::Live) continue;
-      if (row.mood == UsageMood::Nap && nap < 0) nap = i;
-      if (row.mood == UsageMood::Low && low < 0) low = i;
+      if (row.mood == UsageMood::Nap && nap < 0) nap = (int)i;
+      if (row.mood == UsageMood::Low && low < 0) low = (int)i;
       if (row.left > 10 && pace[i] >= 0 && row.left - pace[i] > best) {
         best = row.left - pace[i];
-        pick = i;
+        pick = (int)i;
       }
     }
     view.headline_icon = UsageIcon::Face;
     if (pick >= 0 && nap >= 0) {
       view.headline_face = UsageMood::Nap;
-      view.headline = std::string(kUsageProviderNames[nap]) + " is napping. Try";
+      view.headline = usage_provider_name(view.rows[nap].id) + " is napping. Try";
     } else if (pick >= 0 && low >= 0) {
       view.headline_face = UsageMood::Low;
-      view.headline = std::string(kUsageProviderNames[low]) + " is almost out. Try";
+      view.headline = usage_provider_name(view.rows[low].id) + " is almost out. Try";
     } else if (pick >= 0) {
       view.headline_icon = UsageIcon::Spark;
       view.headline = "Best bet today:";
@@ -210,8 +210,10 @@ std::string encode_usage_view(const UsageView& view) {
   doc["footerChip"] = view.footer_chip;
   doc["footer"] = view.footer_text;
   JsonArray rows = doc["rows"].to<JsonArray>();
-  for (const UsageRowView& row : view.rows) {
+  for (size_t i = 0; i < view.count; i++) {
+    const UsageRowView& row = view.rows[i];
     JsonObject o = rows.add<JsonObject>();
+    o["id"] = row.id;
     o["state"] = (int)row.state;
     o["left"] = (int)row.left;
     o["mood"] = (int)row.mood;
@@ -232,21 +234,25 @@ bool decode_usage_view(const std::string& json, UsageView& out) {
   if (json.size() > 2048 || deserializeJson(doc, json)) return false;
   JsonVariantConst root = doc.as<JsonVariantConst>();
   if (root["schema"] != kViewSchema || !root["rows"].is<JsonArrayConst>() ||
-      root["rows"].size() != 4) return false;
+      root["rows"].size() > kUsageMaxProviders) return false;
   UsageView next;
+  next.count = root["rows"].size();
   int value = 0;
   if (!ranged(root["icon"], 0, (int)UsageIcon::Face, value)) return false;
   next.headline_icon = (UsageIcon)value;
   if (!ranged(root["face"], 0, (int)UsageMood::Nap, value)) return false;
   next.headline_face = (UsageMood)value;
-  if (!ranged(root["pick"], -1, 3, value)) return false;
+  if (!ranged(root["pick"], -1, (int)kUsageMaxProviders - 1, value)) return false;
   next.pick = (int8_t)value;
   if (!small_string(root["headline"], next.headline) ||
       !small_string(root["footerChip"], next.footer_chip) ||
       !small_string(root["footer"], next.footer_text)) return false;
-  for (size_t i = 0; i < 4; i++) {
+  for (size_t i = 0; i < next.count; i++) {
     JsonVariantConst o = root["rows"][i];
     UsageRowView& row = next.rows[i];
+    if (!o["id"].is<const char*>()) return false;
+    row.id = o["id"].as<const char*>();
+    if (row.id.empty() || row.id.size() > kUsageMaxIdLength) return false;
     if (!ranged(o["state"], 0, (int)UsageRowState::Stale, value)) return false;
     row.state = (UsageRowState)value;
     if (!ranged(o["left"], 0, 100, value)) return false;
