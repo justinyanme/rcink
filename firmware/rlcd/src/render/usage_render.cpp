@@ -1,16 +1,18 @@
 // Hand-drawn weekly-allowance "road" view for the 400x300 1 bpp RLCD.
 //
-// Layout (y grows down):  0-24 headline + rule, four 62 px provider rows from
-// y=26, 275 footer rule, footer baseline 294. Each row: 28 px logo, remaining
-// percent right-aligned at x=128, name/verdict line, a 150 px fuel road from
-// x=162 to the pump (car at the used share, pace tick underneath), and the
-// reset countdown at the right edge.
+// Layout (y grows down):  0-24 headline + rule, up to four 62 px provider
+// rows vertically centered between y=26 and the footer rule at 275, footer
+// baseline 294. Each row: 28 px logo, remaining percent right-aligned at
+// x=128, name/verdict line, a 150 px fuel road from x=162 to the pump (car at
+// the used share, pace tick underneath), and the reset countdown at the right.
+// Rows mirror the payload: its ids, its order, its count.
 #ifdef ARDUINO
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 
@@ -176,10 +178,37 @@ void zz(int16_t x, int16_t y, const UsageFrame& f) {
 }
 
 // --- chrome ------------------------------------------------------------------
-const MonoBitmap* const kRowLogos[4] = {
-    &usage_logos::kClaude28, &usage_logos::kCodex28, &usage_logos::kKimi28, &usage_logos::kGemini28};
-const MonoBitmap* const kPickLogos[4] = {
-    &usage_logos::kClaude15, &usage_logos::kCodex15, &usage_logos::kKimi15, &usage_logos::kGemini15};
+const MonoBitmap* row_logo(const std::string& id) {
+  if (id == "claude") return &usage_logos::kClaude28;
+  if (id == "codex") return &usage_logos::kCodex28;
+  if (id == "kimi") return &usage_logos::kKimi28;
+  if (id == "gemini") return &usage_logos::kGemini28;
+  return nullptr;
+}
+const MonoBitmap* pick_logo(const std::string& id) {
+  if (id == "claude") return &usage_logos::kClaude15;
+  if (id == "codex") return &usage_logos::kCodex15;
+  if (id == "kimi") return &usage_logos::kKimi15;
+  if (id == "gemini") return &usage_logos::kGemini15;
+  return nullptr;
+}
+
+// Accounts without a baked mark get a disc with their initial.
+void generic_logo(const std::string& id, int16_t x, int16_t y, int16_t d, int pt) {
+  g->drawCircle(x + d / 2, y + d / 2, d / 2 - 1, kInk);
+  char initial[2] = {id.empty() ? '?' : (char)toupper((unsigned char)id[0]), '\0'};
+  text(initial, x + d / 2, y + d / 2 + (pt >= 12 ? 8 : 5), pt, true, Align::Center);
+}
+void logo(const std::string& id, int16_t x, int16_t y) {
+  const MonoBitmap* mark = row_logo(id);
+  if (mark) bitmap(*mark, x, y);
+  else generic_logo(id, x, y, 28, 12);
+}
+void small_logo(const std::string& id, int16_t x, int16_t y) {
+  const MonoBitmap* mark = pick_logo(id);
+  if (mark) bitmap(*mark, x, y);
+  else generic_logo(id, x, y, 15, 9);
+}
 
 void headline(const UsageView& v, const UsageFrame& f) {
   int16_t x = 12;
@@ -195,9 +224,9 @@ void headline(const UsageView& v, const UsageFrame& f) {
   }
   text(v.headline.c_str(), x, 18, 9);
   x += text_w(v.headline.c_str(), 9) + 5;
-  if (v.pick >= 0 && v.pick < 4) {
-    bitmap(*kPickLogos[v.pick], x, 4);
-    text(kUsageProviderNames[v.pick], x + 19, 18, 9, true);
+  if (v.pick >= 0 && v.pick < (int)v.count) {
+    small_logo(v.rows[v.pick].id, x, 4);
+    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, 18, 9, true);
   }
   rect(12, 24, 376, 1);
 }
@@ -225,6 +254,12 @@ void footer(const UsageView& v, const BatteryReading& batt, RuntimeMode mode) {
 }
 
 // --- rows --------------------------------------------------------------------
+// Rows keep their 62 px pitch; with fewer than four the block centers itself
+// between the headline rule and the footer rule.
+int16_t row_top(size_t i, size_t count) {
+  return 26 + (int16_t)((275 - 26 - 62 * (int)count) / 2) + (int16_t)i * 62;
+}
+
 void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_top, float sweep) {
   if (r.state == UsageRowState::Unavailable) {
     text("--", right + 20, baseline, 24, true, Align::Right);
@@ -280,14 +315,15 @@ void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
   if (r.mood == UsageMood::Nap) zz(car_x - 17, y - 1, f);
 }
 
-void row(size_t i, const UsageRowView& r, const UsageFrame& f) {
-  const int16_t top = 26 + (int16_t)i * 62;
+void row(size_t i, const UsageRowView& r, size_t count, const UsageFrame& f) {
+  const int16_t top = row_top(i, count);
   if (i > 0) for (int16_t x = 12; x < 388; x += 3) g->drawPixel(x, top - 1, kInk);
-  bitmap(*kRowLogos[i], 12, top + 17);
+  logo(r.id, 12, top + 17);
   number(r, 128, top + 48, top + 9, f.sweep);
-  text(kUsageProviderNames[i], kRoadX0, top + 21, 12, true);
-  if (i == 3) {  // Gemini is Antigravity's Gemini weekly pool
-    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(kUsageProviderNames[i], 12, true) + 6, top + 9);
+  const std::string name = usage_provider_name(r.id);
+  text(name.c_str(), kRoadX0, top + 21, 12, true);
+  if (r.id == "gemini") {  // Antigravity's Gemini weekly pool
+    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), 12, true) + 6, top + 9);
   }
   if (!r.chip.empty()) {
     chip(r.chip.c_str(), 388, top + 21, Align::Right);
@@ -308,7 +344,7 @@ void render_usage(const UsageView& view, const BatteryReading& batt,
   if (!g) return;
   g->fillSprite(kPaper);
   headline(view, frame);
-  for (size_t i = 0; i < view.rows.size(); i++) row(i, view.rows[i], frame);
+  for (size_t i = 0; i < view.count; i++) row(i, view.rows[i], view.count, frame);
   footer(view, batt, runtime_mode);
   display_push();
   g = nullptr;

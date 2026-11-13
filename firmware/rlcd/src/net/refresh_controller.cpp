@@ -113,7 +113,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
     }
     // Adaptive backoff follows source observations, not changing age labels.
     std::vector<PageRecord> observations;
-    for (size_t i = 0; i < app.usage.providers.size(); i++) {
+    for (size_t i = 0; i < app.usage.count; i++) {
       PageRecord record;
       record.id = std::to_string(i);
       record.data_ts = app.usage.providers[i].fetched_at;

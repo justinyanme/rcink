@@ -19,8 +19,9 @@ UsageView view_of(const UsageSnapshot& snapshot, uint64_t now, UsageSync sync = 
   return view;
 }
 
-UsageProvider live(double used, uint64_t now, uint64_t resets_at) {
+UsageProvider live(double used, uint64_t now, uint64_t resets_at, const char* id = "claude") {
   UsageProvider p;
+  p.id = id;
   p.status = UsageStatus::Ok;
   p.used_percent = used;
   p.fetched_at = now - 180;
@@ -78,7 +79,9 @@ void test_bad_responses_do_not_replace_last_good_visible_values() {
   const std::function<void(JsonDocument&)> mutations[] = {
     [](JsonDocument& d) { d["schema"] = "unsupported"; },
     [](JsonDocument& d) { d["extra"] = true; },
-    [](JsonDocument& d) { d["providers"].as<JsonArray>().remove(3); },
+    [](JsonDocument& d) { d["providers"][0]["id"] = ""; },
+    [](JsonDocument& d) { d["providers"][0]["id"] = "a-way-too-long-provider-id"; },
+    [](JsonDocument& d) { d["providers"][0]["id"] = 42; },
     [](JsonDocument& d) { d["providers"][1]["id"] = "claude"; },
     [](JsonDocument& d) { d["providers"][0]["usedPercent"] = -1; },
     [](JsonDocument& d) { d["providers"][0]["usedPercent"] = "33.5"; },
@@ -212,10 +215,11 @@ void test_four_rows_keep_independent_freshness_position_and_projection() {
 void test_headline_recommends_headroom_and_names_who_ran_out() {
   const uint64_t now = 1794362400;  // 2026-11-11 10:00 SGT
   UsageSnapshot s;
-  s.providers[0] = live(65.2, now, now + 75 * 3600);
-  s.providers[1] = live(69.8, now, now + 54 * 3600 + 1380);
-  s.providers[2] = live(6.1, now, now + 49 * 3600 + 1680);
-  s.providers[3] = live(11.0, now, now + 74 * 3600 + 960);
+  s.count = 4;
+  s.providers[0] = live(65.2, now, now + 75 * 3600, "claude");
+  s.providers[1] = live(69.8, now, now + 54 * 3600 + 1380, "codex");
+  s.providers[2] = live(6.1, now, now + 49 * 3600 + 1680, "kimi");
+  s.providers[3] = live(11.0, now, now + 74 * 3600 + 960, "gemini");
   auto view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
   TEST_ASSERT_EQUAL(2, view.pick);  // Kimi: furthest above its even-pace line
@@ -225,8 +229,8 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   TEST_ASSERT_EQUAL_STRING("~91% to spare", view.rows[2].verdict.c_str());
   TEST_ASSERT_EQUAL((int)UsageMood::Open, (int)view.rows[2].mood);
 
-  s.providers[0] = live(94.3, now, now + 27 * 3600 + 600);
-  s.providers[1] = live(100, now, now + 5 * 3600 + 1200);
+  s.providers[0] = live(94.3, now, now + 27 * 3600 + 600, "claude");
+  s.providers[1] = live(100, now, now + 5 * 3600 + 1200, "codex");
   view = view_of(s, now);
   TEST_ASSERT_EQUAL((int)UsageMood::Nap, (int)view.headline_face);
   TEST_ASSERT_EQUAL_STRING("Codex is napping. Try", view.headline.c_str());
@@ -238,7 +242,7 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   TEST_ASSERT_EQUAL((int)UsageMood::Low, (int)view.rows[0].mood);
   TEST_ASSERT_EQUAL_STRING("dry 18h early", view.rows[0].verdict.c_str());
 
-  s.providers[1] = live(69.8, now, now + 54 * 3600);
+  s.providers[1] = live(69.8, now, now + 54 * 3600, "codex");
   view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Claude is almost out. Try", view.headline.c_str());
   // A stale napping row is not news; the recommendation stays on fresh data.
@@ -250,8 +254,9 @@ void test_host_refetches_when_samples_expire_and_chases_a_late_source() {
   const uint64_t t = 1794362400;
   UsageSnapshot s;
   TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, t));  // nothing observed yet
+  s.count = 2;
   s.providers[0] = live(40, t, t + 86400);                // expires at t + 420
-  s.providers[1] = live(20, t, t + 86400);
+  s.providers[1] = live(20, t, t + 86400, "codex");
   s.providers[1].expires_at = t + 300;
   TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, 0));  // never fetched: normal path
   // Fresh at the last fetch: look again just after the earliest expiry.
@@ -269,10 +274,11 @@ void test_frame_stays_put_while_time_passes_within_the_hour() {
   // Battery-mode redraws must follow meaningful changes, not the minute hand.
   const uint64_t now = 1794362400;
   UsageSnapshot s;
+  s.count = 3;
   s.providers[0] = live(40, now, now + 80 * 3600 + 1800);
-  s.providers[1] = live(20, now, now + 30 * 3600 + 1800);
-  s.providers[2] = live(5, now, now + 100 * 3600 + 1800);
-  for (auto& p : s.providers) p.expires_at = now + 7200;
+  s.providers[1] = live(20, now, now + 30 * 3600 + 1800, "codex");
+  s.providers[2] = live(5, now, now + 100 * 3600 + 1800, "kimi");
+  for (size_t i = 0; i < s.count; i++) s.providers[i].expires_at = now + 7200;
   const UsageSync sync = {false, now - 60, 0};
   const auto first = usage_page(s, now, sync).layout_json;
   for (uint64_t t = now + 60; t <= now + 600; t += 60) {
@@ -384,9 +390,12 @@ void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation
   TEST_ASSERT_TRUE(decode_usage(response(), cache));
   UsageSnapshot missing;
   missing.served_at = 1794298000;
+  missing.count = 1;
+  missing.providers[0].id = "claude";  // upstream: account exists, no data
   TEST_ASSERT_TRUE(merge_usage(missing, cache));
   UsageSnapshot restored;
   TEST_ASSERT_TRUE(decode_usage(encode_usage(cache), restored));
+  TEST_ASSERT_EQUAL(1, restored.count);  // rows the source no longer lists drop out
   view = view_of(restored, 1794297999);
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[0].state);
   TEST_ASSERT_EQUAL(66, view.rows[0].left);
@@ -407,6 +416,56 @@ void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation
   TEST_ASSERT_EQUAL_UINT64(1794297660, cache.providers[1].fetched_at);
 }
 
+void test_provider_list_mirrors_the_source_adding_dropping_and_naming() {
+  // Fewer accounts upstream: three rows in payload order, no fixed slots.
+  UsageSnapshot three;
+  TEST_ASSERT_TRUE(decode_usage(three_response(), three));
+  TEST_ASSERT_EQUAL(3, three.count);
+  TEST_ASSERT_EQUAL_STRING("codex", three.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("kimi", three.providers[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", three.providers[2].id.c_str());
+  auto view = view_of(three, 1794297900);
+  TEST_ASSERT_EQUAL(3, view.count);
+  TEST_ASSERT_EQUAL_STRING("codex", view.rows[0].id.c_str());
+  TEST_ASSERT_EQUAL(58, view.rows[0].left);
+
+  // Merging over a four-account cache drops the removed account's row and
+  // takes the newer per-account sample.
+  UsageSnapshot cache;
+  TEST_ASSERT_TRUE(decode_usage(four_response(), cache));
+  TEST_ASSERT_TRUE(merge_usage(three, cache));
+  TEST_ASSERT_EQUAL(3, cache.count);
+  TEST_ASSERT_EQUAL_STRING("codex", cache.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_UINT64(1794297800, cache.providers[0].fetched_at);
+  TEST_ASSERT_EQUAL_UINT64(1794297780, cache.providers[2].fetched_at);
+  TEST_ASSERT_EQUAL(3, view_of(cache, 1794297900).count);
+
+  // No accounts at all is a valid, honest empty screen.
+  JsonDocument doc;
+  deserializeJson(doc, three_response());
+  doc["providers"].as<JsonArray>().clear();
+  std::string empty;
+  serializeJson(doc, empty);
+  UsageSnapshot none;
+  TEST_ASSERT_TRUE(decode_usage(empty, none));
+  TEST_ASSERT_EQUAL(0, none.count);
+  view = view_of(none, 1794297900);
+  TEST_ASSERT_EQUAL(0, view.count);
+  TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", view.headline.c_str());
+
+  // Unknown ids decode and get a capitalized display name; the renderer falls
+  // back to a generic initial-in-a-disc logo for them.
+  doc.clear();
+  deserializeJson(doc, three_response());
+  doc["providers"][0]["id"] = "zai";
+  std::string renamed;
+  serializeJson(doc, renamed);
+  UsageSnapshot custom;
+  TEST_ASSERT_TRUE(decode_usage(renamed, custom));
+  TEST_ASSERT_EQUAL_STRING("Zai", usage_provider_name(custom.providers[0].id).c_str());
+  TEST_ASSERT_EQUAL_STRING("Codex", usage_provider_name("codex").c_str());
+}
+
 void test_persistence_does_not_change_display_rounding_near_a_half_percent() {
   UsageSnapshot cache;
   TEST_ASSERT_TRUE(decode_usage(response(), cache));
@@ -424,8 +483,8 @@ void test_encoded_view_is_bounded_and_rejects_corruption() {
   UsageView out, untouched = derive_usage_view(snapshot, 1794298000, {});
   out = untouched;
   const std::function<void(JsonDocument&)> mutations[] = {
-    [](JsonDocument& d) { d["schema"] = "rcink.usage-view.v1"; },  // old time-based road
-    [](JsonDocument& d) { d["rows"].as<JsonArray>().remove(0); },
+    [](JsonDocument& d) { d["schema"] = "rcink.usage-view.v2"; },  // fixed four slots
+    [](JsonDocument& d) { d["rows"][0].as<JsonObject>().remove("id"); },
     [](JsonDocument& d) { d["rows"][0]["car"] = kUsageRoadPx + 1; },
     [](JsonDocument& d) { d["rows"][0]["pace"] = -2; },
     [](JsonDocument& d) { d["rows"][0]["dry"] = 1; },
@@ -459,6 +518,7 @@ int main() {
   RUN_TEST(test_restart_restores_original_observations_without_redrawing_unchanged_page);
   RUN_TEST(test_only_newer_provider_samples_replace_cache_including_lower_usage_after_source_reset);
   RUN_TEST(test_later_stale_or_missing_evidence_retains_values_until_a_new_observation);
+  RUN_TEST(test_provider_list_mirrors_the_source_adding_dropping_and_naming);
   RUN_TEST(test_persistence_does_not_change_display_rounding_near_a_half_percent);
   RUN_TEST(test_encoded_view_is_bounded_and_rejects_corruption);
   return UNITY_END();

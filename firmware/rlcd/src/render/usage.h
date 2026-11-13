@@ -10,8 +10,11 @@
 namespace rcpaper {
 
 constexpr size_t kUsageMaximumBytes = 4096;
+constexpr size_t kUsageMaxProviders = 4;  // what the 400x300 frame can draw
+constexpr size_t kUsageMaxIdLength = 16;
 enum class UsageStatus : uint8_t { Unavailable, Ok, Stale };
 struct UsageProvider {
+  std::string id;  // stable account id from the source; defines row identity
   UsageStatus status = UsageStatus::Unavailable;
   double used_percent = 0;
   uint64_t fetched_at = 0;
@@ -19,9 +22,16 @@ struct UsageProvider {
   uint64_t resets_at = 0;  // 0 means the source supplied null.
 };
 struct UsageSnapshot {
-  std::array<UsageProvider, 4> providers;
+  // The screen mirrors exactly the accounts the source reports, in payload
+  // order: an account removed upstream drops out here instead of lingering.
+  std::array<UsageProvider, kUsageMaxProviders> providers;
+  size_t count = 0;
   uint64_t served_at = 0;
 };
+
+// Display name for a payload id. Known ids keep their established names;
+// anything else is shown capitalized so new accounts read fine unconfigured.
+std::string usage_provider_name(const std::string& id);
 
 // Device-side sync facts the screen reports alongside the source snapshot.
 // A plain aggregate (the ESP32 toolchain is C++11): `{}` means never synced.
@@ -34,7 +44,9 @@ struct UsageSync {
 
 constexpr const char* kUsagePageId = "usage-limits";
 
-// Validate the complete four-slot response before replacing the caller's cache.
+// Validate the complete response before replacing the caller's cache. The
+// providers array is the source's account list: 0..4 rows, unique ids, any
+// order; ids absent from later payloads are dropped at merge time.
 bool decode_usage(const std::string& json, UsageSnapshot& out);
 std::string encode_usage(const UsageSnapshot& snapshot);
 bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache);

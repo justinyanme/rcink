@@ -241,12 +241,19 @@ and refresh-gate adjustment. Battery adaptive/low-battery intervals are unchange
 Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
-applies it and builds one PageRecord. The fixed slots are Claude,
-Codex, Kimi and Gemini (Antigravity). The #3 collector selects an explicit stable
-account per slot: Claude/Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing
-or invalid sources are omitted; the API retains each slot's last successful
-observation under its original expiry. Unobserved slots show `--` and Unavailable,
-without allowance bars. Used is rounded once and remaining is its integer
+applies it and builds one PageRecord. The `rcink.usage-limits.v2` `providers`
+array **is** the screen: the #3 collector lists its accounts (0–4 rows, unique
+ids, payload order — currently Codex, Kimi and Gemini/Antigravity) and the
+device mirrors exactly that. An account removed upstream drops out of the
+frame on the next successful fetch; a new one appears at once, even before its
+first observation. The collector selects an explicit stable account per
+provider: Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing or invalid
+sources keep their row as Unavailable; the API retains each account's last
+successful observation under its original expiry. Unobserved rows show `--`,
+without allowance bars. `claude`/`codex`/`kimi`/`gemini` keep their baked
+logos and display names; any other id gets a capitalized name and a generic
+initial-in-a-disc logo. With fewer than four rows the row block centers
+itself vertically. Used is rounded once and remaining is its integer
 complement. Bars represent remaining.
 
 #### Token page
@@ -323,7 +330,8 @@ Synced 11:34                        [batt] 99% HOST
   fetch expires, then every 60 s while the source is late, until 30 minutes
   after that sample; then it falls back to the normal 5-minute poll. Battery
   modes keep their adaptive schedule.
-- Gemini is Antigravity's Gemini weekly pool, marked by the small arch logo.
+- The `gemini` row is Antigravity's Gemini weekly pool, marked by the small
+  arch logo.
 - In `HOST` only, the view animates at ~7 fps (lane marks scroll, cars bob and
   puff, `Zz` floats), and for 0.9 s after a successful sync or when entering
   the view each car drives in from the start while its number burns down from
