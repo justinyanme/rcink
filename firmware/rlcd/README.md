@@ -46,9 +46,8 @@ font.
 
 Both builds boot in light polarity (`RCRLCD_DEFAULT_DARK_MODE=0`): black ink
 on a white background, exactly as rendered. Setting the flag to `1` inverts the
-final packed 1 bpp frame for white-on-black. Use console `i` to toggle
-light/dark live and redraw the current screen; the toggle is not persisted, so
-every boot and wake returns to the build default.
+default packed 1 bpp frame for white-on-black. Hold **BOOT** (≥ 600 ms) or use
+console `i` to toggle light/dark polarity live; the preference persists in NVS.
 The default production environment retains the last ST7305 frame during deep
 sleep. `waveshare-s3-rlcd-dev` uses the same state machine but never sleeps, for
 recovery and development.
@@ -143,22 +142,24 @@ press powers on, long press powers off, and normal taps do not reach the app.
 
 | Gesture | Dashboard | Deck |
 |---|---|---|
-| **KEY** (GPIO18) tap | Page 1 | next page; last page → Dashboard |
+| **KEY** (GPIO18) tap | Page 1 | next page; cycles Deck ring |
+| **KEY** (GPIO18) hold ≥ 600 ms | — | pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
-| **BOOT** tap, usage build | Usage + sync now | sync now |
+| **BOOT** tap, usage build | Usage + sync now | sync now (Allowance + Token + Monument) |
+| **BOOT** (GPIO0) hold ≥ 600 ms | toggle dark mode | toggle & persist 1-bit dark/light polarity |
 
-In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles directly between Allowance and Token (`Allowance ⇄ Token`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to restore climate Dashboard to the ring).
-BOOT means "sync now": on either Deck page it stays on that page and fetches both
-Allowance and Token immediately; if climate Dashboard is enabled and active, BOOT opens Allowance and syncs. The
+In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles through the 3-page Deck ring (`Allowance ⇄ Token ⇄ Monument`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard). Notice room temperature & humidity from the onboard SHTC3 also appear cleanly as ambient chrome in the Allowance header and the Monument page.
+In USB `HOST` mode, unless pinned via a 600 ms `KEY` hold (or console `l`), the Deck auto-rotates every 90 seconds. Battery `ACTIVE` and `ECO` modes never auto-rotate.
+BOOT tap means "sync now": on any Deck page it stays on that page and fetches
+Allowance, Token, and Monument annual history immediately; if climate Dashboard is enabled and active, BOOT opens Allowance and syncs. The
 visible page's footer reads `SYNCING · fetching now` until the fetch completes
 (a fetch already in flight is joined where possible, not doubled); a successful
-Token sync then replays its 0.9-second sweep in HOST.
+Token or Monument sync replays its 0.9-second sweep in HOST.
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
-advances exactly once through Dashboard ⇄ Page 1 ⇄ … ⇄ Page N; its eventual
-release is consumed rather than counted as a second press. GPIO0/BOOT cannot
-wake `ECO`: it is polling-only because it doubles as the download strap. There
-are no long-press or double-click actions. Firmware never sleeps or resets while
+advances exactly once through the ring; its eventual
+release is consumed rather than counted as a second press or long-hold. GPIO0/BOOT cannot
+wake `ECO`: it is polling-only because it doubles as the download strap. Firmware never sleeps or resets while
 either raw button is held. Timer and KEY wakes resume the retained image without
 a panel reset or intermediate blank frame.
 
@@ -169,7 +170,8 @@ a panel reset or intermediate blank frame.
 - `m` toggle Dashboard ↔ Deck View
 - `n` next through Dashboard/Deck ring
 - `v` previous through Dashboard/Deck ring
-- `t` re-read sensors + redraw dashboard
+- `l` pin/unpin `HOST` 90s auto-carousel (`HOST` ↔ `PINNED`)
+- `t` re-read sensors + redraw current view
 - `i` invert light/dark polarity + redraw current View
 - `a` toggle the usage view's HOST animation (off gives the static frame for `p`)
 - `s` state dump
@@ -230,8 +232,9 @@ The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. In the usage build the climate Dashboard is hidden by default
 (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so cold restarts and wakes stay in the Deck
-and KEY cycles directly `Allowance ⇄ Token` (define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1`
-to include climate Dashboard in startup/navigation again) while BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
+and KEY cycles across the 3-page Deck (`Allowance ⇄ Token ⇄ Monument`; define
+`RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include climate Dashboard in startup/navigation again)
+while BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
 retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
 a failure the retry gate alone schedules the next attempt, so the footer's
 `retry HH:MM` is when it really happens, even soon after a success.

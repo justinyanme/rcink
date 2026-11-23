@@ -15,6 +15,7 @@ struct TokenRowView {
   std::array<uint64_t, kTokenDays> shifted_days;
   std::array<uint8_t, kTokenDays> bars;
   uint8_t usual_px = 0;
+  uint8_t first_active_day = kTokenDays;
   uint64_t lifetime_value = 0;
   std::string seven_day;
   std::string today;
@@ -26,18 +27,22 @@ struct TokenView {
   size_t count = 0;
   std::string headline;
   int8_t headline_pick = -1;
+  std::string total_seven_day;
   std::string footer_chip;
   std::string footer_text;
 };
 
 inline bool operator==(const TokenRowView& a, const TokenRowView& b) {
   return a.id == b.id && a.shifted_days == b.shifted_days && a.bars == b.bars &&
-         a.usual_px == b.usual_px && a.lifetime_value == b.lifetime_value &&
+         a.usual_px == b.usual_px && a.first_active_day == b.first_active_day &&
+         a.lifetime_value == b.lifetime_value &&
          a.seven_day == b.seven_day && a.today == b.today && a.lifetime == b.lifetime;
 }
 inline bool operator==(const TokenView& a, const TokenView& b) {
   if (a.count != b.count || a.headline != b.headline ||
-      a.headline_pick != b.headline_pick || a.footer_chip != b.footer_chip ||
+      a.headline_pick != b.headline_pick ||
+      a.total_seven_day != b.total_seven_day ||
+      a.footer_chip != b.footer_chip ||
       a.footer_text != b.footer_text) return false;
   for (size_t i = 0; i < a.count; i++) {
     if (!(a.rows[i] == b.rows[i])) return false;

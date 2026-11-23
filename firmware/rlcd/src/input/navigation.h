@@ -61,4 +61,17 @@ inline NavigationState navigation_after_previous_press(
   return {View::Deck, page_index - 1};
 }
 
+constexpr uint32_t kHostCarouselIntervalMs = 90000;
+
+inline bool host_carousel_due(bool is_host_mode, bool carousel_pinned,
+                              bool refresh_busy, bool button_down,
+                              size_t page_count, uint32_t now_ms,
+                              uint32_t last_switch_ms) {
+  if (!is_host_mode || carousel_pinned || refresh_busy || button_down ||
+      page_count <= 1) {
+    return false;
+  }
+  return (uint32_t)(now_ms - last_switch_ms) >= kHostCarouselIntervalMs;
+}
+
 }  // namespace rcpaper

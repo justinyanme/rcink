@@ -27,6 +27,7 @@
 #include "render/deck_view.h"
 #include "render/diagnostics.h"
 #include "render/link_status.h"
+#include "render/monument_view.h"
 #include "render/page.h"
 #include "render/token_view.h"
 #include "sense/battery.h"
@@ -44,10 +45,14 @@ constexpr bool kShowClimateDashboard = (RCRLCD_SHOW_CLIMATE_DASHBOARD != 0);
 DeviceState g_state;
 UsageSnapshot g_usage;
 TokenSnapshot g_token;
+MonumentSnapshot g_monument;
 BatteryReading g_battery;
 Shtc3Reading g_env;
 View g_view = View::Dashboard;
 RuntimeState g_runtime = {RuntimeMode::Eco, 0, 0, false};
+static bool g_carousel_pinned = false;
+static uint32_t g_carousel_last_switch_ms = 0;
+static uint64_t g_last_env_minute = UINT64_MAX;
 
 RTC_DATA_ATTR static uint32_t g_wake_count = 0;
 RTC_DATA_ATTR static uint64_t g_last_dashboard_minute = UINT64_MAX;
@@ -98,6 +103,11 @@ static uint32_t g_token_sweep_start_ms = 0;
 static uint32_t g_token_last_frame_ms = 0;
 static std::string g_token_view_json;
 static TokenView g_token_view;
+static bool g_monument_sweeping = false;
+static uint32_t g_monument_sweep_start_ms = 0;
+static uint32_t g_monument_last_frame_ms = 0;
+static std::string g_monument_view_json;
+static MonumentView g_monument_view;
 #endif
 static bool g_render_pending = false;
 
@@ -148,6 +158,7 @@ static RefreshAppState refresh_app_state() {
       g_token_fetch_failed,
       g_token_last_ok_s,
       g_token_retry_at_s,
+      g_monument,
       g_link_failure,
       g_retry_cooldown_s,
       g_usage_last_diag,
@@ -241,6 +252,42 @@ static TokenFrame token_frame() {
   return frame;
 }
 
+static bool monument_animating() {
+  return g_usage_animation && g_runtime.mode == RuntimeMode::Host;
+}
+
+static void start_monument_sweep() {
+  if (!monument_animating()) return;
+  g_monument_sweeping = true;
+  g_monument_sweep_start_ms = millis();
+}
+
+static MonumentFrame monument_frame() {
+  MonumentFrame frame;
+  if (!monument_animating() || !g_monument_sweeping) return frame;
+  const uint32_t elapsed = millis() - g_monument_sweep_start_ms;
+  if (elapsed >= kUsageSweepMs) {
+    g_monument_sweeping = false;
+  } else {
+    const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
+    frame.sweep = 1.0f - rest * rest * rest;
+  }
+  return frame;
+}
+
+static bool maybe_sample_env(uint64_t now, bool force = false) {
+  if (!force && !dashboard_sample_due(now, g_last_env_minute, g_env.ok)) {
+    return false;
+  }
+  const Shtc3Reading fresh = shtc3_read();
+  g_last_env_minute = now / 60;
+  const bool changed = !g_env.ok || !fresh.ok ||
+      lroundf(fresh.temp_c * 10.0f) != lroundf(g_env.temp_c * 10.0f) ||
+      lroundf(fresh.rh) != lroundf(g_env.rh);
+  g_env = fresh;
+  return changed;
+}
+
 // Draw exactly the model that was fingerprinted into the page record.
 static bool draw_usage_page(const PageRecord& rec) {
   if (rec.layout_json != g_usage_view_json) {
@@ -249,7 +296,8 @@ static bool draw_usage_page(const PageRecord& rec) {
     g_usage_view = view;
     g_usage_view_json = rec.layout_json;
   }
-  render_usage(g_usage_view, g_battery, g_runtime.mode, usage_frame());
+  render_usage(g_usage_view, g_env, g_battery, g_runtime.mode, usage_frame(),
+               g_carousel_pinned);
   return true;
 }
 
@@ -260,7 +308,20 @@ static bool draw_token_page(const PageRecord& rec) {
     g_token_view = view;
     g_token_view_json = rec.layout_json;
   }
-  render_token(g_token_view, g_battery, g_runtime.mode, token_frame());
+  render_token(g_token_view, g_battery, g_runtime.mode, token_frame(),
+               g_carousel_pinned);
+  return true;
+}
+
+static bool draw_monument_page(const PageRecord& rec) {
+  if (rec.layout_json != g_monument_view_json) {
+    MonumentView view;
+    if (!decode_monument_view(rec.layout_json, view)) return false;
+    g_monument_view = view;
+    g_monument_view_json = rec.layout_json;
+  }
+  render_monument(g_monument_view, g_env, g_battery, g_runtime.mode,
+                  monument_frame(), g_carousel_pinned);
   return true;
 }
 #endif
@@ -304,11 +365,16 @@ void render_current() {
     return;
   }
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
-  const PageRecord& rec = g_state.pages[g_state.page_index];
   const uint64_t now = (uint64_t)time(nullptr);
   const bool stale = deck_is_stale(now);
 
 #if RCRLCD_USAGE_ENABLED
+  maybe_sample_env(now);
+  if (g_state.pages[g_state.page_index].id == kMonumentPageId) {
+    update_monument_page(g_state, g_monument, g_token, now, token_sync(),
+                         g_runtime.mode);
+  }
+  const PageRecord& rec = g_state.pages[g_state.page_index];
   if (rec.id == kUsagePageId) {
     const uint32_t t0 = millis();
     if (!draw_usage_page(rec)) {
@@ -327,7 +393,18 @@ void render_current() {
       return;
     }
     Serial.printf("[render] token bars in %u ms\n", (unsigned)(millis() - t0));
+  } else if (rec.id == kMonumentPageId) {
+    const uint32_t t0 = millis();
+    if (!draw_monument_page(rec)) {
+      g_last_result = "monument-view-invalid";
+      render_error("monument view decode failed", g_runtime.mode);
+      g_deck_frame_valid = false;
+      return;
+    }
+    Serial.printf("[render] monument in %u ms\n", (unsigned)(millis() - t0));
   } else
+#else
+  const PageRecord& rec = g_state.pages[g_state.page_index];
 #endif
   {
     LayoutNode root;
@@ -433,11 +510,14 @@ void toggle_view() {
 }
 
 void apply_navigation(const NavigationState& next) {
+  g_carousel_last_switch_ms = millis();
 #if RCRLCD_USAGE_ENABLED
   if (next.view == View::Deck &&
       (g_view != View::Deck || next.page_index != g_state.page_index) &&
       next.page_index < g_state.pages.size()) {
-    if (g_state.pages[next.page_index].id == kTokenPageId) start_token_sweep();
+    const std::string& id = g_state.pages[next.page_index].id;
+    if (id == kTokenPageId) start_token_sweep();
+    else if (id == kMonumentPageId) start_monument_sweep();
     else start_usage_sweep();
   }
 #endif
@@ -473,6 +553,8 @@ static void request_usage_sync() {
   const uint64_t now = (uint64_t)time(nullptr);
   update_usage_page(g_state, g_usage, now, usage_sync());
   update_token_page(g_state, g_token, now, token_sync());
+  update_monument_page(g_state, g_monument, g_token, now, token_sync(),
+                       g_runtime.mode);
 }
 #endif
 
@@ -481,7 +563,10 @@ static DeckViewKey deck_visible_state() {
       "", 0, g_state.page_index, g_state.pages.size(),
       g_battery.pct, g_battery.ok,
       deck_is_stale((uint64_t)time(nullptr)),
-      g_runtime.mode, st7305_dark_mode(),
+      g_runtime.mode, st7305_dark_mode(), g_carousel_pinned,
+      (int16_t)lroundf(g_env.temp_c * 10.0f),
+      (uint8_t)lroundf(std::max(0.0f, std::min(100.0f, g_env.rh))),
+      g_env.ok,
   };
   if (g_state.page_index < g_state.pages.size()) {
     const PageRecord& page = g_state.pages[g_state.page_index];
@@ -508,8 +593,12 @@ static bool poll_refresh_completion() {
   bool usage_page_changed = false;
   bool token_succeeded = false;
   bool allowance_page_changed = false;
+  bool monument_succeeded = false;
   if (!finish_network_refresh(refresh_app_state(), usage_page_changed,
-                              token_succeeded, allowance_page_changed)) return false;
+                              token_succeeded, allowance_page_changed,
+                              monument_succeeded)) {
+    return false;
+  }
 #if RCRLCD_USAGE_ENABLED
   // A very late BOOT may have missed the active worker's Token GET. Keep the
   // requested-sync footer up while the queued follow-up run starts.
@@ -518,16 +607,24 @@ static bool poll_refresh_completion() {
     const uint64_t now = (uint64_t)time(nullptr);
     update_usage_page(g_state, g_usage, now, usage_sync());
     update_token_page(g_state, g_token, now, token_sync());
+    update_monument_page(g_state, g_monument, g_token, now, token_sync(),
+                         g_runtime.mode);
     usage_page_changed = true;
   }
   if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[g_state.page_index].id;
     if (id == kTokenPageId && token_succeeded) start_token_sweep();
-    if (id == kUsagePageId && allowance_page_changed && !g_usage_fetch_failed) start_usage_sweep();
+    if (id == kMonumentPageId && (monument_succeeded || token_succeeded)) {
+      start_monument_sweep();
+    }
+    if (id == kUsagePageId && allowance_page_changed && !g_usage_fetch_failed) {
+      start_usage_sweep();
+    }
   }
 #endif
-  return g_view == View::Dashboard ? dashboard_minute_due()
-                                   : usage_page_changed || before != deck_visible_state();
+  return g_view == View::Dashboard
+             ? dashboard_minute_due()
+             : usage_page_changed || before != deck_visible_state();
 }
 
 static bool poll_usage_freshness() {
@@ -535,9 +632,22 @@ static bool poll_usage_freshness() {
   const uint64_t now = (uint64_t)time(nullptr);
   if (now == g_usage_evaluated_at_s) return false;
   g_usage_evaluated_at_s = now;
-  const bool allowance_changed = update_usage_page(g_state, g_usage, now, usage_sync());
-  const bool token_changed = update_token_page(g_state, g_token, now, token_sync());
-  return (allowance_changed || token_changed) && g_view == View::Deck;
+  const bool allowance_changed =
+      update_usage_page(g_state, g_usage, now, usage_sync());
+  const bool token_changed =
+      update_token_page(g_state, g_token, now, token_sync());
+  const bool monument_changed =
+      update_monument_page(g_state, g_monument, g_token, now, token_sync(),
+                           g_runtime.mode);
+  const bool env_changed = g_view == View::Deck && maybe_sample_env(now);
+  if (g_view != View::Deck || g_state.page_index >= g_state.pages.size()) {
+    return false;
+  }
+  const std::string& id = g_state.pages[g_state.page_index].id;
+  if (id == kUsagePageId) return allowance_changed || env_changed;
+  if (id == kTokenPageId) return token_changed;
+  if (id == kMonumentPageId) return monument_changed || env_changed;
+  return allowance_changed || token_changed || monument_changed;
 #else
   return false;
 #endif
@@ -573,6 +683,20 @@ static void poll_token_animation() {
 #endif
 }
 
+static void poll_monument_animation() {
+#if RCRLCD_USAGE_ENABLED
+  if (g_view != View::Deck || !g_deck_frame_valid || !g_monument_sweeping ||
+      !monument_animating() || g_state.page_index >= g_state.pages.size() ||
+      g_state.pages[g_state.page_index].id != kMonumentPageId) {
+    return;
+  }
+  const uint32_t now = millis();
+  if (now - g_monument_last_frame_ms < kUsageFrameMs) return;
+  g_monument_last_frame_ms = now;
+  draw_monument_page(g_state.pages[g_state.page_index]);
+#endif
+}
+
 struct InteractionDecision {
   bool screen_changed;
   bool sleep_requested;
@@ -586,6 +710,14 @@ static InteractionDecision poll_interaction() {
     navigate_next();
     activity = true;
   }
+  if (events.key_long) {
+    g_carousel_pinned = !g_carousel_pinned;
+    nvs_save_carousel_pinned(g_carousel_pinned);
+    g_carousel_last_switch_ms = millis();
+    Serial.printf("[btn] KEY long -> carousel pinned=%d\n",
+                  (int)g_carousel_pinned);
+    activity = true;
+  }
   if (events.boot_tap) {
 #if RCRLCD_USAGE_ENABLED
     Serial.println("[btn] BOOT -> sync now");
@@ -594,6 +726,13 @@ static InteractionDecision poll_interaction() {
     Serial.println("[btn] BOOT -> previous");
     navigate_previous();
 #endif
+    activity = true;
+  }
+  if (events.boot_long) {
+    const bool dark = !st7305_dark_mode();
+    st7305_set_dark_mode(dark);
+    nvs_save_dark_mode(dark);
+    Serial.printf("[btn] BOOT long -> dark=%d\n", (int)dark);
     activity = true;
   }
 
@@ -606,6 +745,9 @@ static InteractionDecision poll_interaction() {
   g_runtime = decision.state;
   if (decision.mode_changed) {
     adjust_refresh_gate_for_runtime_change(refresh_app_state(), previous);
+    if (g_runtime.mode == RuntimeMode::Host) {
+      g_carousel_last_switch_ms = millis();
+    }
     Serial.printf("[runtime] %s -> %s\n", runtime_mode_name(previous),
                   runtime_mode_name(g_runtime.mode));
   }
@@ -618,8 +760,8 @@ static InteractionDecision poll_interaction() {
 void console_help() {
   Serial.println(
       "[console] f fetch, r render, d diagnostics, m toggle-view, n next, "
-      "v previous, t read-sensors, i invert, a usage-animation, s state, "
-      "q layout, p frame, c clear, R reboot, h help");
+      "v previous, l pin-carousel, t read-sensors, i invert, a usage-animation, "
+      "s state, q layout, p frame, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -630,6 +772,7 @@ void console_dispatch(char c) {
       break;
     case 'f':
       Serial.println("[console] network refresh");
+      g_carousel_last_switch_ms = millis();
 #if RCRLCD_USAGE_ENABLED
       request_usage_sync();  // same path as BOOT
       render_current_view();
@@ -656,18 +799,30 @@ void console_dispatch(char c) {
       navigate_previous();
       render_current_view();
       break;
+    case 'l':
+      g_carousel_pinned = !g_carousel_pinned;
+      nvs_save_carousel_pinned(g_carousel_pinned);
+      g_carousel_last_switch_ms = millis();
+      Serial.printf("[console] carousel pinned=%d\n", (int)g_carousel_pinned);
+      render_current_view();
+      break;
     case 't':
       if (g_view == View::Dashboard) {
         render_dashboard_now(true);
       } else {
         g_env = shtc3_read();
+        g_last_env_minute = (uint64_t)time(nullptr) / 60;
         g_battery = read_battery();
+        render_current_view();
       }
       break;
-    case 'i':
-      st7305_set_dark_mode(!st7305_dark_mode());
+    case 'i': {
+      const bool dark = !st7305_dark_mode();
+      st7305_set_dark_mode(dark);
+      nvs_save_dark_mode(dark);
       render_current_view();
       break;
+    }
     case 'a':
 #if RCRLCD_USAGE_ENABLED
       g_usage_animation = !g_usage_animation;
@@ -749,6 +904,7 @@ void setup() {
       wake == ESP_SLEEP_WAKEUP_TIMER || wake == ESP_SLEEP_WAKEUP_EXT1;
   if (!resumed_from_deep_sleep) {
     g_last_dashboard_minute = UINT64_MAX;
+    g_last_env_minute = UINT64_MAX;
     g_dashboard_snapshot_valid = false;
     g_fetch_retry_not_before_s = 0;
     g_deck_frame_valid = false;
@@ -760,6 +916,8 @@ void setup() {
     g_token_last_err = FetchDiag{};
   }
   display_init(panel_startup_for_deep_sleep_wake(resumed_from_deep_sleep));
+  st7305_set_dark_mode(nvs_load_dark_mode(RCRLCD_DEFAULT_DARK_MODE != 0));
+  g_carousel_pinned = nvs_load_carousel_pinned(false);
   buttons::init(key_wake);
 
   rtc_begin();
@@ -767,14 +925,30 @@ void setup() {
   seed_clock_from_rtc();
   g_battery = read_battery();
   if (g_dashboard_snapshot_valid) g_env = g_dashboard_env;
-  Serial.printf("[sense] batt=%u%% (%u mV) ok=%d\n",
-                (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok);
+  maybe_sample_env((uint64_t)time(nullptr), !g_env.ok);
+  Serial.printf("[sense] batt=%u%% (%u mV) ok=%d env_ok=%d T=%.1f RH=%.0f\n",
+                (unsigned)g_battery.pct, (unsigned)g_battery.mv, g_battery.ok,
+                (int)g_env.ok, g_env.temp_c, g_env.rh);
 
   g_state = nvs_load();
+  const bool host = usb_host_present();
+  const RuntimeBootInput runtime_boot = {
+      millis(),
+      kAlwaysActive,
+      host,
+      key_wake,
+  };
+  g_runtime = initial_runtime_state(runtime_boot);
+  g_carousel_last_switch_ms = millis();
+  if (g_runtime.mode == RuntimeMode::Host) {
+    g_fetch_retry_not_before_s = 0;
+    g_retry_cooldown_s = 0;
+  }
 #if RCRLCD_USAGE_ENABLED
   // Do not interpret the legacy Axiom pages cache as an allowance snapshot.
   decode_usage(nvs_load_usage(), g_usage);
   decode_token(nvs_load_token(), g_token);
+  decode_monument(nvs_load_monument(), g_monument);
   if (!resumed_from_deep_sleep) {
     g_usage_fetch_failed = false;
     g_token_fetch_failed = false;
@@ -784,6 +958,10 @@ void setup() {
     g_usage_fetch_fingerprint = 0;
     g_usage_unchanged_fetches = 0;
   }
+  if (g_runtime.mode == RuntimeMode::Host) {
+    g_token_retry_at_s = token_retry_on_host_entry(
+        g_token_retry_at_s, g_token_fetch_failed);
+  }
   g_state.last_fetch_s = g_usage_last_fetch_s;
   g_state.last_fetch_fingerprint = g_usage_fetch_fingerprint;
   g_state.unchanged_fetches = g_usage_unchanged_fetches;
@@ -791,6 +969,7 @@ void setup() {
   g_state.pages = {
       usage_page(g_usage, now, usage_sync()),
       token_page(g_token, now, token_sync()),
+      monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode),
   };
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 #endif
@@ -804,26 +983,13 @@ void setup() {
   g_view = view_from_nvs(g_state.view_id);
   Serial.printf("[view] loaded %s\n", view_name(g_view));
 
-  const bool host = usb_host_present();
-  const RuntimeBootInput runtime_boot = {
-      millis(),
-      kAlwaysActive,
-      host,
-      key_wake,
-  };
-  g_runtime = initial_runtime_state(runtime_boot);
-  if (g_runtime.mode == RuntimeMode::Host) {
-    g_fetch_retry_not_before_s = 0;
-    g_retry_cooldown_s = 0;
-#if RCRLCD_USAGE_ENABLED
-    g_token_retry_at_s = token_retry_on_host_entry(
-        g_token_retry_at_s, g_token_fetch_failed);
-#endif
-  }
   if (key_wake) navigate_next();
 #if RCRLCD_USAGE_ENABLED
-  if (!resumed_from_deep_sleep && g_view == View::Deck &&
-      g_state.pages[g_state.page_index].id == kTokenPageId) start_token_sweep();
+  if (!resumed_from_deep_sleep && g_view == View::Deck) {
+    const std::string& pid = g_state.pages[g_state.page_index].id;
+    if (pid == kTokenPageId) start_token_sweep();
+    else if (pid == kMonumentPageId) start_monument_sweep();
+  }
 #endif
 
   g_render_pending = !resumed_from_deep_sleep || key_wake ||
@@ -835,9 +1001,10 @@ void setup() {
     g_render_pending = true;
   }
 #endif
-  Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s render=%d\n",
+  Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s pinned=%d render=%d\n",
                 (int)wake, (int)key_wake, (int)host,
-                runtime_mode_name(g_runtime.mode), (int)g_render_pending);
+                runtime_mode_name(g_runtime.mode), (int)g_carousel_pinned,
+                (int)g_render_pending);
   if (host || kAlwaysActive) {
     console_help();
     Serial.println("[console] ready");
@@ -872,8 +1039,21 @@ void loop() {
     return;
   }
 
+  if (g_view == View::Deck &&
+      host_carousel_due(g_runtime.mode == RuntimeMode::Host, g_carousel_pinned,
+                        refresh_busy(), buttons::any_down(),
+                        g_state.pages.size(), millis(),
+                        g_carousel_last_switch_ms)) {
+    Serial.println("[auto] host carousel -> next");
+    navigate_next();
+    render_current_view();
+    delay(20);
+    return;
+  }
+
   poll_usage_animation();
   poll_token_animation();
+  poll_monument_animation();
 
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
       refresh_due_now(refresh_app_state())) {

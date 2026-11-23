@@ -157,6 +157,58 @@ bool nvs_save_token(const std::string& json) {
   return written == json.size();
 }
 
+std::string nvs_load_monument() {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return {};
+  const size_t length = p.getBytesLength("monument");
+  std::string json;
+  if (length > 0 && length <= 8192) {
+    json.resize(length);
+    if (p.getBytes("monument", &json[0], length) != length) json.clear();
+  }
+  p.end();
+  return json;
+}
+
+bool nvs_save_monument(const std::string& json) {
+  if (json.empty() || json.size() > 8192) return false;
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return false;
+  const size_t written = p.putBytes("monument", json.data(), json.size());
+  p.end();
+  return written == json.size();
+}
+
+bool nvs_load_dark_mode(bool default_val) {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return default_val;
+  const bool val = p.isKey("dark") ? p.getBool("dark", default_val) : default_val;
+  p.end();
+  return val;
+}
+
+void nvs_save_dark_mode(bool enabled) {
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return;
+  p.putBool("dark", enabled);
+  p.end();
+}
+
+bool nvs_load_carousel_pinned(bool default_val) {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return default_val;
+  const bool val = p.isKey("pinned") ? p.getBool("pinned", default_val) : default_val;
+  p.end();
+  return val;
+}
+
+void nvs_save_carousel_pinned(bool pinned) {
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return;
+  p.putBool("pinned", pinned);
+  p.end();
+}
+
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {
   // Tiny partial write — keep the render-dedup tuple cheap to update every
   // render. Re-serializing the full pages blob (~15 KB) would defeat the

@@ -57,7 +57,7 @@ void test_worst_case_token_rows_have_real_glyph_and_element_gaps() {
 }
 
 void test_footer_worst_cases_clear_the_battery_and_runtime_block() {
-  // Exact baked Barlow widths: SYNC FAILED (101), retry 23:59 (89), ACTIVE (55), 100% (43).
+  // Exact baked Barlow widths: SYNC FAILED (101), retry 23:59 (89), ACTIVE (55), PINNED (57), 100% (43).
   const TokenFooterWidths failure = {101, 89, 55, 43};
   const TokenFooterGeometry failed = token_footer_geometry(failure);
   TEST_ASSERT_GREATER_OR_EQUAL(4, failed.battery.left - failed.status.right);
@@ -67,7 +67,7 @@ void test_footer_worst_cases_clear_the_battery_and_runtime_block() {
   const TokenFooterGeometry syncing = token_footer_geometry({66, 103, 55, 43});
   TEST_ASSERT_GREATER_OR_EQUAL(4, syncing.battery.left - syncing.status.right);
 
-  for (int16_t runtime : {39, 55, 30}) {  // HOST, ACTIVE, ECO
+  for (int16_t runtime : {39, 55, 57, 30}) {  // HOST, ACTIVE, PINNED, ECO
     const TokenFooterGeometry each = token_footer_geometry({101, 89, runtime, 43});
     TEST_ASSERT_GREATER_OR_EQUAL(4, each.battery.left - each.status.right);
     TEST_ASSERT_LESS_OR_EQUAL(400, each.battery.right);

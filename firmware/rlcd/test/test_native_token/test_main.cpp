@@ -143,8 +143,10 @@ void test_derived_values_include_zero_filled_days_and_all_zero_gemini() {
   partial.providers[0].days[29] = 7;
   const TokenView fewer = view_of(partial, 1794446400ULL);
   TEST_ASSERT_EQUAL_STRING("107", fewer.rows[0].seven_day.c_str());
-  // The seven-day mean includes zero-filled missing days: (70 + 30) / 7.
-  TEST_ASSERT_EQUAL_STRING("today 7 · 49% of a usual day", fewer.rows[0].today.c_str());
+  // Active window excludes leading onboarding zero days (27..28 -> mean (70 + 30) / 2 = 50).
+  TEST_ASSERT_EQUAL_UINT8(27, fewer.rows[0].first_active_day);
+  TEST_ASSERT_EQUAL_STRING("today 7 · 14% of a usual day", fewer.rows[0].today.c_str());
+  TEST_ASSERT_EQUAL_STRING("107 7d", fewer.total_seven_day.c_str());
   partial.providers[0].days[27] = 0;
   partial.providers[0].days[28] = 0;
   TEST_ASSERT_EQUAL_STRING("today 7", view_of(partial, 1794446400ULL).rows[0].today.c_str());
@@ -382,8 +384,11 @@ void test_mirrors_active_provider_subset_and_empty_deck() {
   TEST_ASSERT_EQUAL(2, view.count);
   TEST_ASSERT_EQUAL_STRING("codex", view.rows[0].id.c_str());
   TEST_ASSERT_EQUAL_STRING("gemini", view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL_UINT8(0, view.rows[0].first_active_day);
+  TEST_ASSERT_EQUAL_UINT8(25, view.rows[1].first_active_day);
   TEST_ASSERT_EQUAL_STRING("1.18B", view.rows[1].seven_day.c_str());
   TEST_ASSERT_EQUAL_STRING("1.18B", view.rows[1].lifetime.c_str());
+  TEST_ASSERT_EQUAL_STRING("2.83B 7d", view.total_seven_day.c_str());
   TEST_ASSERT_EQUAL_STRING("Gemini is on a tear today", view.headline.c_str());
   TEST_ASSERT_EQUAL(1, view.headline_pick);
   TEST_ASSERT_EQUAL_STRING("Synced 15:22", view.footer_text.c_str());

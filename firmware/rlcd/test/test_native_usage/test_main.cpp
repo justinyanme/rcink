@@ -247,7 +247,7 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   s.providers[3] = live(11.0, now, now + 74 * 3600 + 960, "gemini");
   auto view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
-  TEST_ASSERT_EQUAL(3, view.pick);  // Kimi: furthest above its even-pace line
+  TEST_ASSERT_EQUAL(2, view.pick);  // Healthy primary Gemini beats secondary Kimi
   TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)view.rows[0].mood);
   TEST_ASSERT_EQUAL_STRING("dry 25h early", view.rows[0].verdict.c_str());
   TEST_ASSERT_EQUAL_STRING("dry 6h early", view.rows[1].verdict.c_str());
@@ -259,7 +259,7 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   view = view_of(s, now);
   TEST_ASSERT_EQUAL((int)UsageMood::Nap, (int)view.headline_face);
   TEST_ASSERT_EQUAL_STRING("Codex is napping. Try", view.headline.c_str());
-  TEST_ASSERT_EQUAL(3, view.pick);
+  TEST_ASSERT_EQUAL(2, view.pick);
   TEST_ASSERT_EQUAL_STRING("out of gas", view.rows[1].verdict.c_str());
   TEST_ASSERT_TRUE(view.rows[1].runs_dry);
   TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].car_px);  // parked at the pump
@@ -645,6 +645,42 @@ void test_link_failures_beat_missing_clock_and_surface_ssid() {
   TEST_ASSERT_EQUAL_STRING("waiting for NTP", cold.footer_text.c_str());
 }
 
+void test_headline_surfaces_expiring_surplus_and_primary_priority() {
+  const uint64_t now = 1794362400;  // 2026-11-11 10:00 SGT
+  UsageSnapshot s;
+  s.count = 4;
+  // Codex resets in 20 h with 55 % left (pace ~11.9 %, headroom +43.1).
+  s.providers[0] = live(70.0, now, now + 90 * 3600, "claude");
+  s.providers[1] = live(45.0, now, now + 20 * 3600, "codex");
+  s.providers[2] = live(10.0, now, now + 80 * 3600, "gemini");
+  s.providers[3] = live(1.0, now, now + 70 * 3600, "kimi");
+  auto view = view_of(s, now);
+  TEST_ASSERT_EQUAL((int)UsageIcon::Spark, (int)view.headline_icon);
+  TEST_ASSERT_EQUAL_STRING("Use it or lose it:", view.headline.c_str());
+  TEST_ASSERT_EQUAL(1, view.pick);
+
+  // Removing expiring window falls back to comfortable Primary Provider over 99% Kimi.
+  s.providers[1].resets_at = now + 40 * 3600;
+  view = view_of(s, now);
+  TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
+  TEST_ASSERT_EQUAL(2, view.pick);  // Gemini (90%) beats Kimi (99%)
+
+  // Untouched Gemini (left=99%, pace=47.6% <= 85.7%) yields to touched Codex (55%).
+  s.providers[2].used_percent = 1.0;
+  view = view_of(s, now);
+  TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
+  TEST_ASSERT_EQUAL(1, view.pick);
+
+  // When all Primary Providers are stressed (Hot/Low/Nap), Kimi becomes the pick.
+  s.providers[0] = live(85.0, now, now + 120 * 3600, "claude");  // Hot
+  s.providers[1] = live(85.0, now, now + 120 * 3600, "codex");   // Hot
+  s.providers[2] = live(95.0, now, now + 120 * 3600, "gemini");  // Low
+  s.providers[3] = live(1.0, now, now + 70 * 3600, "kimi");      // 99%
+  view = view_of(s, now);
+  TEST_ASSERT_EQUAL_STRING("Gemini is almost out. Try", view.headline.c_str());
+  TEST_ASSERT_EQUAL(3, view.pick);  // Kimi
+}
+
 int main() {
   setenv("TZ", "SGT-8", 1);  // the device's LOCAL_TZ
   tzset();
@@ -663,5 +699,6 @@ int main() {
   RUN_TEST(test_persistence_does_not_change_display_rounding_near_a_half_percent);
   RUN_TEST(test_encoded_view_is_bounded_and_rejects_corruption);
   RUN_TEST(test_link_failures_beat_missing_clock_and_surface_ssid);
+  RUN_TEST(test_headline_surfaces_expiring_surplus_and_primary_priority);
   return UNITY_END();
 }

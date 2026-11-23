@@ -1,11 +1,11 @@
 // Hand-drawn weekly-allowance "road" view for the 400x300 1 bpp RLCD.
 //
-// Layout (y grows down): 0-28 headline + rule, up to four adaptive provider
-// rows (60/78/92 px pitch) centered in 29..272, footer baseline 291 below a
-// rule at 272. Each row: 28 px logo, remaining percent right-aligned at x=126,
-// name/verdict line, a 132 px fuel road from x=164 to the pump (car clamped to
-// the road, pace tick underneath), and the reset countdown flush right at x=388.
-// Rows mirror the derived UsageView: its ids, its order, its count.
+// Layout (y grows down): 0-28 headline + rule (+ optional ambient room climate
+// on the right), up to four adaptive provider rows (60/78/92 px pitch) centered
+// in 29..272, footer baseline 291 below a rule at 272. Each row: 28 px logo,
+// remaining percent right-aligned at x=126, name/verdict line, a 132 px fuel
+// road from x=164 to the pump (car clamped to the road, pace tick underneath),
+// and the reset countdown flush right at x=388.
 #ifdef ARDUINO
 
 #include <Arduino.h>
@@ -18,7 +18,7 @@
 
 #include "render/canvas.h"
 #include "render/page.h"
-#include "render/rlcd_fonts.h"
+#include "render/rlcd_chrome.h"
 #include "render/usage_layout.h"
 #include "render/usage_logos.h"
 #include "render/usage_view.h"
@@ -26,50 +26,34 @@
 namespace rcpaper {
 namespace {
 
-constexpr uint16_t kInk = 0x0000;
-constexpr uint16_t kPaper = 0xFFFF;
+using rlcd_chrome::Align;
+using rlcd_chrome::FontRole;
+using rlcd_chrome::kInk;
+using rlcd_chrome::kPaper;
+
 constexpr int16_t kRoadX0 = kUsageRoadX0;
 constexpr int16_t kRoadX1 = kUsageRoadX1;
-static_assert(kRoadX1 == 296, "road, pump, reset icon and the widest countdown must fit in 388 px");
+static_assert(kRoadX1 == 296,
+              "road, pump, reset icon and the widest countdown must fit in 388 px");
 
 TFT_eSprite* g = nullptr;  // canvas for the frame being drawn
 
-enum class Align : uint8_t { Left, Right, Center };
-enum class FontRole : uint8_t { Chip, Body, BodyBold, Name, HeroLg };
-
-const GFXfont* font_for(FontRole role) {
-  switch (role) {
-    case FontRole::Chip:     return &rlcd_fonts::kBarlowChip15;
-    case FontRole::Body:     return &rlcd_fonts::kBarlowBody18;
-    case FontRole::BodyBold: return &rlcd_fonts::kBarlowBodyBold18;
-    case FontRole::Name:     return &rlcd_fonts::kBarlowName24;
-    case FontRole::HeroLg:   return &rlcd_fonts::kBarlowHero48;
-  }
-  return &rlcd_fonts::kBarlowBody18;
-}
-
 int16_t text_w(const char* s, FontRole role) {
-  g->setFreeFont(font_for(role));
-  g->setTextSize(1);
-  return g->textWidth(s);
+  return rlcd_chrome::text_w(g, s, role);
 }
 
 void text(const char* s, int16_t x, int16_t baseline, FontRole role,
           Align align = Align::Left, uint16_t color = kInk) {
-  g->setFreeFont(font_for(role));
-  g->setTextSize(1);
-  g->setTextWrap(false, false);
-  g->setTextDatum(align == Align::Left ? L_BASELINE
-                  : align == Align::Right ? R_BASELINE : C_BASELINE);
-  g->setTextColor(color);  // fg only: transparent background for GFX fonts
-  g->drawString(s, x, baseline);
+  rlcd_chrome::text(g, s, x, baseline, role, align, color);
 }
 
 void rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color = kInk) {
   if (w > 0 && h > 0) g->fillRect(x, y, w, h, color);
 }
 
-void outline(int16_t x, int16_t y, int16_t w, int16_t h) { g->drawRect(x, y, w, h, kInk); }
+void outline(int16_t x, int16_t y, int16_t w, int16_t h) {
+  g->drawRect(x, y, w, h, kInk);
+}
 
 void hatch(int16_t x, int16_t y, int16_t w, int16_t h) {
   for (int16_t j = 0; j < h; j++)
@@ -78,23 +62,17 @@ void hatch(int16_t x, int16_t y, int16_t w, int16_t h) {
 }
 
 template <size_t N>
-void pix(const char* const (&rows)[N], int16_t x, int16_t y, uint16_t color = kInk) {
-  for (size_t j = 0; j < N; j++)
-    for (size_t i = 0; rows[j][i]; i++)
-      if (rows[j][i] == '#') g->drawPixel(x + (int16_t)i, y + (int16_t)j, color);
+void pix(const char* const (&rows)[N], int16_t x, int16_t y,
+         uint16_t color = kInk) {
+  rlcd_chrome::pixels(g, rows, x, y, color);
 }
 
 void bitmap(const MonoBitmap& b, int16_t x, int16_t y) {
   g->drawBitmap(x, y, b.bits, b.w, b.h, kInk);
 }
 
-// Inverted label; returns its width.
 int16_t chip(const char* s, int16_t x, int16_t baseline, Align align) {
-  const int16_t w = text_w(s, FontRole::Chip) + kUsageChipExtraW;
-  const int16_t x0 = align == Align::Right ? x - w : align == Align::Center ? x - w / 2 : x;
-  rect(x0, baseline - 13, w, 17);
-  text(s, x0 + kUsageChipPadding, baseline, FontRole::Chip, Align::Left, kPaper);
-  return w;
+  return rlcd_chrome::chip(g, s, x, baseline, align);
 }
 
 // --- sprites ---------------------------------------------------------------
@@ -105,26 +83,18 @@ const char* const kDisc[] = {
     "....#####....",
 };
 const char* const kDrop[] = {".#", "##", "##"};
-const char* const kSpark[] = {
-    "....#....", "....#....", "....#....", "...###...", "#########",
-    "...###...", "....#....", "....#....", "....#....",
-};
-const char* const kSparkSmall[] = {
-    ".........", ".........", "....#....", "...###...", "..#####..",
-    "...###...", "....#....", ".........", ".........",
-};
 const char* const kClockIcon[] = {
     "..#####..", ".#.....#.", "#...#...#", "#...#...#", "#...###.#",
     "#.......#", "#.......#", ".#.....#.", "..#####..",
 };
-const char* const kXMark[] = {"##...##", ".##.##.", "..###..", ".##.##.", "##...##"};
 const char* const kRing1[] = {".#.", "#.#", ".#."};
 const char* const kRing2[] = {".##.", "#..#", "#..#", ".##."};
 const char* const kWheel[] = {".###.", "#####", "##.##", "#####", ".###."};
 // End of the road: reaching the pump means the allowance is used up.
 const char* const kPump[] = {
-    "#######...", "#.....#.#.", "#.....#..#", "#.....#..#", "#######..#", "#######..#", "#######.##",
-    "#######.#.", "#######...", "#######...", "#######...", "#######...", "#########.",
+    "#######...", "#.....#.#.", "#.....#..#", "#.....#..#", "#######..#",
+    "#######..#", "#######.##", "#######.#.", "#######...", "#######...",
+    "#######...", "#######...", "#########.",
 };
 // Even pace: where the car would be if the week's allowance were spread evenly.
 const char* const kPaceMark[] = {"..#..", ".###.", "#####"};
@@ -180,7 +150,8 @@ void car(int16_t x, int16_t y, bool ghost) {
 }
 
 void zz(int16_t x, int16_t y, const UsageFrame& f) {
-  const int16_t bob = f.moving ? (int16_t)lroundf(sinf(f.t_ms / 1000.0f * 2.5f) * 1.5f) : 0;
+  const int16_t bob =
+      f.moving ? (int16_t)lroundf(sinf(f.t_ms / 1000.0f * 2.5f) * 1.5f) : 0;
   text("z", x, y + bob, FontRole::BodyBold);
   text("Z", x + 7, y - 6 + bob, FontRole::BodyBold);
 }
@@ -202,10 +173,13 @@ const MonoBitmap* pick_logo(const std::string& id) {
 }
 
 // Accounts without a baked mark get a disc with their initial.
-void generic_logo(const std::string& id, int16_t x, int16_t y, int16_t d, FontRole role) {
+void generic_logo(const std::string& id, int16_t x, int16_t y, int16_t d,
+                  FontRole role) {
   g->drawCircle(x + d / 2, y + d / 2, d / 2 - 1, kInk);
-  char initial[2] = {id.empty() ? '?' : (char)toupper((unsigned char)id[0]), '\0'};
-  text(initial, x + d / 2, y + d / 2 + (role == FontRole::Name ? 8 : 5), role, Align::Center);
+  char initial[2] = {
+      id.empty() ? '?' : (char)toupper((unsigned char)id[0]), '\0'};
+  text(initial, x + d / 2, y + d / 2 + (role == FontRole::Name ? 8 : 5), role,
+       Align::Center);
 }
 void logo(const std::string& id, int16_t x, int16_t y) {
   const MonoBitmap* mark = row_logo(id);
@@ -218,60 +192,54 @@ void small_logo(const std::string& id, int16_t x, int16_t y) {
   else generic_logo(id, x, y, 15, FontRole::BodyBold);
 }
 
-void headline(const UsageView& v, const UsageFrame& f) {
+void headline(const UsageView& v, const Shtc3Reading& env,
+              const UsageFrame& f) {
   int16_t x = kUsageMarginX;
   switch (v.headline_icon) {
     case UsageIcon::Spark:
-      if (f.moving && (f.tick / 4) % 2) pix(kSparkSmall, x, 9);
-      else pix(kSpark, x, 9);
+      if (f.moving && (f.tick / 4) % 2) pix(rlcd_chrome::kSparkSmall, x, 8);
+      else pix(rlcd_chrome::kSpark, x, 8);
+      x += 15;
+      break;
+    case UsageIcon::Clock:
+      pix(kClockIcon, x, 9);
       x += 14;
       break;
-    case UsageIcon::Clock: pix(kClockIcon, x, 9); x += 14; break;
-    case UsageIcon::Face: face(v.headline_face, x, 7); x += 18; break;
-    case UsageIcon::None: break;
+    case UsageIcon::Face:
+      face(v.headline_face, x, 7);
+      x += 18;
+      break;
+    case UsageIcon::None:
+      break;
   }
   text(v.headline.c_str(), x, kUsageHeaderBaseline, FontRole::Body);
-  x += text_w(v.headline.c_str(), FontRole::Body) + 6;
+  int16_t x_end = x + text_w(v.headline.c_str(), FontRole::Body);
   if (v.pick >= 0 && v.pick < (int)v.count) {
-    small_logo(v.rows[v.pick].id, x, 6);
-    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, kUsageHeaderBaseline,
+    const int16_t pick_x = x_end + 6;
+    const std::string pick_name = usage_provider_name(v.rows[v.pick].id);
+    small_logo(v.rows[v.pick].id, pick_x, 6);
+    text(pick_name.c_str(), pick_x + 19, kUsageHeaderBaseline,
          FontRole::BodyBold);
+    x_end = pick_x + 19 + text_w(pick_name.c_str(), FontRole::BodyBold);
   }
+  rlcd_chrome::draw_ambient_climate_right(g, env, kUsageRightX,
+                                          kUsageHeaderBaseline, x_end + 10,
+                                          true);
   rect(kUsageMarginX, kUsageHeaderRuleY, 376, 1);
 }
 
-void footer(const UsageView& v, const BatteryReading& batt, RuntimeMode mode) {
-  rect(kUsageMarginX, kUsageFooterRuleY, 376, 1);
-  constexpr int16_t base = kUsageFooterBaseline;
-  int16_t x = kUsageRightX;
-  x -= chip(runtime_mode_name(mode), x, base, Align::Right) + kUsageModeGap;
-  char pct[8];
-  if (batt.ok) std::snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
-  else std::snprintf(pct, sizeof(pct), "--%%");
-  text(pct, x, base, FontRole::Body, Align::Right);
-  x -= text_w(pct, FontRole::Body) + kUsageBatteryGap;
-  const int16_t bx = x - 24, by = kUsageBatteryY;
-  outline(bx, by, 22, 12);
-  rect(bx + 22, by + 4, 2, 4);
-  if (batt.ok) rect(bx + 2, by + 2, (int16_t)((18 * std::min<unsigned>(batt.pct, 100) + 50) / 100), 8);
-  if (!v.footer_chip.empty()) {
-    const int16_t w = chip(v.footer_chip.c_str(), kUsageMarginX, base, Align::Left);
-    text(v.footer_text.c_str(), kUsageMarginX + w + kUsageFooterTextGap, base, FontRole::Body);
-  } else {
-    text(v.footer_text.c_str(), kUsageMarginX, base, FontRole::Body);
-  }
-}
-
 // --- rows --------------------------------------------------------------------
-void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_top,
-            int16_t box_h, float sweep) {
+void number(const UsageRowView& r, int16_t right, int16_t baseline,
+            int16_t box_top, int16_t box_h, float sweep) {
   if (r.state == UsageRowState::Unavailable) {
     text("--", right + 20, baseline - 4, FontRole::HeroLg, Align::Right);
     return;
   }
   char s[8];  // the sweep burns down from a full tank while the car drives in
-  std::snprintf(s, sizeof(s), "%d", (int)lroundf(100.0f - (100 - r.left) * sweep));
-  const int16_t nw = text_w(s, FontRole::HeroLg), pw = text_w("%", FontRole::Name);
+  std::snprintf(s, sizeof(s), "%d",
+                (int)lroundf(100.0f - (100 - r.left) * sweep));
+  const int16_t nw = text_w(s, FontRole::HeroLg);
+  const int16_t pw = text_w("%", FontRole::Name);
   const bool low = r.left <= 10;
   const uint16_t color = low ? kPaper : kInk;
   if (low) rect(right - nw - 6, box_top, nw + pw + 14, box_h);
@@ -332,7 +300,8 @@ void row(size_t i, const UsageRowView& r, size_t count, const UsageFrame& f) {
   const std::string name = usage_provider_name(r.id);
   text(name.c_str(), kRoadX0, name_base, FontRole::Name);
   if (r.id == "gemini") {  // Antigravity's Gemini weekly pool
-    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), FontRole::Name) + 6,
+    bitmap(usage_logos::kAntigravity12,
+           kRoadX0 + text_w(name.c_str(), FontRole::Name) + 6,
            name_base - 12);
   }
   if (!r.chip.empty()) {
@@ -354,14 +323,16 @@ void row(size_t i, const UsageRowView& r, size_t count, const UsageFrame& f) {
 
 }  // namespace
 
-void render_usage(const UsageView& view, const BatteryReading& batt,
-                  RuntimeMode runtime_mode, const UsageFrame& frame) {
+void render_usage(const UsageView& view, const Shtc3Reading& env,
+                  const BatteryReading& batt, RuntimeMode runtime_mode,
+                  const UsageFrame& frame, bool carousel_pinned) {
   g = display_canvas();
   if (!g) return;
   g->fillSprite(kPaper);
-  headline(view, frame);
+  headline(view, env, frame);
   for (size_t i = 0; i < view.count; i++) row(i, view.rows[i], view.count, frame);
-  footer(view, batt, runtime_mode);
+  rlcd_chrome::draw_footer(g, view.footer_chip, view.footer_text, batt,
+                           runtime_mode, carousel_pinned);
   display_push();
   g = nullptr;
 }

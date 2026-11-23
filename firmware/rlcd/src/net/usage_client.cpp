@@ -46,11 +46,11 @@ bool is_transient_http_status(int status) {
 
 bool usage_get_json_impl(const char* url, size_t maximum_bytes,
                          const char* log_label, std::string& body,
-                         FetchDiag& result) {
+                         FetchDiag& result, bool send_read_key) {
   result.attempted = true;
   const std::string host = extract_https_host(url);
   if (!wall_clock_is_valid() || host.empty() ||
-      strlen(RCRLCD_USAGE_READ_KEY) == 0) {
+      (send_read_key && strlen(RCRLCD_USAGE_READ_KEY) == 0)) {
     Serial.printf("[%s] HTTPS configuration or clock unavailable\n", log_label);
     set_diag_error(result, "config-or-clock");
     return false;
@@ -98,7 +98,7 @@ bool usage_get_json_impl(const char* url, size_t maximum_bytes,
     http.setUserAgent("rcink-rlcd/1.0");
     http.addHeader("Accept", "application/json");
     http.addHeader("Accept-Encoding", "identity");
-    http.addHeader("X-Usage-Read-Key", RCRLCD_USAGE_READ_KEY);
+    if (send_read_key) http.addHeader("X-Usage-Read-Key", RCRLCD_USAGE_READ_KEY);
 
     const uint32_t get_t0 = millis();
     const int status = http.GET();
@@ -206,9 +206,10 @@ bool usage_get_json_impl(const char* url, size_t maximum_bytes,
 }  // namespace
 
 bool usage_get_json(const char* url, size_t maximum_bytes, const char* log_label,
-                    std::string& body, FetchDiag* diag) {
+                    std::string& body, FetchDiag* diag, bool send_read_key) {
   FetchDiag result;
-  const bool ok = usage_get_json_impl(url, maximum_bytes, log_label, body, result);
+  const bool ok = usage_get_json_impl(url, maximum_bytes, log_label, body,
+                                      result, send_read_key);
   if (diag) *diag = result;
   return ok;
 }

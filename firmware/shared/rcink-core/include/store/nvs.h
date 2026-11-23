@@ -34,6 +34,12 @@ std::string nvs_load_usage();
 bool nvs_save_usage(const std::string& json);
 std::string nvs_load_token();
 bool nvs_save_token(const std::string& json);
+std::string nvs_load_monument();
+bool nvs_save_monument(const std::string& json);
+bool nvs_load_dark_mode(bool default_val = false);
+void nvs_save_dark_mode(bool enabled);
+bool nvs_load_carousel_pinned(bool default_val = false);
+void nvs_save_carousel_pinned(bool pinned);
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
 
 inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {

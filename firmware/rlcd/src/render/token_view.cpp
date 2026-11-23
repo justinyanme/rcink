@@ -34,10 +34,22 @@ uint64_t saturated_sum(const std::array<uint64_t, kTokenDays>& days, size_t firs
   return total;
 }
 
-long double complete_day_sum(const std::array<uint64_t, kTokenDays>& days) {
+uint8_t find_first_active_day(const std::array<uint64_t, kTokenDays>& days) {
+  for (size_t i = 0; i < kTokenDays; i++) {
+    if (days[i] > 0) return (uint8_t)i;
+  }
+  return (uint8_t)kTokenDays;
+}
+
+// Exclude zero days before the provider's first active day in the 30-day series
+// when onboarding falls inside the last 7 complete days (indices 22..28).
+long double active_window_usual_day(const std::array<uint64_t, kTokenDays>& days,
+                                    uint8_t first_active_day) {
+  if (first_active_day > 28) return 0.0L;
+  const size_t start = std::max<size_t>(22, first_active_day);
   long double total = 0;
-  for (size_t i = 22; i <= 28; i++) total += days[i];
-  return total;
+  for (size_t i = start; i <= 28; i++) total += days[i];
+  return total / (long double)(29 - start);
 }
 
 int parse_date(const std::string& value, int& year, int& month, int& day) {
@@ -84,10 +96,11 @@ void shift_days(const TokenProvider& provider, int64_t elapsed, TokenRowView& ro
   row.lifetime_value = provider.lifetime;
   row.lifetime = format_tokens(provider.lifetime);
   row.seven_day = format_tokens(saturated_sum(row.shifted_days, 23));
+  row.first_active_day = find_first_active_day(row.shifted_days);
 
   uint64_t maximum = 0;
   for (uint64_t value : row.shifted_days) maximum = std::max(maximum, value);
-  const long double usual = complete_day_sum(row.shifted_days) / 7.0L;
+  const long double usual = active_window_usual_day(row.shifted_days, row.first_active_day);
   for (size_t i = 0; i < kTokenDays; i++) {
     if (maximum == 0 || row.shifted_days[i] == 0) row.bars[i] = 0;
     else row.bars[i] = (uint8_t)std::max<long>(1, std::lround(
@@ -160,25 +173,36 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
        (now >= kClockMinimum && now > snapshot.required_source_collected_at &&
         now - snapshot.required_source_collected_at > kOldSourceAgeS));
   long double combined_usual = 0;
+  uint64_t combined_seven_day = 0;
   uint64_t busiest_total = 0;
   int busiest = -1;
   for (size_t p = 0; p < snapshot.count; p++) {
     view.rows[p].id = snapshot.providers[p].id;
     shift_days(snapshot.providers[p], elapsed, view.rows[p]);
-    combined_usual += complete_day_sum(view.rows[p].shifted_days) / 7.0L;
+    combined_usual += active_window_usual_day(view.rows[p].shifted_days,
+                                              view.rows[p].first_active_day);
     const uint64_t seven = saturated_sum(view.rows[p].shifted_days, 23);
+    if (seven > std::numeric_limits<uint64_t>::max() - combined_seven_day) {
+      combined_seven_day = std::numeric_limits<uint64_t>::max();
+    } else {
+      combined_seven_day += seven;
+    }
     if (seven > busiest_total) {
       busiest_total = seven;
       busiest = (int)p;
     }
   }
+  view.total_seven_day = snapshot.count > 0
+      ? format_tokens(combined_seven_day) + " 7d"
+      : "";
 
   int tear = -1;
   if (clock_valid && !old_data && !sync.fetch_failed &&
       sync.link_failure == LinkFailure::None) {
     for (size_t p = 0; p < view.count; p++) {
       const auto& days = view.rows[p].shifted_days;
-      const long double usual = complete_day_sum(days) / 7.0L;
+      const long double usual =
+          active_window_usual_day(days, view.rows[p].first_active_day);
       const long double today = days[29];
       if (usual > 0 && today >= usual * 1.5L && today >= combined_usual * 0.25L) {
         tear = (int)p;
@@ -234,9 +258,10 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
 
 std::string encode_token_view(const TokenView& view) {
   JsonDocument doc;
-  doc["schema"] = "rcink.token-view.v2";
+  doc["schema"] = "rcink.token-view.v3";
   doc["headline"] = view.headline;
   doc["pick"] = (int)view.headline_pick;
+  doc["totalSeven"] = view.total_seven_day;
   doc["footerChip"] = view.footer_chip;
   doc["footer"] = view.footer_text;
   JsonArray rows = doc["rows"].to<JsonArray>();
@@ -251,6 +276,7 @@ std::string encode_token_view(const TokenView& view) {
       bars.add(row.bars[i]);
     }
     out["usual"] = row.usual_px;
+    out["firstActive"] = row.first_active_day;
     out["lifetimeValue"] = row.lifetime_value;
     out["seven"] = row.seven_day;
     out["today"] = row.today;
@@ -266,13 +292,14 @@ bool decode_token_view(const std::string& json, TokenView& out) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (root["schema"] != "rcink.token-view.v2" || !root["pick"].is<int>() ||
+  if (root["schema"] != "rcink.token-view.v3" || !root["pick"].is<int>() ||
       !root["rows"].is<JsonArrayConst>() || root["rows"].size() > kTokenMaxProviders) return false;
   TokenView next;
   next.count = root["rows"].size();
   if (root["pick"].as<int>() < -1 || root["pick"].as<int>() >= (int)next.count) return false;
   next.headline_pick = root["pick"].as<int8_t>();
   if (!small_string(root["headline"], next.headline) ||
+      !small_string(root["totalSeven"], next.total_seven_day) ||
       !small_string(root["footerChip"], next.footer_chip) ||
       !small_string(root["footer"], next.footer_text)) return false;
   for (size_t p = 0; p < next.count; p++) {
@@ -284,11 +311,14 @@ bool decode_token_view(const std::string& json, TokenView& out) {
         !input["days"].is<JsonArrayConst>() || input["days"].size() != kTokenDays ||
         !input["bars"].is<JsonArrayConst>() || input["bars"].size() != kTokenDays ||
         !input["usual"].is<uint8_t>() || input["usual"].as<uint8_t>() > kTokenChartPx ||
+        !input["firstActive"].is<uint8_t>() ||
+        input["firstActive"].as<uint8_t>() > kTokenDays ||
         !input["lifetimeValue"].is<uint64_t>() ||
         !small_string(input["seven"], row.seven_day) ||
         !small_string(input["today"], row.today) ||
         !small_string(input["lifetime"], row.lifetime)) return false;
     row.usual_px = input["usual"].as<uint8_t>();
+    row.first_active_day = input["firstActive"].as<uint8_t>();
     row.lifetime_value = input["lifetimeValue"].as<uint64_t>();
     for (size_t i = 0; i < kTokenDays; i++) {
       if (!input["days"][i].is<uint64_t>() || !input["bars"][i].is<uint8_t>() ||

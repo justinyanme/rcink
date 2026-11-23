@@ -12,6 +12,7 @@ class Preferences {
   void end() {}
   bool isKey(const char* key) { return nvs_fixture::values.count(key) != 0; }
   uint8_t getUChar(const char* key, uint8_t fallback) { return getNumber(key, fallback); }
+  bool getBool(const char* key, bool fallback) { return getNumber(key, fallback ? 1 : 0) != 0; }
   uint32_t getUInt(const char* key, uint32_t fallback) { return getNumber(key, fallback); }
   uint64_t getULong64(const char* key, uint64_t fallback) { return getNumber(key, fallback); }
   String getString(const char* key, const char* fallback) {
@@ -29,6 +30,7 @@ class Preferences {
     return size;
   }
   void putUChar(const char* key, uint8_t value) { putNumber(key, value); }
+  void putBool(const char* key, bool value) { putNumber(key, value ? 1 : 0); }
   void putUInt(const char* key, uint32_t value) { putNumber(key, value); }
   void putULong64(const char* key, uint64_t value) { putNumber(key, value); }
   void putString(const char* key, const char* value) { nvs_fixture::values[key] = value; }

@@ -3,24 +3,13 @@
 #include <Arduino.h>
 
 #include "display/pins_config.h"
+#include "input/button_gesture.h"
 
 namespace rcpaper::buttons {
 namespace {
 
-constexpr uint32_t kDebounceMs = 40;
-
-struct ButtonState {
-  int pin;
-  bool raw_down;
-  bool stable_down;
-  bool suppress_release;
-  uint32_t raw_changed_ms;
-};
-
-ButtonState g_buttons[] = {
-    {PIN_BUTTON_1, false, false, false, 0},  // GPIO0: BOOT
-    {PIN_BUTTON_2, false, false, false, 0},  // GPIO18: KEY
-};
+ButtonGestureTracker g_boot_tracker;
+ButtonGestureTracker g_key_tracker;
 
 bool raw_is_down(int pin) {
   return digitalRead(pin) == LOW;
@@ -30,45 +19,25 @@ bool raw_is_down(int pin) {
 
 void init(bool consumed_key_wake) {
   const uint32_t now = millis();
-  for (auto& button : g_buttons) {
-    pinMode(button.pin, INPUT_PULLUP);
-    const bool down = raw_is_down(button.pin);
-    button.raw_down = down;
-    button.stable_down = down;
-    button.suppress_release =
-        consumed_key_wake && button.pin == PIN_BUTTON_2 && down;
-    button.raw_changed_ms = now;
-  }
+  pinMode(PIN_BUTTON_1, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
+  g_boot_tracker.init(raw_is_down(PIN_BUTTON_1), false, now);
+  g_key_tracker.init(raw_is_down(PIN_BUTTON_2), consumed_key_wake, now);
 }
 
 Events poll() {
   const uint32_t now = millis();
   Events events;
+  const ButtonGestureOutput boot =
+      g_boot_tracker.poll(raw_is_down(PIN_BUTTON_1), now);
+  const ButtonGestureOutput key =
+      g_key_tracker.poll(raw_is_down(PIN_BUTTON_2), now);
 
-  for (auto& button : g_buttons) {
-    const bool down = raw_is_down(button.pin);
-    if (down != button.raw_down) {
-      button.raw_down = down;
-      button.raw_changed_ms = now;
-    }
-    if (down == button.stable_down ||
-        now - button.raw_changed_ms < kDebounceMs) {
-      continue;
-    }
-
-    button.stable_down = down;
-    if (down) continue;
-
-    events.activity = true;
-    if (button.suppress_release) {
-      button.suppress_release = false;
-    } else if (button.pin == PIN_BUTTON_1) {
-      events.boot_tap = true;
-    } else {
-      events.key_tap = true;
-    }
-  }
-
+  events.activity = boot.activity || key.activity;
+  events.boot_tap = boot.tap;
+  events.boot_long = boot.long_press;
+  events.key_tap = key.tap;
+  events.key_long = key.long_press;
   return events;
 }
 

@@ -18,6 +18,10 @@ struct DeckViewKey {
   bool stale;
   RuntimeMode runtime_mode;
   bool dark_mode;
+  bool carousel_pinned;
+  int16_t env_temp_decideg;
+  uint8_t env_rh_pct;
+  bool env_ok;
 };
 
 inline bool operator==(const DeckViewKey& lhs, const DeckViewKey& rhs) {
@@ -27,7 +31,10 @@ inline bool operator==(const DeckViewKey& lhs, const DeckViewKey& rhs) {
          lhs.battery_pct == rhs.battery_pct &&
          lhs.battery_ok == rhs.battery_ok && lhs.stale == rhs.stale &&
          lhs.runtime_mode == rhs.runtime_mode &&
-         lhs.dark_mode == rhs.dark_mode;
+         lhs.dark_mode == rhs.dark_mode &&
+         lhs.carousel_pinned == rhs.carousel_pinned &&
+         lhs.env_temp_decideg == rhs.env_temp_decideg &&
+         lhs.env_rh_pct == rhs.env_rh_pct && lhs.env_ok == rhs.env_ok;
 }
 
 inline bool operator!=(const DeckViewKey& lhs, const DeckViewKey& rhs) {

@@ -45,7 +45,7 @@ struct TokenRowMetrics {
 
 inline TokenRowMetrics token_row_metrics(size_t count) {
   if (count >= 3) return {80, 18, 19, 54, 28, 71, 26};
-  return {114, 24, 27, 73, 36, 97, 43};
+  return {114, 24, 25, 74, 42, 98, 43};
 }
 
 struct TokenBox {

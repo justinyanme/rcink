@@ -53,15 +53,27 @@ struct UsageFrame {
   uint32_t t_ms = 0;   // wall time: drives smooth motion (Zz float)
   float sweep = 1.0f;
 };
-void render_usage(const UsageView& view, const BatteryReading& batt,
-                  RuntimeMode runtime_mode, const UsageFrame& frame);
+void render_usage(const UsageView& view, const Shtc3Reading& env,
+                  const BatteryReading& batt, RuntimeMode runtime_mode,
+                  const UsageFrame& frame, bool carousel_pinned = false);
 
 // Token animates only its 0.9 s entry/sync sweep; there is no idle motion.
 struct TokenFrame {
   float sweep = 1.0f;
 };
 void render_token(const TokenView& view, const BatteryReading& batt,
-                  RuntimeMode runtime_mode, const TokenFrame& frame);
+                  RuntimeMode runtime_mode, const TokenFrame& frame,
+                  bool carousel_pinned = false);
+
+// Monument page animates only its 0.9 s entry/sync sweep on HOST; ECO/ACTIVE
+// remain crisp static frames.
+struct MonumentFrame {
+  float sweep = 1.0f;
+};
+struct MonumentView;
+void render_monument(const MonumentView& view, const Shtc3Reading& env,
+                     const BatteryReading& batt, RuntimeMode runtime_mode,
+                     const MonumentFrame& frame, bool carousel_pinned = false);
 #endif
 
 }  // namespace rcpaper

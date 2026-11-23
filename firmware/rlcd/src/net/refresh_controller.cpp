@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include <algorithm>
+#include <memory>
 #include <utility>
 
 #include "config.h"
@@ -11,6 +12,8 @@
 #include "net/usage_config.h"
 #include "power/network_policy.h"
 #include "power/refresh_schedule.h"
+#include "render/monument_persistence.h"
+#include "render/monument_view.h"
 #include "render/token_persistence.h"
 #include "sense/clock.h"
 
@@ -66,9 +69,11 @@ bool refresh_due_now(const RefreshAppState& app) {
 
 bool start_network_refresh(RefreshAppState app, bool force_token) {
   const bool token_due = RCRLCD_USAGE_ENABLED &&
-      (force_token || token_refresh_due(
-          (uint64_t)time(nullptr), app.token_last_ok_s, app.token_retry_at_s,
-          app.runtime_mode, app.token_fetch_failed));
+      (force_token ||
+       (app.monument.end_date.empty() && !app.token_fetch_failed) ||
+       token_refresh_due(
+           (uint64_t)time(nullptr), app.token_last_ok_s, app.token_retry_at_s,
+           app.runtime_mode, app.token_fetch_failed));
   if (refresh_busy()) {
     refresh_start(app.device.last_fetch_fingerprint, token_due);  // join if possible
     Serial.println("[refresh] already running");
@@ -91,12 +96,15 @@ bool start_network_refresh(RefreshAppState app, bool force_token) {
 }
 
 bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
-                            bool& token_succeeded, bool& allowance_page_changed) {
+                            bool& token_succeeded, bool& allowance_page_changed,
+                            bool& monument_succeeded) {
   usage_page_changed = false;
   token_succeeded = false;
   allowance_page_changed = false;
-  RefreshCompletion completion;
-  if (!refresh_take(completion)) return false;
+  monument_succeeded = false;
+  std::unique_ptr<RefreshCompletion> completion_ptr(new RefreshCompletion());
+  if (!refresh_take(*completion_ptr)) return false;
+  RefreshCompletion& completion = *completion_ptr;
 
   // The worker deliberately owns no board state. Reconcile on the Arduino loop
   // task so NVS, ADC, and RTC/I2C cannot race rendering or input.
@@ -147,6 +155,13 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
         Serial.println("[token] cache save failed; retained in memory only");
       }
     }
+    if (completion.monument_ok) {
+      app.monument = completion.monument;
+      monument_succeeded = true;
+      if (!persist_monument_snapshot(app.monument)) {
+        Serial.println("[monument] cache save failed; retained in memory only");
+      }
+    }
   }
 #else
   if (success) {
@@ -192,7 +207,12 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
       app.device, app.token, completion.completed_at_s,
       {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
        app.link_failure, app.retry_cooldown_s, WIFI_SSID});
-  usage_page_changed = allowance_page_changed || token_changed;
+  const bool monument_changed = update_monument_page(
+      app.device, app.monument, app.token, completion.completed_at_s,
+      {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
+       app.link_failure, app.retry_cooldown_s, WIFI_SSID},
+      app.runtime_mode);
+  usage_page_changed = allowance_page_changed || token_changed || monument_changed;
 #endif
   Serial.printf("[auto] retry gate %u s result=%u link=%u\n",
                 (unsigned)(gate - completion.completed_at_s),

@@ -6,8 +6,9 @@
 #include "net/fetch_diag.h"
 #include "proto/envelope.h"
 #include "render/link_status.h"
-#include "render/usage.h"
+#include "render/monument.h"
 #include "render/token.h"
+#include "render/usage.h"
 
 namespace rcpaper {
 
@@ -24,10 +25,13 @@ struct RefreshCompletion {
   std::vector<PageRecord> pages;
   UsageSnapshot usage;
   TokenSnapshot token;
+  MonumentSnapshot monument;
   FetchDiag usage_diag{};
   FetchDiag token_diag{};
+  FetchDiag monument_diag{};
   bool token_attempted = false;
   bool token_ok = false;
+  bool monument_ok = false;
   bool clock_synced = false;
   uint64_t completed_at_s = 0;
 };

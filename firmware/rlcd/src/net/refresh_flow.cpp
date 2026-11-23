@@ -23,8 +23,9 @@
 namespace rcpaper {
 namespace {
 
-// The completion carries a second 30-day snapshot while TLS/HTTP are active.
-constexpr uint32_t kWorkerStackBytes = 12288;
+// The completion carries a second 30-day snapshot and 365-day monument while
+// TLS/HTTP are active.
+constexpr uint32_t kWorkerStackBytes = 16384;
 constexpr UBaseType_t kWorkerPriority = 1;
 
 SemaphoreHandle_t g_mutex = nullptr;
@@ -85,6 +86,8 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
       completion.token_attempted = consume_token_due();
       if (completion.token_attempted) {
         completion.token_ok = token_fetch(completion.token, &completion.token_diag);
+        completion.monument_ok =
+            monument_fetch(completion.monument, &completion.monument_diag);
       }
     }
 #else
@@ -182,7 +185,15 @@ bool refresh_take(RefreshCompletion& out) {
     return false;
   }
   out = std::move(g_completion);
-  g_completion = RefreshCompletion{};
+  g_completion.pages.clear();
+  g_completion.monument.days.clear();
+  g_completion.result = FetchResult::DataFailed;
+  g_completion.link_failure = LinkFailure::None;
+  g_completion.token_attempted = false;
+  g_completion.token_ok = false;
+  g_completion.monument_ok = false;
+  g_completion.clock_synced = false;
+  g_completion.completed_at_s = 0;
   g_completion_ready = false;
   g_busy = false;
   unlock();

@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "input/button_gesture.h"
 #include "input/navigation.h"
 
 using namespace rcpaper;
@@ -145,6 +146,64 @@ void test_hidden_dashboard_ring_cycles_only_deck_pages_and_forces_deck_startup()
   TEST_ASSERT_EQUAL_UINT(1, state.page_index);
 }
 
+void test_three_page_hidden_dashboard_ring_and_host_carousel_policy() {
+  NavigationState state = {View::Deck, 0};
+  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  TEST_ASSERT_EQUAL_UINT(1, state.page_index);
+  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  TEST_ASSERT_EQUAL_UINT(2, state.page_index);
+  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  TEST_ASSERT_EQUAL_UINT(0, state.page_index);
+
+  state = navigation_after_previous_press(state.view, state.page_index, 3, false);
+  TEST_ASSERT_EQUAL_UINT(2, state.page_index);
+
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, false, 3, 89999, 0));
+  TEST_ASSERT_TRUE(host_carousel_due(true, false, false, false, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(false, false, false, false, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, true, false, false, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, true, false, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, true, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, false, 1, 90000, 0));
+}
+
+void test_button_gesture_tracker_distinguishes_tap_long_press_and_wake_hold() {
+  buttons::ButtonGestureTracker tracker;
+  tracker.init(false, false, 0);
+
+  // Press for 250 ms and release -> tap fires after debounce.
+  TEST_ASSERT_FALSE(tracker.poll(true, 100).tap);
+  TEST_ASSERT_FALSE(tracker.poll(true, 150).long_press);
+  const auto short_release = tracker.poll(false, 400);
+  TEST_ASSERT_FALSE(short_release.activity);  // waiting for release debounce
+  TEST_ASSERT_FALSE(short_release.tap);
+  const auto debounced_tap = tracker.poll(false, 445);
+  TEST_ASSERT_TRUE(debounced_tap.activity);
+  TEST_ASSERT_TRUE(debounced_tap.tap);
+  TEST_ASSERT_FALSE(debounced_tap.long_press);
+
+  // Hold >= 600 ms -> long_press fires once while held; release emits no tap.
+  tracker.poll(true, 1000);
+  tracker.poll(true, 1045);
+  TEST_ASSERT_FALSE(tracker.poll(true, 1600).long_press);
+  const auto held_long = tracker.poll(true, 1645);
+  TEST_ASSERT_TRUE(held_long.long_press);
+  TEST_ASSERT_TRUE(held_long.activity);
+  TEST_ASSERT_FALSE(tracker.poll(true, 1800).long_press);
+  tracker.poll(false, 1810);
+  const auto after_long_release = tracker.poll(false, 1860);
+  TEST_ASSERT_FALSE(after_long_release.tap);
+  TEST_ASSERT_FALSE(after_long_release.long_press);
+
+  // Woken via EXT1 hold -> suppressed until released.
+  tracker.init(true, true, 0);
+  TEST_ASSERT_FALSE(tracker.poll(true, 700).long_press);
+  tracker.poll(false, 710);
+  const auto wake_release = tracker.poll(false, 760);
+  TEST_ASSERT_FALSE(wake_release.tap);
+  TEST_ASSERT_FALSE(wake_release.long_press);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_key_enters_deck_from_dashboard);
@@ -158,5 +217,7 @@ int main() {
   RUN_TEST(test_two_page_usage_ring_and_boot_sync_in_place);
   RUN_TEST(test_unconfigured_startup_preserves_the_existing_saved_view);
   RUN_TEST(test_hidden_dashboard_ring_cycles_only_deck_pages_and_forces_deck_startup);
+  RUN_TEST(test_three_page_hidden_dashboard_ring_and_host_carousel_policy);
+  RUN_TEST(test_button_gesture_tracker_distinguishes_tap_long_press_and_wake_hold);
   return UNITY_END();
 }

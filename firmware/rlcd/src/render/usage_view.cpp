@@ -93,6 +93,15 @@ int provider_display_rank(const std::string& id) {
   if (id == "kimi") return 3;
   return 4;
 }
+
+bool is_primary_provider(const std::string& id) {
+  return id == "claude" || id == "codex" || id == "gemini";
+}
+
+// More than 24 h into the 168 h week (<= 85.7 % of window left) with < 2 % used.
+bool is_untouched_row(uint8_t left, double pace) {
+  return pace >= 0.0 && pace <= 85.7 && left >= 98;
+}
 }  // namespace
 
 UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
@@ -180,33 +189,78 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
     view.headline = (sync.fetch_failed ? "Can't sync. Numbers from " : "No new numbers since ") +
                     local_hhmm(newest_sample) + ".";
   } else {
-    int pick = -1, nap = -1, low = -1;
-    double best = -1e9;
+    int nap = -1, low = -1;
+    int expiring = -1;
+    double best_expiring = -1e9;
+    int pick_primary_comfy = -1;
+    double best_primary_comfy = -1e9;
+    int pick_any_comfy = -1;
+    double best_any_comfy = -1e9;
+    int pick_primary_fallback = -1;
+    double best_primary_fallback = -1e9;
+    int pick_any = -1;
+    double best_any = -1e9;
     for (size_t i = 0; i < view.count; i++) {
       const UsageRowView& row = view.rows[i];
       if (row.state != UsageRowState::Live) continue;
       if (row.mood == UsageMood::Nap && nap < 0) nap = (int)i;
       if (row.mood == UsageMood::Low && low < 0) low = (int)i;
-      if (row.left > 10 && pace[i] >= 0 && row.left - pace[i] > best) {
-        best = row.left - pace[i];
-        pick = (int)i;
+      if (pace[i] < 0) continue;
+      const double headroom = row.left - pace[i];
+      const UsageProvider& src = snapshot.providers[order[i]];
+      if (clock && src.resets_at > now && (src.resets_at - now) <= 36ULL * 3600ULL &&
+          row.left >= 25 && headroom >= 10.0 && headroom > best_expiring) {
+        best_expiring = headroom;
+        expiring = (int)i;
+      }
+      if (row.left <= 10) continue;
+      if (headroom > best_any) {
+        best_any = headroom;
+        pick_any = (int)i;
+      }
+      const bool primary = is_primary_provider(row.id);
+      const bool comfy = row.left > 20 && headroom >= -8.0;
+      const bool untouched = is_untouched_row(row.left, pace[i]);
+      if (comfy && !untouched) {
+        if (headroom > best_any_comfy) {
+          best_any_comfy = headroom;
+          pick_any_comfy = (int)i;
+        }
+        if (primary && headroom > best_primary_comfy) {
+          best_primary_comfy = headroom;
+          pick_primary_comfy = (int)i;
+        }
+      }
+      if (primary && comfy && headroom > best_primary_fallback) {
+        best_primary_fallback = headroom;
+        pick_primary_fallback = (int)i;
       }
     }
+    const int pick = pick_primary_comfy >= 0 ? pick_primary_comfy
+        : (pick_any_comfy >= 0 ? pick_any_comfy
+        : (pick_primary_fallback >= 0 ? pick_primary_fallback : pick_any));
     view.headline_icon = UsageIcon::Face;
     if (pick >= 0 && nap >= 0) {
       view.headline_face = UsageMood::Nap;
       view.headline = usage_provider_name(view.rows[nap].id) + " is napping. Try";
+      view.pick = (int8_t)pick;
     } else if (pick >= 0 && low >= 0) {
       view.headline_face = UsageMood::Low;
       view.headline = usage_provider_name(view.rows[low].id) + " is almost out. Try";
+      view.pick = (int8_t)pick;
+    } else if (expiring >= 0) {
+      view.headline_icon = UsageIcon::Spark;
+      view.headline = "Use it or lose it:";
+      view.pick = (int8_t)expiring;
     } else if (pick >= 0) {
       view.headline_icon = UsageIcon::Spark;
       view.headline = "Best bet today:";
+      view.pick = (int8_t)pick;
     } else {
       view.headline_face = UsageMood::Pace;
       view.headline = "Nothing fresh to recommend.";
+      view.pick = -1;
     }
-    view.pick = (int8_t)pick;
   }
 
   if (sync.syncing) {  // acknowledge the press; the fetch takes several seconds
