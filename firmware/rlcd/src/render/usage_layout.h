@@ -19,7 +19,8 @@ constexpr int16_t kUsageFooterRuleY = 272;
 constexpr int16_t kUsageFooterBaseline = 291;
 constexpr int16_t kUsageBatteryY = 280;
 
-constexpr int16_t kUsageChipPadding = 3;
+constexpr int16_t kUsageChipPadding = 4;  // visual pad (3 px + 1 px trailing tracking)
+constexpr int16_t kUsageChipExtraW = 7;   // total horizontal padding added to tracked chip advance
 constexpr int16_t kUsageModeGap = 4;
 constexpr int16_t kUsageBatteryGap = 4;
 constexpr int16_t kUsageFooterTextGap = 6;
@@ -101,8 +102,8 @@ inline UsageRowGeometry usage_row_geometry(size_t index, const UsageTextWidths& 
   const int16_t road_y = top + m.road_y;
   const int16_t num_base = top + m.num_base;
   const int16_t right_w =
-      text.right_is_chip ? text.right_label + 2 * kUsageChipPadding : text.right_label;
-  const int16_t right_top = text.right_is_chip ? name_base - 15 : name_base - 12;
+      text.right_is_chip ? text.right_label + kUsageChipExtraW : text.right_label;
+  const int16_t right_top = text.right_is_chip ? name_base - 13 : name_base - 12;
   const int16_t right_bottom = text.right_is_chip ? name_base + 4 : name_base + 5;
   const int16_t clock_left =
       kUsageRightX - text.countdown - kUsageClockGap - kUsageClockW;
@@ -110,7 +111,7 @@ inline UsageRowGeometry usage_row_geometry(size_t index, const UsageTextWidths& 
       {kUsageLogoX, (int16_t)(top + m.logo_y), (int16_t)(kUsageLogoX + kUsageLogoSize),
        (int16_t)(top + m.logo_y + kUsageLogoSize)},
       {(int16_t)(kUsageNumRight - text.num), (int16_t)(num_base - 33),
-       (int16_t)(kUsagePctX + text.pct), (int16_t)(num_base + 2)},
+       (int16_t)(kUsagePctX + text.pct), (int16_t)(num_base + 1)},
       {(int16_t)(kUsageNumRight - text.num - 6), (int16_t)(top + m.low_box_top),
        (int16_t)(kUsageNumRight + text.pct + 8),
        (int16_t)(top + m.low_box_top + m.low_box_h)},
@@ -141,16 +142,16 @@ struct UsageFooterGeometry {
 
 inline UsageFooterGeometry usage_footer_geometry(const UsageFooterWidths& text) {
   const int16_t status_right = kUsageMarginX + text.status_chip +
-                               2 * kUsageChipPadding + kUsageFooterTextGap +
+                               kUsageChipExtraW + kUsageFooterTextGap +
                                text.status_text;
   const int16_t battery_left = kUsageRightX -
-                               (text.runtime_chip + 2 * kUsageChipPadding) -
+                               (text.runtime_chip + kUsageChipExtraW) -
                                kUsageModeGap - text.battery_text -
                                kUsageBatteryGap - 24;
   return {
-      {kUsageMarginX, (int16_t)(kUsageFooterBaseline - 15), status_right,
+      {kUsageMarginX, (int16_t)(kUsageFooterBaseline - 13), status_right,
        (int16_t)(kUsageFooterBaseline + 4)},
-      {battery_left, (int16_t)(kUsageFooterBaseline - 15), kUsageRightX,
+      {battery_left, (int16_t)(kUsageFooterBaseline - 13), kUsageRightX,
        (int16_t)(kUsageFooterBaseline + 4)},
   };
 }

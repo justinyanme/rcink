@@ -116,6 +116,35 @@ void test_unconfigured_startup_preserves_the_existing_saved_view() {
   TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(1, false, true));
 }
 
+void test_hidden_dashboard_ring_cycles_only_deck_pages_and_forces_deck_startup() {
+  TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(0, true, true, false));
+  TEST_ASSERT_EQUAL_UINT8(1, startup_view_id(0, true, false, false));
+
+  NavigationState state = navigation_after_next_press(View::Dashboard, 0, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(0, state.page_index);
+
+  state = navigation_after_next_press(state.view, state.page_index, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(1, state.page_index);
+
+  state = navigation_after_next_press(state.view, state.page_index, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(0, state.page_index);
+
+  state = navigation_after_previous_press(state.view, state.page_index, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(1, state.page_index);
+
+  state = navigation_after_previous_press(state.view, state.page_index, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(0, state.page_index);
+
+  state = navigation_after_previous_press(View::Dashboard, 0, 2, false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(View::Deck), static_cast<uint8_t>(state.view));
+  TEST_ASSERT_EQUAL_UINT(1, state.page_index);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_key_enters_deck_from_dashboard);
@@ -128,5 +157,6 @@ int main() {
   RUN_TEST(test_usage_defaults_once_then_restores_climate_across_restart_and_wake);
   RUN_TEST(test_two_page_usage_ring_and_boot_sync_in_place);
   RUN_TEST(test_unconfigured_startup_preserves_the_existing_saved_view);
+  RUN_TEST(test_hidden_dashboard_ring_cycles_only_deck_pages_and_forces_deck_startup);
   return UNITY_END();
 }

@@ -37,6 +37,8 @@
 
 namespace rcpaper {
 
+constexpr bool kShowClimateDashboard = (RCRLCD_SHOW_CLIMATE_DASHBOARD != 0);
+
 // Desk climate Dashboard plus the Axiom Deck. RTC + SHTC3 keep Dashboard useful
 // offline; network refreshes resync the RTC and update the secondary Deck.
 DeviceState g_state;
@@ -422,6 +424,11 @@ void enter_view(View view) {
 }
 
 void toggle_view() {
+  if (!kShowClimateDashboard) {
+    Serial.println("[view] climate dashboard hidden");
+    if (g_view != View::Deck) enter_view(View::Deck);
+    return;
+  }
   enter_view(g_view == View::Dashboard ? View::Deck : View::Dashboard);
 }
 
@@ -443,12 +450,12 @@ void apply_navigation(const NavigationState& next) {
 
 void navigate_next() {
   apply_navigation(navigation_after_next_press(
-      g_view, g_state.page_index, g_state.pages.size()));
+      g_view, g_state.page_index, g_state.pages.size(), kShowClimateDashboard));
 }
 
 void navigate_previous() {
   apply_navigation(navigation_after_previous_press(
-      g_view, g_state.page_index, g_state.pages.size()));
+      g_view, g_state.page_index, g_state.pages.size(), kShowClimateDashboard));
 }
 
 #if RCRLCD_USAGE_ENABLED
@@ -788,7 +795,8 @@ void setup() {
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 #endif
   const uint8_t startup_view = startup_view_id(
-      g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved);
+      g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved,
+      kShowClimateDashboard);
   if (g_state.view_id != startup_view || !g_state.view_saved) {
     g_state.view_id = startup_view;
     nvs_save_view(g_state.view_id);

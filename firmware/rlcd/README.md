@@ -147,9 +147,9 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 | **BOOT** tap, usage build | Usage + sync now | sync now |
 
-In the usage build KEY cycles Allowance → Token → climate Dashboard → Allowance.
+In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles directly between Allowance and Token (`Allowance ⇄ Token`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to restore climate Dashboard to the ring).
 BOOT means "sync now": on either Deck page it stays on that page and fetches both
-Allowance and Token immediately; on climate it opens Allowance and syncs. The
+Allowance and Token immediately; if climate Dashboard is enabled and active, BOOT opens Allowance and syncs. The
 visible page's footer reads `SYNCING · fetching now` until the fetch completes
 (a fetch already in flight is joined where possible, not doubled); a successful
 Token sync then replays its 0.9-second sweep in HOST.
@@ -228,11 +228,10 @@ RLCD's Axiom Deck with the private weekly allowance page:
 
 The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
-compile error. Climate Dashboard, existing Deck/button navigation and runtime
-power policy are preserved. Usage is the default only when no NVS view choice exists. Cold restart and
-Timer/KEY deep-sleep wakes restore the saved view, including climate; KEY then
-advances once. An existing saved climate choice is respected when enabling usage. KEY cycles
-Allowance → Token → climate Dashboard → Allowance and BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
+compile error. In the usage build the climate Dashboard is hidden by default
+(`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so cold restarts and wakes stay in the Deck
+and KEY cycles directly `Allowance ⇄ Token` (define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1`
+to include climate Dashboard in startup/navigation again) while BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
 retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
 a failure the retry gate alone schedules the next attempt, so the footer's
 `retry HH:MM` is when it really happens, even soon after a success.

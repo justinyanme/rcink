@@ -27,7 +27,8 @@ constexpr int16_t kTokenChartX = 210;
 constexpr int16_t kTokenChartRight = 388;  // 210 + 29*6 + 4 = 388 exact right alignment
 constexpr int16_t kTokenOdoGap = 6;
 constexpr int16_t kTokenDotGap = 5;
-constexpr int16_t kTokenChipPadding = 3;
+constexpr int16_t kTokenChipPadding = 4;  // visual pad (3 px + 1 px trailing tracking)
+constexpr int16_t kTokenChipExtraW = 7;
 constexpr int16_t kTokenModeGap = 4;
 constexpr int16_t kTokenBatteryGap = 4;
 constexpr int16_t kTokenFooterTextGap = 6;
@@ -84,16 +85,16 @@ struct TokenFooterGeometry {
 
 inline TokenFooterGeometry token_footer_geometry(const TokenFooterWidths& text) {
   const int16_t status_right = kTokenMarginX + text.status_chip +
-                               2 * kTokenChipPadding + kTokenFooterTextGap +
+                               kTokenChipExtraW + kTokenFooterTextGap +
                                text.status_text;
   const int16_t battery_left = kTokenChartRight -
-                               (text.runtime_chip + 2 * kTokenChipPadding) -
+                               (text.runtime_chip + kTokenChipExtraW) -
                                kTokenModeGap - text.battery_text -
                                kTokenBatteryGap - 24;
   return {
-      {kTokenMarginX, (int16_t)(kTokenFooterBaseline - 15), status_right,
+      {kTokenMarginX, (int16_t)(kTokenFooterBaseline - 13), status_right,
        (int16_t)(kTokenFooterBaseline + 4)},
-      {battery_left, (int16_t)(kTokenFooterBaseline - 15), kTokenChartRight,
+      {battery_left, (int16_t)(kTokenFooterBaseline - 13), kTokenChartRight,
        (int16_t)(kTokenFooterBaseline + 4)},
   };
 }
@@ -130,19 +131,19 @@ inline TokenRowGeometry token_row_geometry(size_t index, const TokenTextWidths& 
   const int16_t total_base = top + m.total_base;
   const int16_t today_base = top + m.today_base;
   const int16_t seven_x = kTokenTextX + text.provider + kTokenNameLabelGap;
-  const int16_t total_asc = m.total_pt >= 24 ? 33 : 25;
-  const int16_t total_desc = m.total_pt >= 24 ? 2 : 1;
+  const int16_t total_asc = m.total_pt >= 24 ? 33 : 24;
+  const int16_t total_desc = 1;
   return {
       {kTokenTextX, (int16_t)(hdr_base - 17), (int16_t)(kTokenTextX + text.provider),
        (int16_t)(hdr_base + 1)},
-      {seven_x, (int16_t)(hdr_base - 12), (int16_t)(seven_x + 53),
-       (int16_t)(hdr_base + 5)},
+      {seven_x, (int16_t)(hdr_base - 11), (int16_t)(seven_x + 51),
+       (int16_t)(hdr_base + 4)},
       {kTokenTextX, (int16_t)(total_base - total_asc),
        (int16_t)(kTokenTextX + text.total), (int16_t)(total_base + total_desc)},
       {kTokenChartX, (int16_t)(total_base - m.chart_h),
        kTokenChartRight, (int16_t)(total_base + 1)},
-      {kTokenTextX, (int16_t)(today_base - 12), (int16_t)(kTokenTextX + text.today),
-       (int16_t)(today_base + 5)},
+      {kTokenTextX, (int16_t)(today_base - 11), (int16_t)(kTokenTextX + text.today),
+       (int16_t)(today_base + 4)},
       {(int16_t)(kTokenChartRight - text.odometer), (int16_t)(hdr_base - 12),
        kTokenChartRight, (int16_t)(hdr_base + 1)},
   };

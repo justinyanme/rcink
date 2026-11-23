@@ -18,6 +18,7 @@
 
 #include "render/canvas.h"
 #include "render/page.h"
+#include "render/rlcd_fonts.h"
 #include "render/usage_layout.h"
 #include "render/usage_logos.h"
 #include "render/usage_view.h"
@@ -34,22 +35,28 @@ static_assert(kRoadX1 == 296, "road, pump, reset icon and the widest countdown m
 TFT_eSprite* g = nullptr;  // canvas for the frame being drawn
 
 enum class Align : uint8_t { Left, Right, Center };
+enum class FontRole : uint8_t { Chip, Body, BodyBold, Name, HeroLg };
 
-const GFXfont* font(int pt, bool bold) {
-  if (pt >= 24) return &FreeSansBold24pt7b;
-  if (pt >= 12) return bold ? &FreeSansBold12pt7b : &FreeSans12pt7b;
-  return bold ? &FreeSansBold9pt7b : &FreeSans9pt7b;
+const GFXfont* font_for(FontRole role) {
+  switch (role) {
+    case FontRole::Chip:     return &rlcd_fonts::kBarlowChip15;
+    case FontRole::Body:     return &rlcd_fonts::kBarlowBody18;
+    case FontRole::BodyBold: return &rlcd_fonts::kBarlowBodyBold18;
+    case FontRole::Name:     return &rlcd_fonts::kBarlowName24;
+    case FontRole::HeroLg:   return &rlcd_fonts::kBarlowHero48;
+  }
+  return &rlcd_fonts::kBarlowBody18;
 }
 
-int16_t text_w(const char* s, int pt, bool bold = false) {
-  g->setFreeFont(font(pt, bold));
+int16_t text_w(const char* s, FontRole role) {
+  g->setFreeFont(font_for(role));
   g->setTextSize(1);
   return g->textWidth(s);
 }
 
-void text(const char* s, int16_t x, int16_t baseline, int pt, bool bold = false,
+void text(const char* s, int16_t x, int16_t baseline, FontRole role,
           Align align = Align::Left, uint16_t color = kInk) {
-  g->setFreeFont(font(pt, bold));
+  g->setFreeFont(font_for(role));
   g->setTextSize(1);
   g->setTextWrap(false, false);
   g->setTextDatum(align == Align::Left ? L_BASELINE
@@ -83,10 +90,10 @@ void bitmap(const MonoBitmap& b, int16_t x, int16_t y) {
 
 // Inverted label; returns its width.
 int16_t chip(const char* s, int16_t x, int16_t baseline, Align align) {
-  const int16_t w = text_w(s, 9, true) + 2 * kUsageChipPadding;
+  const int16_t w = text_w(s, FontRole::Chip) + kUsageChipExtraW;
   const int16_t x0 = align == Align::Right ? x - w : align == Align::Center ? x - w / 2 : x;
-  rect(x0, baseline - 15, w, 19);
-  text(s, x0 + kUsageChipPadding, baseline, 9, true, Align::Left, kPaper);
+  rect(x0, baseline - 13, w, 17);
+  text(s, x0 + kUsageChipPadding, baseline, FontRole::Chip, Align::Left, kPaper);
   return w;
 }
 
@@ -174,8 +181,8 @@ void car(int16_t x, int16_t y, bool ghost) {
 
 void zz(int16_t x, int16_t y, const UsageFrame& f) {
   const int16_t bob = f.moving ? (int16_t)lroundf(sinf(f.t_ms / 1000.0f * 2.5f) * 1.5f) : 0;
-  text("z", x, y + bob, 9, true);
-  text("Z", x + 7, y - 6 + bob, 9, true);
+  text("z", x, y + bob, FontRole::BodyBold);
+  text("Z", x + 7, y - 6 + bob, FontRole::BodyBold);
 }
 
 // --- chrome ------------------------------------------------------------------
@@ -195,20 +202,20 @@ const MonoBitmap* pick_logo(const std::string& id) {
 }
 
 // Accounts without a baked mark get a disc with their initial.
-void generic_logo(const std::string& id, int16_t x, int16_t y, int16_t d, int pt) {
+void generic_logo(const std::string& id, int16_t x, int16_t y, int16_t d, FontRole role) {
   g->drawCircle(x + d / 2, y + d / 2, d / 2 - 1, kInk);
   char initial[2] = {id.empty() ? '?' : (char)toupper((unsigned char)id[0]), '\0'};
-  text(initial, x + d / 2, y + d / 2 + (pt >= 12 ? 8 : 5), pt, true, Align::Center);
+  text(initial, x + d / 2, y + d / 2 + (role == FontRole::Name ? 8 : 5), role, Align::Center);
 }
 void logo(const std::string& id, int16_t x, int16_t y) {
   const MonoBitmap* mark = row_logo(id);
   if (mark) bitmap(*mark, x, y);
-  else generic_logo(id, x, y, 28, 12);
+  else generic_logo(id, x, y, 28, FontRole::Name);
 }
 void small_logo(const std::string& id, int16_t x, int16_t y) {
   const MonoBitmap* mark = pick_logo(id);
   if (mark) bitmap(*mark, x, y);
-  else generic_logo(id, x, y, 15, 9);
+  else generic_logo(id, x, y, 15, FontRole::BodyBold);
 }
 
 void headline(const UsageView& v, const UsageFrame& f) {
@@ -223,11 +230,12 @@ void headline(const UsageView& v, const UsageFrame& f) {
     case UsageIcon::Face: face(v.headline_face, x, 7); x += 18; break;
     case UsageIcon::None: break;
   }
-  text(v.headline.c_str(), x, kUsageHeaderBaseline, 9);
-  x += text_w(v.headline.c_str(), 9) + 6;
+  text(v.headline.c_str(), x, kUsageHeaderBaseline, FontRole::Body);
+  x += text_w(v.headline.c_str(), FontRole::Body) + 6;
   if (v.pick >= 0 && v.pick < (int)v.count) {
     small_logo(v.rows[v.pick].id, x, 6);
-    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, kUsageHeaderBaseline, 9, true);
+    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, kUsageHeaderBaseline,
+         FontRole::BodyBold);
   }
   rect(kUsageMarginX, kUsageHeaderRuleY, 376, 1);
 }
@@ -240,17 +248,17 @@ void footer(const UsageView& v, const BatteryReading& batt, RuntimeMode mode) {
   char pct[8];
   if (batt.ok) std::snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
   else std::snprintf(pct, sizeof(pct), "--%%");
-  text(pct, x, base, 9, false, Align::Right);
-  x -= text_w(pct, 9) + kUsageBatteryGap;
+  text(pct, x, base, FontRole::Body, Align::Right);
+  x -= text_w(pct, FontRole::Body) + kUsageBatteryGap;
   const int16_t bx = x - 24, by = kUsageBatteryY;
   outline(bx, by, 22, 12);
   rect(bx + 22, by + 4, 2, 4);
   if (batt.ok) rect(bx + 2, by + 2, (int16_t)((18 * std::min<unsigned>(batt.pct, 100) + 50) / 100), 8);
   if (!v.footer_chip.empty()) {
     const int16_t w = chip(v.footer_chip.c_str(), kUsageMarginX, base, Align::Left);
-    text(v.footer_text.c_str(), kUsageMarginX + w + kUsageFooterTextGap, base, 9);
+    text(v.footer_text.c_str(), kUsageMarginX + w + kUsageFooterTextGap, base, FontRole::Body);
   } else {
-    text(v.footer_text.c_str(), kUsageMarginX, base, 9);
+    text(v.footer_text.c_str(), kUsageMarginX, base, FontRole::Body);
   }
 }
 
@@ -258,17 +266,17 @@ void footer(const UsageView& v, const BatteryReading& batt, RuntimeMode mode) {
 void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_top,
             int16_t box_h, float sweep) {
   if (r.state == UsageRowState::Unavailable) {
-    text("--", right + 20, baseline - 4, 24, true, Align::Right);
+    text("--", right + 20, baseline - 4, FontRole::HeroLg, Align::Right);
     return;
   }
   char s[8];  // the sweep burns down from a full tank while the car drives in
   std::snprintf(s, sizeof(s), "%d", (int)lroundf(100.0f - (100 - r.left) * sweep));
-  const int16_t nw = text_w(s, 24, true), pw = text_w("%", 12, true);
+  const int16_t nw = text_w(s, FontRole::HeroLg), pw = text_w("%", FontRole::Name);
   const bool low = r.left <= 10;
   const uint16_t color = low ? kPaper : kInk;
   if (low) rect(right - nw - 6, box_top, nw + pw + 14, box_h);
-  text(s, right, baseline, 24, true, Align::Right, color);
-  text("%", right + 2, baseline, 12, true, Align::Left, color);
+  text(s, right, baseline, FontRole::HeroLg, Align::Right, color);
+  text("%", right + 2, baseline, FontRole::Name, Align::Left, color);
 }
 
 void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
@@ -322,20 +330,24 @@ void row(size_t i, const UsageRowView& r, size_t count, const UsageFrame& f) {
   const int16_t name_base = top + m.name_base;
   const int16_t road_y = top + m.road_y;
   const std::string name = usage_provider_name(r.id);
-  text(name.c_str(), kRoadX0, name_base, 12, true);
+  text(name.c_str(), kRoadX0, name_base, FontRole::Name);
   if (r.id == "gemini") {  // Antigravity's Gemini weekly pool
-    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), 12, true) + 6, name_base - 12);
+    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), FontRole::Name) + 6,
+           name_base - 12);
   }
   if (!r.chip.empty()) {
     chip(r.chip.c_str(), kUsageRightX, name_base, Align::Right);
   } else if (!r.verdict.empty() && r.state != UsageRowState::Stale) {
-    text(r.verdict.c_str(), kUsageRightX, name_base, 9, r.runs_dry, Align::Right);
+    text(r.verdict.c_str(), kUsageRightX, name_base,
+         r.runs_dry ? FontRole::BodyBold : FontRole::Body, Align::Right);
   }
   road(r, road_y, f);
-  text(r.countdown.c_str(), kUsageRightX, road_y + 7, 9, false, Align::Right);
+  text(r.countdown.c_str(), kUsageRightX, road_y + 7, FontRole::Body, Align::Right);
   // Clock before the countdown: time until the allowance refills.
   if (r.countdown != "--") {
-    pix(kClockIcon, kUsageRightX - text_w(r.countdown.c_str(), 9) - (kUsageClockW + kUsageClockGap),
+    pix(kClockIcon,
+        kUsageRightX - text_w(r.countdown.c_str(), FontRole::Body) -
+            (kUsageClockW + kUsageClockGap),
         road_y - 3);
   }
 }

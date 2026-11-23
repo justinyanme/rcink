@@ -13,13 +13,21 @@ struct NavigationState {
 };
 
 inline uint8_t startup_view_id(uint8_t saved_view_id, bool usage_enabled,
-                               bool view_saved) {
+                               bool view_saved, bool include_dashboard = true) {
+  if (!include_dashboard) return 1;
   return usage_enabled && !view_saved ? 1 : saved_view_id;
 }
 
 inline NavigationState navigation_after_next_press(
-    View view, size_t page_index, size_t page_count) {
+    View view, size_t page_index, size_t page_count,
+    bool include_dashboard = true) {
   if (page_count == 0) return {View::Dashboard, 0};
+  if (!include_dashboard) {
+    if (view == View::Dashboard || page_index >= page_count) {
+      return {View::Deck, 0};
+    }
+    return {View::Deck, (page_index + 1) % page_count};
+  }
   if (view == View::Dashboard) return {View::Deck, 0};
   if (page_index >= page_count) return {View::Dashboard, 0};
   if (page_index + 1 < page_count) return {View::Deck, page_index + 1};
@@ -37,8 +45,15 @@ inline NavigationState navigation_after_sync_press(
 }
 
 inline NavigationState navigation_after_previous_press(
-    View view, size_t page_index, size_t page_count) {
+    View view, size_t page_index, size_t page_count,
+    bool include_dashboard = true) {
   if (page_count == 0) return {View::Dashboard, 0};
+  if (!include_dashboard) {
+    if (view == View::Dashboard || page_index >= page_count || page_index == 0) {
+      return {View::Deck, page_count - 1};
+    }
+    return {View::Deck, page_index - 1};
+  }
   if (view == View::Dashboard) return {View::Deck, page_count - 1};
   if (page_index == 0 || page_index >= page_count) {
     return {View::Dashboard, 0};

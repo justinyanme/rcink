@@ -8,12 +8,12 @@
 using namespace rcpaper;
 
 void test_worst_case_usage_rows_have_no_collisions_across_all_counts() {
-  // Exact FreeSans GFX advances:
-  // 100 Bold24 = 78, % Bold12 = 21; Gemini Bold12 (82) + 6 + badge (12) = 100;
-  // ~98% to spare Reg9 = 115, dry 47h early Bold9 = 111, 3h old Bold9 = 49;
-  // 6d 23h Reg9 = 55.
-  const UsageTextWidths worst_verdict = {78, 21, 100, 115, false, 55};
-  const UsageTextWidths worst_chip = {52, 21, 100, 49, true, 55};
+  // Exact baked Barlow widths from tools/bake_rlcd_fonts.py --metrics:
+  // 100 Hero48 = 75, % Name24 = 18; Gemini Name24 (72) + 6 + badge (12) = 90;
+  // ~98% to spare Body18 = 112, dry 47h early BodyBold18 = 107, 3h old Chip15 = 47;
+  // 6d 23h Body18 = 55.
+  const UsageTextWidths worst_verdict = {75, 18, 90, 112, false, 55};
+  const UsageTextWidths worst_chip = {50, 18, 90, 47, true, 55};
 
   for (size_t count : {(size_t)1, (size_t)2, (size_t)3, (size_t)4}) {
     const UsageRowMetrics m = usage_row_metrics(count);
@@ -46,11 +46,11 @@ void test_worst_case_usage_rows_have_no_collisions_across_all_counts() {
 }
 
 void test_usage_header_and_footer_clear_chrome_rules() {
-  // Header baseline is 19 with max Reg/Bold9 descender +5 -> bottom 24,
+  // Header baseline is 19 with max BodyBold18 descender +5 -> bottom 24,
   // clearing the rule at y=28 by 4 px.
   TEST_ASSERT_GREATER_OR_EQUAL(4, kUsageHeaderRuleY - (kUsageHeaderBaseline + 5));
 
-  const UsageFooterWidths worst = {122, 86, 68, 46};  // SYNC FAILED + retry 23:59 + ACTIVE + 100%
+  const UsageFooterWidths worst = {101, 89, 55, 43};  // SYNC FAILED + retry 23:59 + ACTIVE + 100%
   const UsageFooterGeometry footer = usage_footer_geometry(worst);
   TEST_ASSERT_GREATER_OR_EQUAL(4, footer.battery.left - footer.status.right);
   TEST_ASSERT_GREATER_OR_EQUAL(1, footer.status.top - kUsageFooterRuleY);

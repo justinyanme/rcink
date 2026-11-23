@@ -13,6 +13,7 @@
 
 #include "render/canvas.h"
 #include "render/page.h"
+#include "render/rlcd_fonts.h"
 #include "render/token_layout.h"
 #include "render/usage_logos.h"
 
@@ -27,23 +28,29 @@ constexpr int16_t kBarWidth = 4;
 
 TFT_eSprite* g = nullptr;
 enum class Align : uint8_t { Left, Right };
+enum class FontRole : uint8_t { Chip, Body, BodyBold, Name, HeroMd, HeroLg };
 
-const GFXfont* font(int pt, bool bold) {
-  if (pt >= 24) return &FreeSansBold24pt7b;
-  if (pt >= 18) return bold ? &FreeSansBold18pt7b : &FreeSans18pt7b;
-  if (pt >= 12) return bold ? &FreeSansBold12pt7b : &FreeSans12pt7b;
-  return bold ? &FreeSansBold9pt7b : &FreeSans9pt7b;
+const GFXfont* font_for(FontRole role) {
+  switch (role) {
+    case FontRole::Chip:     return &rlcd_fonts::kBarlowChip15;
+    case FontRole::Body:     return &rlcd_fonts::kBarlowBody18;
+    case FontRole::BodyBold: return &rlcd_fonts::kBarlowBodyBold18;
+    case FontRole::Name:     return &rlcd_fonts::kBarlowName24;
+    case FontRole::HeroMd:   return &rlcd_fonts::kBarlowHero36;
+    case FontRole::HeroLg:   return &rlcd_fonts::kBarlowHero48;
+  }
+  return &rlcd_fonts::kBarlowBody18;
 }
 
-int16_t text_w(const char* value, int pt, bool bold = false) {
-  g->setFreeFont(font(pt, bold));
+int16_t text_w(const char* value, FontRole role) {
+  g->setFreeFont(font_for(role));
   g->setTextSize(1);
   return g->textWidth(value);
 }
 
-void text(const char* value, int16_t x, int16_t baseline, int pt,
-          bool bold = false, Align align = Align::Left, uint16_t color = kInk) {
-  g->setFreeFont(font(pt, bold));
+void text(const char* value, int16_t x, int16_t baseline, FontRole role,
+          Align align = Align::Left, uint16_t color = kInk) {
+  g->setFreeFont(font_for(role));
   g->setTextSize(1);
   g->setTextWrap(false, false);
   g->setTextDatum(align == Align::Left ? L_BASELINE : R_BASELINE);
@@ -51,12 +58,12 @@ void text(const char* value, int16_t x, int16_t baseline, int pt,
   g->drawString(value, x, baseline);
 }
 
-// FreeSans GFX has no U+00B7 glyph. Preserve the wording and draw a symmetric dot.
-void text_with_dots(const std::string& value, int16_t x, int16_t baseline, int pt) {
+// Preserve the wording and draw a symmetric dot separator.
+void text_with_dots(const std::string& value, int16_t x, int16_t baseline) {
   const std::string separator = "\xC2\xB7";
   const size_t at = value.find(separator);
   if (at == std::string::npos) {
-    text(value.c_str(), x, baseline, pt);
+    text(value.c_str(), x, baseline, FontRole::Body);
     return;
   }
   std::string left = value.substr(0, at);
@@ -65,10 +72,10 @@ void text_with_dots(const std::string& value, int16_t x, int16_t baseline, int p
   size_t r0 = 0;
   while (r0 < right.size() && right[r0] == ' ') r0++;
   right = right.substr(r0);
-  text(left.c_str(), x, baseline, pt);
-  const int16_t dot_x = x + text_w(left.c_str(), pt) + kTokenDotGap;
+  text(left.c_str(), x, baseline, FontRole::Body);
+  const int16_t dot_x = x + text_w(left.c_str(), FontRole::Body) + kTokenDotGap;
   g->fillRect(dot_x, baseline - 5, 2, 2, kInk);
-  text(right.c_str(), dot_x + 2 + kTokenDotGap, baseline, pt);
+  text(right.c_str(), dot_x + 2 + kTokenDotGap, baseline, FontRole::Body);
 }
 
 void rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color = kInk) {
@@ -85,9 +92,9 @@ void pixels(const char* const (&rows)[N], int16_t x, int16_t y) {
 }
 
 int16_t chip(const char* value, int16_t x, int16_t baseline) {
-  const int16_t width = text_w(value, 9, true) + 2 * kTokenChipPadding;
-  rect(x, baseline - 15, width, 19);
-  text(value, x + kTokenChipPadding, baseline, 9, true, Align::Left, kPaper);
+  const int16_t width = text_w(value, FontRole::Chip) + kTokenChipExtraW;
+  rect(x, baseline - 13, width, 17);
+  text(value, x + kTokenChipPadding, baseline, FontRole::Chip, Align::Left, kPaper);
   return width;
 }
 
@@ -105,8 +112,9 @@ const MonoBitmap* token_logo(const std::string& id) {
 void headline(const TokenView& view) {
   if (view.headline_pick >= 0) pixels(kSpark, kTokenMarginX, 9);
   text(view.headline.c_str(), view.headline_pick >= 0 ? 26 : kTokenMarginX,
-       kTokenHeaderBaseline, 9, view.headline_pick >= 0);
-  text("since Sep '25", kTokenChartRight, kTokenHeaderBaseline, 9, false, Align::Right);
+       kTokenHeaderBaseline,
+       view.headline_pick >= 0 ? FontRole::BodyBold : FontRole::Body);
+  text("since Sep '25", kTokenChartRight, kTokenHeaderBaseline, FontRole::Body, Align::Right);
   rect(kTokenMarginX, kTokenHeaderRuleY, 376, 1);
 }
 
@@ -147,18 +155,19 @@ void row(size_t i, size_t count, const TokenRowView& row, const TokenFrame& fram
   const int16_t total_base = top + m.total_base;
   const int16_t today_base = top + m.today_base;
   const std::string name = token_provider_name(row.id);
-  text(name.c_str(), kTokenTextX, hdr_base, 12, true);
-  int16_t after_name = kTokenTextX + text_w(name.c_str(), 12, true);
+  text(name.c_str(), kTokenTextX, hdr_base, FontRole::Name);
+  int16_t after_name = kTokenTextX + text_w(name.c_str(), FontRole::Name);
   if (row.id == "gemini") {
     g->drawBitmap(after_name + 6, hdr_base - 12,
                   usage_logos::kAntigravity12.bits, usage_logos::kAntigravity12.w,
                   usage_logos::kAntigravity12.h, kInk);
     after_name += 6 + usage_logos::kAntigravity12.w;
   }
-  text("7 days", after_name + kTokenNameLabelGap, hdr_base, 9);
-  text(row.seven_day.c_str(), kTokenTextX, total_base, m.total_pt, true);
+  text("7 days", after_name + kTokenNameLabelGap, hdr_base, FontRole::Body);
+  text(row.seven_day.c_str(), kTokenTextX, total_base,
+       m.total_pt >= 24 ? FontRole::HeroLg : FontRole::HeroMd);
   chart(row, total_base, m.chart_h, frame.sweep);
-  text_with_dots(row.today, kTokenTextX, today_base, 9);
+  text_with_dots(row.today, kTokenTextX, today_base);
   std::string odo = row.lifetime;
   if (frame.sweep < 1.0f) {
     const long double rolled = (long double)row.lifetime_value * frame.sweep;
@@ -166,26 +175,26 @@ void row(size_t i, size_t count, const TokenRowView& row, const TokenFrame& fram
         ? std::numeric_limits<uint64_t>::max() : (uint64_t)rolled;
     odo = format_tokens(value);
   }
-  const int16_t value_w = text_w(odo.c_str(), 9, true);
+  const int16_t value_w = text_w(odo.c_str(), FontRole::BodyBold);
   text("ODO", kTokenChartRight - value_w - kTokenOdoGap, hdr_base,
-       9, false, Align::Right);
+       FontRole::Body, Align::Right);
   text(odo.c_str(), kTokenChartRight, hdr_base,
-       9, true, Align::Right);
+       FontRole::BodyBold, Align::Right);
 }
 
 void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mode) {
   rect(kTokenMarginX, kTokenFooterRuleY, 376, 1);
   constexpr int16_t baseline = kTokenFooterBaseline;
   int16_t right = kTokenChartRight;
-  const int16_t mode_w = text_w(runtime_mode_name(mode), 9, true) +
-                         2 * kTokenChipPadding;
+  const int16_t mode_w = text_w(runtime_mode_name(mode), FontRole::Chip) +
+                         kTokenChipExtraW;
   chip(runtime_mode_name(mode), right - mode_w, baseline);
   right -= mode_w + kTokenModeGap;
   char percent[8];
   std::snprintf(percent, sizeof(percent), battery.ok ? "%u%%" : "--%%",
                 (unsigned)battery.pct);
-  text(percent, right, baseline, 9, false, Align::Right);
-  right -= text_w(percent, 9) + kTokenBatteryGap;
+  text(percent, right, baseline, FontRole::Body, Align::Right);
+  right -= text_w(percent, FontRole::Body) + kTokenBatteryGap;
   const int16_t x = right - 24;
   g->drawRect(x, kTokenBatteryY, 22, 12, kInk);
   rect(x + 22, kTokenBatteryY + 4, 2, 4);
@@ -195,9 +204,10 @@ void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mo
   }
   if (!view.footer_chip.empty()) {
     const int16_t width = chip(view.footer_chip.c_str(), kTokenMarginX, baseline);
-    text(view.footer_text.c_str(), kTokenMarginX + width + kTokenFooterTextGap, baseline, 9);
+    text(view.footer_text.c_str(), kTokenMarginX + width + kTokenFooterTextGap, baseline,
+         FontRole::Body);
   } else {
-    text(view.footer_text.c_str(), kTokenMarginX, baseline, 9);
+    text(view.footer_text.c_str(), kTokenMarginX, baseline, FontRole::Body);
   }
 }
 }  // namespace
