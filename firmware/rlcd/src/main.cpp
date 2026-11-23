@@ -104,6 +104,7 @@ static uint32_t g_token_last_frame_ms = 0;
 static std::string g_token_view_json;
 static TokenView g_token_view;
 static bool g_monument_sweeping = false;
+static bool g_monument_last_colon = true;
 static uint32_t g_monument_sweep_start_ms = 0;
 static uint32_t g_monument_last_frame_ms = 0;
 static std::string g_monument_view_json;
@@ -259,19 +260,24 @@ static bool monument_animating() {
 static void start_monument_sweep() {
   if (!monument_animating()) return;
   g_monument_sweeping = true;
+  g_monument_last_colon = true;
   g_monument_sweep_start_ms = millis();
 }
 
 static MonumentFrame monument_frame() {
   MonumentFrame frame;
-  if (!monument_animating() || !g_monument_sweeping) return frame;
-  const uint32_t elapsed = millis() - g_monument_sweep_start_ms;
-  if (elapsed >= kUsageSweepMs) {
-    g_monument_sweeping = false;
-  } else {
-    const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
-    frame.sweep = 1.0f - rest * rest * rest;
+  if (!monument_animating()) return frame;
+  if (g_monument_sweeping) {
+    const uint32_t elapsed = millis() - g_monument_sweep_start_ms;
+    if (elapsed >= kUsageSweepMs) {
+      g_monument_sweeping = false;
+    } else {
+      const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
+      frame.sweep = 1.0f - rest * rest * rest;
+    }
+    return frame;
   }
+  frame.show_colon = ((millis() / 500) % 2) == 0;
   return frame;
 }
 
@@ -320,8 +326,10 @@ static bool draw_monument_page(const PageRecord& rec) {
     g_monument_view = view;
     g_monument_view_json = rec.layout_json;
   }
-  render_monument(g_monument_view, g_env, g_battery, g_runtime.mode,
-                  monument_frame(), g_carousel_pinned);
+  const MonumentFrame frame = monument_frame();
+  g_monument_last_colon = frame.show_colon;
+  render_monument(g_monument_view, g_env, g_battery, g_runtime.mode, frame,
+                  g_carousel_pinned);
   return true;
 }
 #endif
@@ -685,15 +693,22 @@ static void poll_token_animation() {
 
 static void poll_monument_animation() {
 #if RCRLCD_USAGE_ENABLED
-  if (g_view != View::Deck || !g_deck_frame_valid || !g_monument_sweeping ||
-      !monument_animating() || g_state.page_index >= g_state.pages.size() ||
+  if (g_view != View::Deck || !g_deck_frame_valid || !monument_animating() ||
+      g_state.page_index >= g_state.pages.size() ||
       g_state.pages[g_state.page_index].id != kMonumentPageId) {
     return;
   }
   const uint32_t now = millis();
-  if (now - g_monument_last_frame_ms < kUsageFrameMs) return;
-  g_monument_last_frame_ms = now;
-  draw_monument_page(g_state.pages[g_state.page_index]);
+  if (g_monument_sweeping) {
+    if (now - g_monument_last_frame_ms < kUsageFrameMs) return;
+    g_monument_last_frame_ms = now;
+    draw_monument_page(g_state.pages[g_state.page_index]);
+    return;
+  }
+  if (monument_frame().show_colon != g_monument_last_colon) {
+    g_monument_last_frame_ms = now;
+    draw_monument_page(g_state.pages[g_state.page_index]);
+  }
 #endif
 }
 

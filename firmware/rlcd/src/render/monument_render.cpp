@@ -71,8 +71,36 @@ void draw_masthead(const MonumentView& view, const Shtc3Reading& env) {
 void draw_hero(const MonumentView& view, const MonumentFrame& frame) {
   rlcd_chrome::text(g, view.clock_caption.c_str(), kMonumentMarginX,
                     kMonumentHeroCaptionBaseline, FontRole::Body);
-  rlcd_chrome::text(g, view.clock_hhmm.c_str(), kMonumentMarginX,
-                    kMonumentHeroBaseline, FontRole::HeroLg);
+  const size_t colon_pos = view.clock_hhmm.find(':');
+  if (colon_pos != std::string::npos) {
+    // Barlow's default ':' sits on the lowercase baseline (11 px lower than the
+    // top of 34 px digits). Position digits by exact xAdvance and raise ':' by
+    // 6 px to match OpenType case-sensitive clock centering cleanly.
+    const GFXfont* font = rlcd_chrome::font_for(FontRole::HeroLg);
+    const std::string hh = view.clock_hhmm.substr(0, colon_pos);
+    const std::string mm = view.clock_hhmm.substr(colon_pos + 1);
+    int16_t colon_x = kMonumentMarginX;
+    for (unsigned char ch : hh) {
+      if (ch >= font->first && ch <= font->last) {
+        colon_x += font->glyph[ch - font->first].xAdvance;
+      }
+    }
+    int16_t mm_x = colon_x;
+    if (':' >= font->first && ':' <= font->last) {
+      mm_x += font->glyph[':' - font->first].xAdvance;
+    }
+    rlcd_chrome::text(g, hh.c_str(), kMonumentMarginX, kMonumentHeroBaseline,
+                      FontRole::HeroLg);
+    rlcd_chrome::text(g, mm.c_str(), mm_x, kMonumentHeroBaseline,
+                      FontRole::HeroLg);
+    if (frame.show_colon || view.clock_hhmm == "--:--") {
+      rlcd_chrome::text(g, ":", colon_x, kMonumentHeroBaseline - 6,
+                        FontRole::HeroLg);
+    }
+  } else {
+    rlcd_chrome::text(g, view.clock_hhmm.c_str(), kMonumentMarginX,
+                      kMonumentHeroBaseline, FontRole::HeroLg);
+  }
 
   for (int16_t y = 35; y < 90; y += 4) {
     g->drawPixel(kMonumentHeroSepX, y, kInk);

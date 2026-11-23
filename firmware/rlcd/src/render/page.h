@@ -65,10 +65,11 @@ void render_token(const TokenView& view, const BatteryReading& batt,
                   RuntimeMode runtime_mode, const TokenFrame& frame,
                   bool carousel_pinned = false);
 
-// Monument page animates only its 0.9 s entry/sync sweep on HOST; ECO/ACTIVE
-// remain crisp static frames.
+// Monument page animates its 0.9 s entry/sync sweep and 1 Hz clock colon on
+// HOST; ECO/ACTIVE remain crisp static frames with a solid colon.
 struct MonumentFrame {
   float sweep = 1.0f;
+  bool show_colon = true;
 };
 struct MonumentView;
 void render_monument(const MonumentView& view, const Shtc3Reading& env,
