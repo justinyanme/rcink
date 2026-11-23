@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include "proto/envelope.h"
+#include "render/link_status.h"
 #include "store/nvs.h"
 
 namespace rcpaper {
@@ -40,6 +41,9 @@ struct UsageSync {
   uint64_t last_ok_s;   // completion time of the last successful GET, 0 if none
   uint64_t retry_at_s;  // next scheduled attempt after a failure, 0 if unknown
   bool syncing;         // a sync the user asked for (BOOT) is in flight
+  LinkFailure link_failure;
+  uint32_t retry_cooldown_s;  // static cooldown for no-clock retry hint
+  const char* wifi_ssid;      // configured SSID shown on WifiFailed
 };
 
 constexpr const char* kUsagePageId = "usage-limits";
@@ -47,7 +51,8 @@ constexpr const char* kUsagePageId = "usage-limits";
 // Validate the complete response before replacing the caller's cache. The
 // providers array is the source's account list: 0..4 rows, unique ids, any
 // order; ids absent from later payloads are dropped at merge time.
-bool decode_usage(const std::string& json, UsageSnapshot& out);
+bool decode_usage(const std::string& json, UsageSnapshot& out,
+                  std::string* reason = nullptr);
 std::string encode_usage(const UsageSnapshot& snapshot);
 bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache);
 // The usage page is hand-drawn, not DSL: its layout_json carries the encoded
@@ -59,12 +64,12 @@ bool update_usage_page(DeviceState& device, const UsageSnapshot& snapshot,
 uint32_t usage_page_fingerprint(const PageRecord& page);
 
 // Source samples expire ten minutes after they are taken, while the source,
-// its uploader and this device each run on their own five-minute schedule, so
-// a plain five-minute poll often shows expired numbers. With a USB host, look
-// again as soon as a sample that was fresh at the last fetch expires; if the
-// source is late, keep looking every minute until it has been quiet for half an
-// hour after its sample. Returns 0 when nothing calls for an early fetch.
-constexpr uint64_t kUsageExpiryGraceS = 10;
+// its uploader and this device each run independent schedules. With a USB host,
+// pre-fetch 60 s before the earliest fresh sample expires (clamped to at least
+// kUsageChaseRetryS after last_fetch_s so a late source cannot spin); if a
+// sample is already past expiry, keep looking every minute until half an hour
+// after its sample. Returns 0 when nothing calls for an early fetch.
+constexpr uint64_t kUsagePreExpiryLeadS = 60;
 constexpr uint64_t kUsageChaseRetryS = 60;
 constexpr uint64_t kUsageChaseWindowS = 30 * 60;
 uint64_t usage_refetch_at_s(const UsageSnapshot& snapshot, uint64_t last_fetch_s);

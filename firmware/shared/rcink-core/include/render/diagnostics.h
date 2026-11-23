@@ -17,6 +17,8 @@ struct DiagnosticsSnapshot {
   uint8_t  unchanged_fetches = 0;
   uint32_t wake_count = 0;
   const char* last_result = "";
+  const char* allowance_diag = "";
+  const char* token_diag = "";
 };
 
 LayoutNode build_diagnostics_page(const DiagnosticsSnapshot& snap);

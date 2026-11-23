@@ -1,11 +1,11 @@
 // Hand-drawn weekly-allowance "road" view for the 400x300 1 bpp RLCD.
 //
-// Layout (y grows down):  0-24 headline + rule, up to four 62 px provider
-// rows vertically centered between y=26 and the footer rule at 275, footer
-// baseline 294. Each row: 28 px logo, remaining percent right-aligned at
-// x=128, name/verdict line, a 150 px fuel road from x=162 to the pump (car at
-// the used share, pace tick underneath), and the reset countdown at the right.
-// Rows mirror the payload: its ids, its order, its count.
+// Layout (y grows down): 0-28 headline + rule, up to four adaptive provider
+// rows (60/78/92 px pitch) centered in 29..272, footer baseline 291 below a
+// rule at 272. Each row: 28 px logo, remaining percent right-aligned at x=126,
+// name/verdict line, a 132 px fuel road from x=164 to the pump (car clamped to
+// the road, pace tick underneath), and the reset countdown flush right at x=388.
+// Rows mirror the derived UsageView: its ids, its order, its count.
 #ifdef ARDUINO
 
 #include <Arduino.h>
@@ -18,6 +18,7 @@
 
 #include "render/canvas.h"
 #include "render/page.h"
+#include "render/usage_layout.h"
 #include "render/usage_logos.h"
 #include "render/usage_view.h"
 
@@ -26,9 +27,9 @@ namespace {
 
 constexpr uint16_t kInk = 0x0000;
 constexpr uint16_t kPaper = 0xFFFF;
-constexpr int16_t kRoadX0 = 162;
-constexpr int16_t kRoadX1 = kRoadX0 + kUsageRoadPx;
-static_assert(kRoadX1 == 312, "road, pump, reset icon and the widest countdown must fit in 388 px");
+constexpr int16_t kRoadX0 = kUsageRoadX0;
+constexpr int16_t kRoadX1 = kUsageRoadX1;
+static_assert(kRoadX1 == 296, "road, pump, reset icon and the widest countdown must fit in 388 px");
 
 TFT_eSprite* g = nullptr;  // canvas for the frame being drawn
 
@@ -82,10 +83,10 @@ void bitmap(const MonoBitmap& b, int16_t x, int16_t y) {
 
 // Inverted label; returns its width.
 int16_t chip(const char* s, int16_t x, int16_t baseline, Align align) {
-  const int16_t w = text_w(s, 9, true) + 10;
+  const int16_t w = text_w(s, 9, true) + 2 * kUsageChipPadding;
   const int16_t x0 = align == Align::Right ? x - w : align == Align::Center ? x - w / 2 : x;
   rect(x0, baseline - 15, w, 19);
-  text(s, x0 + 5, baseline, 9, true, Align::Left, kPaper);
+  text(s, x0 + kUsageChipPadding, baseline, 9, true, Align::Left, kPaper);
   return w;
 }
 
@@ -211,58 +212,53 @@ void small_logo(const std::string& id, int16_t x, int16_t y) {
 }
 
 void headline(const UsageView& v, const UsageFrame& f) {
-  int16_t x = 12;
+  int16_t x = kUsageMarginX;
   switch (v.headline_icon) {
     case UsageIcon::Spark:
-      if (f.moving && (f.tick / 4) % 2) pix(kSparkSmall, x, 6);
-      else pix(kSpark, x, 6);
+      if (f.moving && (f.tick / 4) % 2) pix(kSparkSmall, x, 9);
+      else pix(kSpark, x, 9);
       x += 14;
       break;
-    case UsageIcon::Clock: pix(kClockIcon, x, 6); x += 14; break;
-    case UsageIcon::Face: face(v.headline_face, x, 5); x += 18; break;
+    case UsageIcon::Clock: pix(kClockIcon, x, 9); x += 14; break;
+    case UsageIcon::Face: face(v.headline_face, x, 7); x += 18; break;
     case UsageIcon::None: break;
   }
-  text(v.headline.c_str(), x, 18, 9);
-  x += text_w(v.headline.c_str(), 9) + 5;
+  text(v.headline.c_str(), x, kUsageHeaderBaseline, 9);
+  x += text_w(v.headline.c_str(), 9) + 6;
   if (v.pick >= 0 && v.pick < (int)v.count) {
-    small_logo(v.rows[v.pick].id, x, 4);
-    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, 18, 9, true);
+    small_logo(v.rows[v.pick].id, x, 6);
+    text(usage_provider_name(v.rows[v.pick].id).c_str(), x + 19, kUsageHeaderBaseline, 9, true);
   }
-  rect(12, 24, 376, 1);
+  rect(kUsageMarginX, kUsageHeaderRuleY, 376, 1);
 }
 
 void footer(const UsageView& v, const BatteryReading& batt, RuntimeMode mode) {
-  rect(12, 275, 376, 1);
-  constexpr int16_t base = 294;
-  int16_t x = 388;
-  x -= chip(runtime_mode_name(mode), x, base, Align::Right) + 8;
+  rect(kUsageMarginX, kUsageFooterRuleY, 376, 1);
+  constexpr int16_t base = kUsageFooterBaseline;
+  int16_t x = kUsageRightX;
+  x -= chip(runtime_mode_name(mode), x, base, Align::Right) + kUsageModeGap;
   char pct[8];
   if (batt.ok) std::snprintf(pct, sizeof(pct), "%u%%", (unsigned)batt.pct);
   else std::snprintf(pct, sizeof(pct), "--%%");
   text(pct, x, base, 9, false, Align::Right);
-  x -= text_w(pct, 9) + 6;
-  const int16_t bx = x - 24, by = 283;
+  x -= text_w(pct, 9) + kUsageBatteryGap;
+  const int16_t bx = x - 24, by = kUsageBatteryY;
   outline(bx, by, 22, 12);
   rect(bx + 22, by + 4, 2, 4);
   if (batt.ok) rect(bx + 2, by + 2, (int16_t)((18 * std::min<unsigned>(batt.pct, 100) + 50) / 100), 8);
   if (!v.footer_chip.empty()) {
-    const int16_t w = chip(v.footer_chip.c_str(), 12, base, Align::Left);
-    text(v.footer_text.c_str(), 12 + w + 6, base, 9);
+    const int16_t w = chip(v.footer_chip.c_str(), kUsageMarginX, base, Align::Left);
+    text(v.footer_text.c_str(), kUsageMarginX + w + kUsageFooterTextGap, base, 9);
   } else {
-    text(v.footer_text.c_str(), 12, base, 9);
+    text(v.footer_text.c_str(), kUsageMarginX, base, 9);
   }
 }
 
 // --- rows --------------------------------------------------------------------
-// Rows keep their 62 px pitch; with fewer than four the block centers itself
-// between the headline rule and the footer rule.
-int16_t row_top(size_t i, size_t count) {
-  return 26 + (int16_t)((275 - 26 - 62 * (int)count) / 2) + (int16_t)i * 62;
-}
-
-void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_top, float sweep) {
+void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_top,
+            int16_t box_h, float sweep) {
   if (r.state == UsageRowState::Unavailable) {
-    text("--", right + 20, baseline, 24, true, Align::Right);
+    text("--", right + 20, baseline - 4, 24, true, Align::Right);
     return;
   }
   char s[8];  // the sweep burns down from a full tank while the car drives in
@@ -270,21 +266,22 @@ void number(const UsageRowView& r, int16_t right, int16_t baseline, int16_t box_
   const int16_t nw = text_w(s, 24, true), pw = text_w("%", 12, true);
   const bool low = r.left <= 10;
   const uint16_t color = low ? kPaper : kInk;
-  if (low) rect(right - nw - 6, box_top, nw + pw + 14, 45);
+  if (low) rect(right - nw - 6, box_top, nw + pw + 14, box_h);
   text(s, right, baseline, 24, true, Align::Right, color);
   text("%", right + 2, baseline, 12, true, Align::Left, color);
 }
 
 void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
   const int16_t x0 = kRoadX0, x1 = kRoadX1;
-  pix(kPump, x1 + 4, y - 6);  // base level with the road's bottom edge
+  pix(kPump, kUsagePumpX, y - 6);  // base level with the road's bottom edge
   if (r.state == UsageRowState::Unavailable || r.car_px < 0) {
     for (int16_t x = x0; x < x1; x += 6) rect(x, y + 3, 2, 1);
     return;
   }
   const bool stale = r.state == UsageRowState::Stale;
   const bool moving = f.moving && !stale && r.mood != UsageMood::Nap;
-  const int16_t car_at = x0 + (int16_t)lroundf(r.car_px * f.sweep);
+  const int16_t car_at = x0 + (int16_t)lroundf(
+      ((float)r.car_px * kUsageDrawRoadPx / kUsageRoadPx) * f.sweep);
   for (int16_t x = x0; x < car_at; x += 4) rect(x, y + 3, 2, 1);  // allowance already burned
   if (x1 > car_at) {  // what is left
     if (stale) {
@@ -299,14 +296,15 @@ void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
     }
   }
   if (r.pace_px >= 0) {  // cut through the road so the tick reads on solid, hatch and dots
-    const int16_t px = x0 + r.pace_px;
+    const int16_t px = x0 + (int16_t)lroundf((float)r.pace_px * kUsageDrawRoadPx / kUsageRoadPx);
     rect(px - 1, y, 3, 7, kPaper);
     rect(px, y, 1, 8);
     pix(kPaceMark, px - 2, y + 8);
   }
-  const int16_t car_x = std::max<int16_t>(x0 - 8, std::min<int16_t>(car_at - 11, x1 - 22));
+  // Keep the car strictly within [x0, x1 - 22] so it never intrudes into the % column.
+  const int16_t car_x = std::max<int16_t>(x0, std::min<int16_t>(car_at - 11, x1 - kUsageCarW));
   const int16_t bob = moving ? (int16_t)(f.tick % 2) : 0;
-  car(car_x, y - 13 - bob, stale);
+  car(car_x, y + kUsageCarOffsetY - bob, stale);
   if (moving) {
     const int k = (int)((f.tick / 2) % 2);
     pix(kRing1, car_x - 5 - k * 2, y - 6 - k);
@@ -316,24 +314,30 @@ void road(const UsageRowView& r, int16_t y, const UsageFrame& f) {
 }
 
 void row(size_t i, const UsageRowView& r, size_t count, const UsageFrame& f) {
-  const int16_t top = row_top(i, count);
-  if (i > 0) for (int16_t x = 12; x < 388; x += 3) g->drawPixel(x, top - 1, kInk);
-  logo(r.id, 12, top + 17);
-  number(r, 128, top + 48, top + 9, f.sweep);
+  const UsageRowMetrics m = usage_row_metrics(count);
+  const int16_t top = usage_row_top(i, count);
+  if (i > 0) for (int16_t x = kUsageMarginX; x < kUsageRightX; x += 4) g->drawPixel(x, top, kInk);
+  logo(r.id, kUsageLogoX, top + m.logo_y);
+  number(r, kUsageNumRight, top + m.num_base, top + m.low_box_top, m.low_box_h, f.sweep);
+  const int16_t name_base = top + m.name_base;
+  const int16_t road_y = top + m.road_y;
   const std::string name = usage_provider_name(r.id);
-  text(name.c_str(), kRoadX0, top + 21, 12, true);
+  text(name.c_str(), kRoadX0, name_base, 12, true);
   if (r.id == "gemini") {  // Antigravity's Gemini weekly pool
-    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), 12, true) + 6, top + 9);
+    bitmap(usage_logos::kAntigravity12, kRoadX0 + text_w(name.c_str(), 12, true) + 6, name_base - 12);
   }
   if (!r.chip.empty()) {
-    chip(r.chip.c_str(), 388, top + 21, Align::Right);
+    chip(r.chip.c_str(), kUsageRightX, name_base, Align::Right);
   } else if (!r.verdict.empty() && r.state != UsageRowState::Stale) {
-    text(r.verdict.c_str(), 388, top + 21, 9, r.runs_dry, Align::Right);
+    text(r.verdict.c_str(), kUsageRightX, name_base, 9, r.runs_dry, Align::Right);
   }
-  road(r, top + 38, f);
-  text(r.countdown.c_str(), 388, top + 45, 9, false, Align::Right);
+  road(r, road_y, f);
+  text(r.countdown.c_str(), kUsageRightX, road_y + 7, 9, false, Align::Right);
   // Clock before the countdown: time until the allowance refills.
-  if (r.countdown != "--") pix(kClockIcon, 388 - text_w(r.countdown.c_str(), 9) - 12, top + 35);
+  if (r.countdown != "--") {
+    pix(kClockIcon, kUsageRightX - text_w(r.countdown.c_str(), 9) - (kUsageClockW + kUsageClockGap),
+        road_y - 3);
+  }
 }
 
 }  // namespace

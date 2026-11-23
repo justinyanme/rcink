@@ -40,7 +40,7 @@ struct UsageRowView {
 
 struct UsageView {
   std::array<UsageRowView, kUsageMaxProviders> rows;
-  size_t count = 0;     // payload order; the renderer draws exactly these rows
+  size_t count = 0;     // display order; the renderer draws exactly these rows
   UsageIcon headline_icon = UsageIcon::None;
   UsageMood headline_face = UsageMood::None;
   std::string headline;       // text before the optional pick logo/name
@@ -62,7 +62,8 @@ inline bool operator==(const UsageView& a, const UsageView& b) {
 }
 
 // `now` below 2024 means the wall clock is untrustworthy. Local HH:MM labels use
-// the process TZ (LOCAL_TZ on the device).
+// the process TZ (LOCAL_TZ on the device). Known providers display in
+// claude, codex, gemini, kimi order; unknown ids follow in payload order.
 UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
                             const UsageSync& sync);
 std::string encode_usage_view(const UsageView& view);

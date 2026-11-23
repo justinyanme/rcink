@@ -9,8 +9,6 @@
 
 namespace rcpaper {
 
-const char* const kTokenProviderNames[kTokenProviderCount] = {"Claude", "Codex", "Gemini"};
-
 namespace {
 constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kOldSourceAgeS = 2 * 3600;
@@ -153,6 +151,7 @@ std::string format_tokens(uint64_t value) {
 TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
                             const TokenSync& sync) {
   TokenView view;
+  view.count = snapshot.count;
   const int64_t elapsed = elapsed_local_days(snapshot.today, now);
   const bool clock_valid = now >= kClockMinimum;
   const bool has_snapshot = !snapshot.today.empty();
@@ -163,7 +162,8 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   long double combined_usual = 0;
   uint64_t busiest_total = 0;
   int busiest = -1;
-  for (size_t p = 0; p < kTokenProviderCount; p++) {
+  for (size_t p = 0; p < snapshot.count; p++) {
+    view.rows[p].id = snapshot.providers[p].id;
     shift_days(snapshot.providers[p], elapsed, view.rows[p]);
     combined_usual += complete_day_sum(view.rows[p].shifted_days) / 7.0L;
     const uint64_t seven = saturated_sum(view.rows[p].shifted_days, 23);
@@ -174,8 +174,9 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   }
 
   int tear = -1;
-  if (clock_valid && !old_data && !sync.fetch_failed) {
-    for (size_t p = 0; p < kTokenProviderCount; p++) {
+  if (clock_valid && !old_data && !sync.fetch_failed &&
+      sync.link_failure == LinkFailure::None) {
+    for (size_t p = 0; p < view.count; p++) {
       const auto& days = view.rows[p].shifted_days;
       const long double usual = complete_day_sum(days) / 7.0L;
       const long double today = days[29];
@@ -185,11 +186,17 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
       }
     }
   }
-  if (tear >= 0) {
-    view.headline = std::string(kTokenProviderNames[tear]) + " is on a tear today";
+  if (sync.link_failure == LinkFailure::WifiFailed) {
+    view.headline = wifi_failed_headline(sync.wifi_ssid);
+    view.headline_pick = -1;
+  } else if (sync.link_failure == LinkFailure::NtpFailed) {
+    view.headline = ntp_failed_headline();
+    view.headline_pick = -1;
+  } else if (tear >= 0) {
+    view.headline = token_provider_name(view.rows[tear].id) + " is on a tear today";
     view.headline_pick = (int8_t)tear;
   } else if (busiest >= 0) {
-    view.headline = std::string("Busiest this week: ") + kTokenProviderNames[busiest];
+    view.headline = "Busiest this week: " + token_provider_name(view.rows[busiest].id);
     view.headline_pick = (int8_t)busiest;
   } else {
     view.headline = "Waiting for the first numbers.";
@@ -198,12 +205,21 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   if (sync.syncing) {
     view.footer_chip = "SYNCING";
     view.footer_text = "fetching now";
+  } else if (sync.link_failure == LinkFailure::WifiFailed) {
+    view.footer_chip = "NO WIFI";
+    view.footer_text = retry_footer_text(
+        now, clock_valid, sync.retry_at_s, sync.retry_cooldown_s);
+  } else if (sync.link_failure == LinkFailure::NtpFailed) {
+    view.footer_chip = "NO NTP";
+    view.footer_text = retry_footer_text(
+        now, clock_valid, sync.retry_at_s, sync.retry_cooldown_s);
   } else if (!clock_valid) {
     view.footer_chip = "NO CLOCK";
     view.footer_text = "waiting for NTP";
   } else if (sync.fetch_failed) {
     view.footer_chip = "SYNC FAILED";
-    view.footer_text = sync.retry_at_s > now ? "retry " + local_hhmm(sync.retry_at_s) : "retrying";
+    view.footer_text = retry_footer_text(
+        now, clock_valid, sync.retry_at_s, sync.retry_cooldown_s);
   } else if (old_data) {
     view.footer_chip = "OLD DATA";
     view.footer_text = snapshot.required_source_collected_at == 0
@@ -218,14 +234,16 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
 
 std::string encode_token_view(const TokenView& view) {
   JsonDocument doc;
-  doc["schema"] = "rcink.token-view.v1";
+  doc["schema"] = "rcink.token-view.v2";
   doc["headline"] = view.headline;
   doc["pick"] = (int)view.headline_pick;
   doc["footerChip"] = view.footer_chip;
   doc["footer"] = view.footer_text;
   JsonArray rows = doc["rows"].to<JsonArray>();
-  for (const TokenRowView& row : view.rows) {
+  for (size_t p = 0; p < view.count; p++) {
+    const TokenRowView& row = view.rows[p];
     JsonObject out = rows.add<JsonObject>();
+    out["id"] = row.id;
     JsonArray days = out["days"].to<JsonArray>();
     JsonArray bars = out["bars"].to<JsonArray>();
     for (size_t i = 0; i < kTokenDays; i++) {
@@ -248,18 +266,22 @@ bool decode_token_view(const std::string& json, TokenView& out) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (root["schema"] != "rcink.token-view.v1" || !root["pick"].is<int>() ||
-      root["pick"].as<int>() < -1 || root["pick"].as<int>() >= (int)kTokenProviderCount ||
-      !root["rows"].is<JsonArrayConst>() || root["rows"].size() != kTokenProviderCount) return false;
+  if (root["schema"] != "rcink.token-view.v2" || !root["pick"].is<int>() ||
+      !root["rows"].is<JsonArrayConst>() || root["rows"].size() > kTokenMaxProviders) return false;
   TokenView next;
+  next.count = root["rows"].size();
+  if (root["pick"].as<int>() < -1 || root["pick"].as<int>() >= (int)next.count) return false;
   next.headline_pick = root["pick"].as<int8_t>();
   if (!small_string(root["headline"], next.headline) ||
       !small_string(root["footerChip"], next.footer_chip) ||
       !small_string(root["footer"], next.footer_text)) return false;
-  for (size_t p = 0; p < kTokenProviderCount; p++) {
+  for (size_t p = 0; p < next.count; p++) {
     JsonVariantConst input = root["rows"][p];
     TokenRowView& row = next.rows[p];
-    if (!input["days"].is<JsonArrayConst>() || input["days"].size() != kTokenDays ||
+    if (!input["id"].is<const char*>()) return false;
+    row.id = input["id"].as<const char*>();
+    if (row.id.empty() || row.id.size() > 16 ||
+        !input["days"].is<JsonArrayConst>() || input["days"].size() != kTokenDays ||
         !input["bars"].is<JsonArrayConst>() || input["bars"].size() != kTokenDays ||
         !input["usual"].is<uint8_t>() || input["usual"].as<uint8_t>() > kTokenChartPx ||
         !input["lifetimeValue"].is<uint64_t>() ||

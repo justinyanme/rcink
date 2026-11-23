@@ -4,6 +4,7 @@
 
 #if RCRLCD_USAGE_ENABLED
 #include <Arduino.h>
+#include <cstdio>
 
 #include "net/usage_client.h"
 
@@ -18,12 +19,20 @@ std::string token_usage_url() {
   return origin + "/api/usage-tokens";
 }
 
-bool token_fetch(TokenSnapshot& out) {
+bool token_fetch(TokenSnapshot& out, FetchDiag* diag) {
   const std::string url = token_usage_url();
   std::string body;
-  if (!usage_get_json(url.c_str(), kTokenMaximumBytes, "token", body)) return false;
-  if (!decode_token(body, out)) {
-    Serial.println("[token] invalid response; keeping cache");
+  if (!usage_get_json(url.c_str(), kTokenMaximumBytes, "token", body, diag)) return false;
+  std::string reason;
+  if (!decode_token(body, out, &reason)) {
+    Serial.printf("[token] invalid response (%s, len=%u); keeping cache\n",
+                  reason.empty() ? "unknown" : reason.c_str(),
+                  (unsigned)body.size());
+    if (diag) {
+      diag->ok = false;
+      std::snprintf(diag->error, sizeof(diag->error), "decode:%s",
+                    reason.empty() ? "unknown" : reason.c_str());
+    }
     return false;
   }
   return true;

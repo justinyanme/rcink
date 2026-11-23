@@ -62,6 +62,16 @@ size_t find_provider(const UsageSnapshot& snapshot, const std::string& id) {
     if (snapshot.providers[i].id == id) return i;
   return snapshot.count;
 }
+
+bool fail(std::string* reason, const std::string& message) {
+  if (reason) *reason = message;
+  return false;
+}
+
+std::string row_tag(size_t i, const std::string& id = {}) {
+  return id.empty() ? "row[" + std::to_string(i) + "]"
+                    : "row[" + std::to_string(i) + "](" + id + ")";
+}
 }  // namespace
 
 std::string usage_provider_name(const std::string& id) {
@@ -74,49 +84,82 @@ std::string usage_provider_name(const std::string& id) {
   return name;
 }
 
-bool decode_usage(const std::string& json, UsageSnapshot& out) {
-  if (json.empty() || json.size() > kUsageMaximumBytes) return false;
+bool decode_usage(const std::string& json, UsageSnapshot& out, std::string* reason) {
+  if (reason) reason->clear();
+  if (json.empty()) return fail(reason, "empty");
+  if (json.size() > kUsageMaximumBytes) return fail(reason, "oversized");
   JsonDocument doc;
   JsonReader reader{json};
-  if (deserializeJson(doc, reader, DeserializationOption::NestingLimit(8))) return false;
+  const DeserializationError err =
+      deserializeJson(doc, reader, DeserializationOption::NestingLimit(8));
+  if (err) return fail(reason, std::string("json-parse:") + err.c_str());
   while (reader.pos < json.size()) {
     const char c = json[reader.pos++];
-    if (c != ' ' && c != '\n' && c != '\r' && c != '\t') return false;
+    if (c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+      return fail(reason, "trailing-data");
+    }
   }
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (!exact(root, {"schema", "servedAt", "providers"}) || root["schema"] != "rcink.usage-limits.v2" ||
-      !epoch(root["servedAt"]) || !root["providers"].is<JsonArrayConst>() ||
-      root["providers"].size() > kUsageMaxProviders) return false;
+  if (!exact(root, {"schema", "servedAt", "providers"})) return fail(reason, "root-fields");
+  if (root["schema"] != "rcink.usage-limits.v2") return fail(reason, "schema");
+  if (!epoch(root["servedAt"])) return fail(reason, "served-at");
+  if (!root["providers"].is<JsonArrayConst>() ||
+      root["providers"].size() > kUsageMaxProviders) {
+    return fail(reason, "providers-array");
+  }
   UsageSnapshot next;
   next.count = root["providers"].size();
   next.served_at = root["servedAt"].as<uint64_t>();
   for (size_t i = 0; i < next.count; i++) {
     const auto row = root["providers"][i];
     std::string id;
-    if (!exact(row, {"id", "status", "usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"}) ||
-        !provider_id(row["id"], id) || find_provider(next, id) < next.count) return false;
+    if (!exact(row, {"id", "status", "usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"})) {
+      return fail(reason, row_tag(i) + ":fields");
+    }
+    if (!provider_id(row["id"], id)) return fail(reason, row_tag(i) + ":id");
+    if (find_provider(next, id) < next.count) return fail(reason, row_tag(i, id) + ":dup-id");
     auto& target = next.providers[i];
     target.id = id;
     if (row["status"] == "unavailable") {
       for (auto field : {"usedPercent", "remainingPercent", "fetchedAt", "expiresAt", "resetsAt"}) {
-        if (!row[field].isNull()) return false;
+        if (!row[field].isNull()) return fail(reason, row_tag(i, id) + ":unavail-nonnull");
       }
       continue;
     }
-    if (row["status"] != "ok" && row["status"] != "stale") return false;
-    if (!percent(row["usedPercent"]) || !percent(row["remainingPercent"]) ||
-        std::fabs(row["usedPercent"].as<double>() + row["remainingPercent"].as<double>() - 100) > 0.000001 ||
-        !epoch(row["fetchedAt"]) || !epoch(row["expiresAt"]) ||
-        (!row["resetsAt"].isNull() && !epoch(row["resetsAt"]))) return false;
+    if (row["status"] != "ok" && row["status"] != "stale") {
+      return fail(reason, row_tag(i, id) + ":status");
+    }
+    if (!percent(row["usedPercent"]) || !percent(row["remainingPercent"])) {
+      return fail(reason, row_tag(i, id) + ":percent");
+    }
+    if (std::fabs(row["usedPercent"].as<double>() + row["remainingPercent"].as<double>() - 100) > 0.000001) {
+      return fail(reason, row_tag(i, id) + ":percent-sum");
+    }
+    if (!epoch(row["fetchedAt"]) || !epoch(row["expiresAt"]) ||
+        (!row["resetsAt"].isNull() && !epoch(row["resetsAt"]))) {
+      return fail(reason, row_tag(i, id) + ":timestamps");
+    }
     target.status = row["status"] == "ok" ? UsageStatus::Ok : UsageStatus::Stale;
     target.used_percent = row["usedPercent"].as<double>();
     target.fetched_at = row["fetchedAt"].as<uint64_t>();
     target.expires_at = row["expiresAt"].as<uint64_t>();
     target.resets_at = row["resetsAt"].isNull() ? 0 : row["resetsAt"].as<uint64_t>();
-    if (target.fetched_at > next.served_at + 300 || target.expires_at <= target.fetched_at ||
-        (target.resets_at != 0 && target.resets_at <= target.fetched_at)) return false;
-    if (target.status == UsageStatus::Ok && (next.served_at >= target.expires_at ||
-        (target.resets_at != 0 && next.served_at >= target.resets_at))) return false;
+    if (target.fetched_at > next.served_at + 300) {
+      return fail(reason, row_tag(i, id) + ":fetched-future");
+    }
+    if (target.expires_at <= target.fetched_at) {
+      return fail(reason, row_tag(i, id) + ":expires-order");
+    }
+    if (target.resets_at != 0 && target.resets_at <= target.fetched_at) {
+      return fail(reason, row_tag(i, id) + ":resets-order");
+    }
+    if (target.status == UsageStatus::Ok && next.served_at >= target.expires_at) {
+      return fail(reason, row_tag(i, id) + ":ok-expired");
+    }
+    if (target.status == UsageStatus::Ok && target.resets_at != 0 &&
+        next.served_at >= target.resets_at) {
+      return fail(reason, row_tag(i, id) + ":ok-past-reset");
+    }
   }
   out = next;
   return true;
@@ -152,28 +195,21 @@ std::string encode_usage(const UsageSnapshot& snapshot) {
 }
 
 bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache) {
-  bool changed = false;
-  // Accounts the source no longer reports drop out of the cache (and the
-  // frame) instead of lingering as forever-stale rows.
-  for (size_t i = 0; i < cache.count;) {
-    if (find_provider(incoming, cache.providers[i].id) < incoming.count) { i++; continue; }
-    for (size_t j = i + 1; j < cache.count; j++) cache.providers[j - 1] = cache.providers[j];
-    cache.providers[--cache.count] = UsageProvider{};
-    changed = true;
-  }
-  for (size_t i = 0; i < incoming.count; i++) {
+  UsageSnapshot merged;
+  merged.count = std::min(incoming.count, kUsageMaxProviders);
+  bool changed = cache.count != merged.count;
+  for (size_t i = 0; i < merged.count; i++) {
     const UsageProvider& next = incoming.providers[i];
     const size_t slot = find_provider(cache, next.id);
     if (slot == cache.count) {
       // New account upstream: show it immediately, even before its first
       // successful observation.
-      if (cache.count < kUsageMaxProviders) {
-        cache.providers[cache.count++] = next;
-        changed = true;
-      }
+      merged.providers[i] = next;
+      changed = true;
       continue;
     }
-    UsageProvider& current = cache.providers[slot];
+    if (slot != i) changed = true;
+    UsageProvider current = cache.providers[slot];
     if (next.status != UsageStatus::Unavailable &&
         next.fetched_at > current.fetched_at) {
       current = next;
@@ -186,9 +222,12 @@ bool merge_usage(const UsageSnapshot& incoming, UsageSnapshot& cache) {
       current.status = UsageStatus::Stale;
       changed = true;
     }
+    merged.providers[i] = current;
   }
-  if (changed) cache.served_at = std::max(cache.served_at, incoming.served_at);
-  return changed;
+  if (!changed) return false;
+  merged.served_at = std::max(cache.served_at, incoming.served_at);
+  cache = merged;
+  return true;
 }
 
 PageRecord usage_page(const UsageSnapshot& snapshot, uint64_t now, const UsageSync& sync) {
@@ -226,7 +265,10 @@ uint64_t usage_refetch_at_s(const UsageSnapshot& snapshot, uint64_t last_fetch_s
     if (p.status == UsageStatus::Unavailable || p.fetched_at == 0) continue;
     uint64_t at = 0;
     if (p.expires_at > last_fetch_s) {
-      at = p.expires_at + kUsageExpiryGraceS;  // fresh at the last fetch: refetch as it expires
+      const uint64_t target = p.expires_at > kUsagePreExpiryLeadS
+          ? p.expires_at - kUsagePreExpiryLeadS : 0;
+      const uint64_t soonest = last_fetch_s + kUsageChaseRetryS;
+      at = target > soonest ? target : soonest;  // pre-fetch before expiry without spinning
     } else if (last_fetch_s < p.fetched_at + kUsageChaseWindowS) {
       at = last_fetch_s + kUsageChaseRetryS;  // the source is late: check back soon
     } else {

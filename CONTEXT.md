@@ -120,3 +120,15 @@ _Avoid_: average day, normal, baseline
 **Lifetime**:
 Token usage summed since the first record (2025-09-18). It only grows.
 _Avoid_: total, all-time
+
+**Link failure**:
+Device-level connectivity failure during a refresh—either Wi-Fi association failed or NTP timed out while no valid wall clock exists, blocking HTTPS. Shared by every networked Deck Page and cleared once Wi-Fi and wall clock succeed.
+_Avoid_: network error, sync failure
+
+**Sync failure**:
+Page-level failure to fetch or validate a single Page's HTTPS payload after Wi-Fi, wall clock, and any bounded in-session transient retry fail to produce a valid response. Tracked and displayed independently per Page.
+_Avoid_: link failure, network failure
+
+**Old data**:
+Page-level staleness shown when the last sync succeeded (no Link failure or Sync failure) but the underlying data is past its freshness boundary—every observed Provider expired on the Allowance page, or the required Source (M4) has not collected for over two hours on the Token page.
+_Avoid_: sync failure, stale fetch, offline

@@ -15,7 +15,13 @@ using namespace rcpaper;
 
 void test_decoder_accepts_exact_schema_order_and_64_bit_totals() {
   TokenSnapshot snapshot;
-  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  std::string reason = "stale-prior";
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot, &reason));
+  TEST_ASSERT_TRUE(reason.empty());
+  TEST_ASSERT_EQUAL(3, snapshot.count);
+  TEST_ASSERT_EQUAL_STRING("claude", snapshot.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("codex", snapshot.providers[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", snapshot.providers[2].id.c_str());
   TEST_ASSERT_EQUAL_UINT64(1794446400ULL, snapshot.served_at);
   TEST_ASSERT_EQUAL_UINT64(1794442800ULL, snapshot.required_source_collected_at);
   TEST_ASSERT_EQUAL_STRING("2026-11-12", snapshot.today.c_str());
@@ -29,35 +35,58 @@ void test_decoder_rejects_malformed_bounded_and_non_integer_responses_without_mu
   TokenSnapshot cache;
   TEST_ASSERT_TRUE(decode_token(token_response(), cache));
   const std::string original = encode_token(cache);
-  const std::function<void(JsonDocument&)> mutations[] = {
-      [](JsonDocument& d) { d["schema"] = "rcink.token-usage.v2"; },
-      [](JsonDocument& d) { d["extra"] = true; },
-      [](JsonDocument& d) { d["today"] = "2026-02-30"; },
-      [](JsonDocument& d) { d["today"] = "12-11-2026"; },
-      [](JsonDocument& d) { d["requiredSourceCollectedAt"] = 0; },
-      [](JsonDocument& d) { d["providers"].as<JsonArray>().remove(2); },
-      [](JsonDocument& d) { d["providers"][1]["id"] = "claude"; },
-      [](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().remove(0); },
-      [](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().add(0); },
-      [](JsonDocument& d) { d["providers"][0]["days"][0] = -1; },
-      [](JsonDocument& d) { d["providers"][0]["days"][0] = 1.5; },
-      [](JsonDocument& d) { d["providers"][0]["days"][0] = "100"; },
-      [](JsonDocument& d) { d["providers"][0]["lifetime"] = -1; },
-      [](JsonDocument& d) { d["providers"][0]["extra"] = 1; },
+  const struct {
+    std::function<void(JsonDocument&)> mutate;
+    const char* expected_reason;
+  } mutations[] = {
+      {[](JsonDocument& d) { d["schema"] = "rcink.token-usage.v1"; }, "schema"},
+      {[](JsonDocument& d) { d["schema"] = "rcink.token-usage.v3"; }, "schema"},
+      {[](JsonDocument& d) { d["extra"] = true; }, "root-fields"},
+      {[](JsonDocument& d) { d["today"] = "2026-02-30"; }, "today-date"},
+      {[](JsonDocument& d) { d["today"] = "12-11-2026"; }, "today-date"},
+      {[](JsonDocument& d) { d["requiredSourceCollectedAt"] = 0; }, "collected-at"},
+      {[](JsonDocument& d) {
+        JsonObject extra = d["providers"].as<JsonArray>().add<JsonObject>();
+        extra["id"] = "kimi";
+        extra["days"].to<JsonArray>();
+        extra["lifetime"] = 0;
+      }, "providers-array"},
+      {[](JsonDocument& d) { d["providers"][0]["id"] = "kimi"; }, "row[0]:id"},
+      {[](JsonDocument& d) { d["providers"][1]["id"] = "claude"; }, "row[1](claude):dup-id"},
+      {[](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().remove(0); }, "row[0](claude):days"},
+      {[](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().add(0); }, "row[0](claude):days"},
+      {[](JsonDocument& d) { d["providers"][0]["days"][0] = -1; }, "row[0](claude):day-val"},
+      {[](JsonDocument& d) { d["providers"][0]["days"][0] = 1.5; }, "row[0](claude):day-val"},
+      {[](JsonDocument& d) { d["providers"][0]["days"][0] = "100"; }, "row[0](claude):day-val"},
+      {[](JsonDocument& d) { d["providers"][0]["lifetime"] = -1; }, "row[0](claude):lifetime"},
+      {[](JsonDocument& d) { d["providers"][0]["extra"] = 1; }, "row[0]:fields"},
   };
-  for (const auto& mutate : mutations) {
+  std::string reason;
+  for (const auto& entry : mutations) {
     JsonDocument doc;
     TEST_ASSERT_FALSE(deserializeJson(doc, token_response()));
-    mutate(doc);
+    entry.mutate(doc);
     std::string bad;
     serializeJson(doc, bad);
-    TEST_ASSERT_FALSE(decode_token(bad, cache));
+    reason.clear();
+    TEST_ASSERT_FALSE(decode_token(bad, cache, &reason));
+    TEST_ASSERT_EQUAL_STRING(entry.expected_reason, reason.c_str());
     TEST_ASSERT_EQUAL_STRING(original.c_str(), encode_token(cache).c_str());
   }
-  for (const std::string& bad : {std::string(), std::string("{broken"),
-                                 token_response() + "garbage",
-                                 std::string(kTokenMaximumBytes + 1, ' ')}) {
-    TEST_ASSERT_FALSE(decode_token(bad, cache));
+  const struct {
+    std::string body;
+    const char* expected_reason;
+  } raw_cases[] = {
+      {std::string(), "empty"},
+      {std::string("{broken"), nullptr},
+      {token_response() + "garbage", "trailing-data"},
+      {std::string(kTokenMaximumBytes + 1, ' '), "oversized"},
+  };
+  for (const auto& c : raw_cases) {
+    reason.clear();
+    TEST_ASSERT_FALSE(decode_token(c.body, cache, &reason));
+    TEST_ASSERT_FALSE(reason.empty());
+    if (c.expected_reason) TEST_ASSERT_EQUAL_STRING(c.expected_reason, reason.c_str());
     TEST_ASSERT_EQUAL_STRING(original.c_str(), encode_token(cache).c_str());
   }
 }
@@ -295,6 +324,84 @@ void test_number_format_uses_at_most_three_significant_digits() {
   TEST_ASSERT_EQUAL_STRING("1M", format_tokens(999500).c_str());
 }
 
+void test_link_failures_share_device_state_and_avoid_epoch_retry() {
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(token_response(), snapshot));
+  for (TokenProvider& provider : snapshot.providers) provider.days.fill(0);
+  for (size_t i = 22; i <= 28; i++) snapshot.providers[0].days[i] = 100;
+  snapshot.providers[0].days[29] = 150;
+
+  const TokenView no_clock_wifi = view_of(
+      snapshot, 0, {false, 0, 60, false, LinkFailure::WifiFailed, 60, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL_STRING("No Wi-Fi: OnePlus 15 EAA8", no_clock_wifi.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, no_clock_wifi.headline_pick);
+  TEST_ASSERT_EQUAL_STRING("NO WIFI", no_clock_wifi.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry ~1m", no_clock_wifi.footer_text.c_str());
+
+  const TokenView clock_wifi = view_of(
+      snapshot, 1794446400ULL,
+      {false, 1794442800ULL, 1794446460ULL, false, LinkFailure::WifiFailed, 60, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL_STRING("No Wi-Fi: OnePlus 15 EAA8", clock_wifi.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, clock_wifi.headline_pick);
+  TEST_ASSERT_EQUAL_STRING("NO WIFI", clock_wifi.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry 09:21", clock_wifi.footer_text.c_str());
+
+  const TokenView no_ntp = view_of(
+      snapshot, 0, {false, 0, 60, false, LinkFailure::NtpFailed, 60, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL_STRING("NTP timed out. Clock not set.", no_ntp.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, no_ntp.headline_pick);
+  TEST_ASSERT_EQUAL_STRING("NO NTP", no_ntp.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry ~1m", no_ntp.footer_text.c_str());
+
+  for (LinkFailure link : {LinkFailure::WifiFailed, LinkFailure::NtpFailed}) {
+    const TokenView syncing = view_of(
+        snapshot, 0, {false, 0, 60, true, link, 60, "OnePlus 15 EAA8"});
+    TEST_ASSERT_EQUAL_STRING("SYNCING", syncing.footer_chip.c_str());
+    TEST_ASSERT_EQUAL_STRING("fetching now", syncing.footer_text.c_str());
+  }
+
+  // Clearing link failure restores Token's independent synced state cleanly.
+  const TokenView recovered = view_of(
+      snapshot, 1794446400ULL,
+      {false, 1794446400ULL, 0, false, LinkFailure::None, 0, "OnePlus 15 EAA8"});
+  TEST_ASSERT_TRUE(recovered.footer_chip.empty());
+  TEST_ASSERT_EQUAL_STRING("Synced 09:20", recovered.footer_text.c_str());
+  TEST_ASSERT_EQUAL_STRING("Claude is on a tear today", recovered.headline.c_str());
+}
+
+void test_mirrors_active_provider_subset_and_empty_deck() {
+  TokenSnapshot subset;
+  TEST_ASSERT_TRUE(decode_token(two_token_response(), subset));
+  TEST_ASSERT_EQUAL(2, subset.count);
+  TEST_ASSERT_EQUAL_STRING("codex", subset.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", subset.providers[1].id.c_str());
+
+  const TokenView view = view_of(
+      subset, 1795159340ULL,
+      {false, 1795159340ULL, 0, false, LinkFailure::None, 0, nullptr});
+  TEST_ASSERT_EQUAL(2, view.count);
+  TEST_ASSERT_EQUAL_STRING("codex", view.rows[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("1.18B", view.rows[1].seven_day.c_str());
+  TEST_ASSERT_EQUAL_STRING("1.18B", view.rows[1].lifetime.c_str());
+  TEST_ASSERT_EQUAL_STRING("Gemini is on a tear today", view.headline.c_str());
+  TEST_ASSERT_EQUAL(1, view.headline_pick);
+  TEST_ASSERT_EQUAL_STRING("Synced 15:22", view.footer_text.c_str());
+
+  JsonDocument empty_doc;
+  TEST_ASSERT_FALSE(deserializeJson(empty_doc, two_token_response()));
+  empty_doc["providers"].as<JsonArray>().clear();
+  std::string empty_json;
+  serializeJson(empty_doc, empty_json);
+  TokenSnapshot empty_snapshot;
+  TEST_ASSERT_TRUE(decode_token(empty_json, empty_snapshot));
+  TEST_ASSERT_EQUAL(0, empty_snapshot.count);
+  const TokenView empty_view = view_of(empty_snapshot, 1795159340ULL);
+  TEST_ASSERT_EQUAL(0, empty_view.count);
+  TEST_ASSERT_EQUAL(-1, empty_view.headline_pick);
+  TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", empty_view.headline.c_str());
+}
+
 int main() {
   setenv("TZ", "SGT-8", 1);
   tzset();
@@ -312,5 +419,7 @@ int main() {
   RUN_TEST(test_midnight_shift_always_uses_worker_utc8_date);
   RUN_TEST(test_unknown_clock_suppresses_tear_and_never_formats_epoch_retry);
   RUN_TEST(test_number_format_uses_at_most_three_significant_digits);
+  RUN_TEST(test_link_failures_share_device_state_and_avoid_epoch_retry);
+  RUN_TEST(test_mirrors_active_provider_subset_and_empty_deck);
   return UNITY_END();
 }

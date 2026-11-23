@@ -30,6 +30,7 @@ enum class Align : uint8_t { Left, Right };
 
 const GFXfont* font(int pt, bool bold) {
   if (pt >= 24) return &FreeSansBold24pt7b;
+  if (pt >= 18) return bold ? &FreeSansBold18pt7b : &FreeSans18pt7b;
   if (pt >= 12) return bold ? &FreeSansBold12pt7b : &FreeSans12pt7b;
   return bold ? &FreeSansBold9pt7b : &FreeSans9pt7b;
 }
@@ -50,7 +51,7 @@ void text(const char* value, int16_t x, int16_t baseline, int pt,
   g->drawString(value, x, baseline);
 }
 
-// FreeSans GFX has no U+00B7 glyph. Preserve the wording and draw its dot.
+// FreeSans GFX has no U+00B7 glyph. Preserve the wording and draw a symmetric dot.
 void text_with_dots(const std::string& value, int16_t x, int16_t baseline, int pt) {
   const std::string separator = "\xC2\xB7";
   const size_t at = value.find(separator);
@@ -58,12 +59,16 @@ void text_with_dots(const std::string& value, int16_t x, int16_t baseline, int p
     text(value.c_str(), x, baseline, pt);
     return;
   }
-  const std::string left = value.substr(0, at);
-  const std::string right = value.substr(at + separator.size());
+  std::string left = value.substr(0, at);
+  std::string right = value.substr(at + separator.size());
+  while (!left.empty() && left.back() == ' ') left.pop_back();
+  size_t r0 = 0;
+  while (r0 < right.size() && right[r0] == ' ') r0++;
+  right = right.substr(r0);
   text(left.c_str(), x, baseline, pt);
-  const int16_t dot_x = x + text_w(left.c_str(), pt) + 1;
+  const int16_t dot_x = x + text_w(left.c_str(), pt) + kTokenDotGap;
   g->fillRect(dot_x, baseline - 5, 2, 2, kInk);
-  text(right.c_str(), dot_x + 3, baseline, pt);
+  text(right.c_str(), dot_x + 2 + kTokenDotGap, baseline, pt);
 }
 
 void rect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color = kInk) {
@@ -90,27 +95,34 @@ const char* const kSpark[] = {
     "....#....", "....#....", "....#....", "...###...", "#########",
     "...###...", "....#....", "....#....", "....#....",
 };
-const MonoBitmap* const kLogos[kTokenProviderCount] = {
-    &usage_logos::kClaude28, &usage_logos::kCodex28, &usage_logos::kGemini28};
-
-void headline(const TokenView& view) {
-  if (view.headline_pick >= 0) pixels(kSpark, 12, 6);
-  text(view.headline.c_str(), view.headline_pick >= 0 ? 28 : 12, 18, 9,
-       view.headline_pick >= 0);
-  text("since Sep '25", kTokenChartRight, 18, 9, false, Align::Right);
-  rect(12, 24, 376, 1);
+const MonoBitmap* token_logo(const std::string& id) {
+  if (id == "claude") return &usage_logos::kClaude28;
+  if (id == "codex") return &usage_logos::kCodex28;
+  if (id == "gemini") return &usage_logos::kGemini28;
+  return nullptr;
 }
 
-void chart(const TokenRowView& row, int16_t top, float sweep) {
-  const int16_t bottom = top + kTokenChartBottom;
+void headline(const TokenView& view) {
+  if (view.headline_pick >= 0) pixels(kSpark, kTokenMarginX, 9);
+  text(view.headline.c_str(), view.headline_pick >= 0 ? 26 : kTokenMarginX,
+       kTokenHeaderBaseline, 9, view.headline_pick >= 0);
+  text("since Sep '25", kTokenChartRight, kTokenHeaderBaseline, 9, false, Align::Right);
+  rect(kTokenMarginX, kTokenHeaderRuleY, 376, 1);
+}
+
+void chart(const TokenRowView& row, int16_t bottom, int16_t chart_h, float sweep) {
   for (int16_t x = kChartX; x < kChartRight; x += 4) g->drawPixel(x, bottom, kInk);
   if (row.usual_px > 0) {
-    const int16_t y = bottom - row.usual_px;
+    const int16_t usual_h = std::max<int16_t>(
+        1, (int16_t)std::lround((double)row.usual_px * chart_h / kTokenChartPx));
+    const int16_t y = bottom - usual_h;
     for (int16_t x = kChartX; x < kChartRight; x += 5) rect(x, y, 2, 1);
   }
   const size_t visible = std::min(kTokenDays, (size_t)std::lround(sweep * kTokenDays));
   for (size_t i = 0; i < visible; i++) {
-    int16_t height = row.bars[i];
+    int16_t height = row.bars[i] > 0
+        ? std::max<int16_t>(1, (int16_t)std::lround((double)row.bars[i] * chart_h / kTokenChartPx))
+        : 0;
     const bool today = i == kTokenDays - 1;
     if (today) height = std::max<int16_t>(3, height);  // preserve a hollow interior
     if (height == 0) continue;
@@ -124,20 +136,29 @@ void chart(const TokenRowView& row, int16_t top, float sweep) {
   }
 }
 
-void row(size_t i, const TokenRowView& row, const TokenFrame& frame) {
-  const int16_t top = kTokenRowTop + (int16_t)i * kTokenRowPitch;
-  if (i > 0) rect(12, top - 1, 376, 1);
-  g->drawBitmap(12, top + 18, kLogos[i]->bits, kLogos[i]->w, kLogos[i]->h, kInk);
-  text(kTokenProviderNames[i], kTokenTextX, top + kTokenTopBaseline, 9, true);
-  if (i == 2) {
-    g->drawBitmap(kTokenTextX + text_w(kTokenProviderNames[i], 9, true) + 6, top + 2,
+void row(size_t i, size_t count, const TokenRowView& row, const TokenFrame& frame) {
+  const TokenRowMetrics m = token_row_metrics(count);
+  const int16_t top = token_row_top(i, count);
+  if (i > 0) for (int16_t x = kTokenMarginX; x < kChartRight; x += 4) g->drawPixel(x, top, kInk);
+  if (const MonoBitmap* mark = token_logo(row.id)) {
+    g->drawBitmap(kTokenMarginX, top + m.logo_y, mark->bits, mark->w, mark->h, kInk);
+  }
+  const int16_t hdr_base = top + m.hdr_base;
+  const int16_t total_base = top + m.total_base;
+  const int16_t today_base = top + m.today_base;
+  const std::string name = token_provider_name(row.id);
+  text(name.c_str(), kTokenTextX, hdr_base, 12, true);
+  int16_t after_name = kTokenTextX + text_w(name.c_str(), 12, true);
+  if (row.id == "gemini") {
+    g->drawBitmap(after_name + 6, hdr_base - 12,
                   usage_logos::kAntigravity12.bits, usage_logos::kAntigravity12.w,
                   usage_logos::kAntigravity12.h, kInk);
+    after_name += 6 + usage_logos::kAntigravity12.w;
   }
-  text("7 days", kTokenSevenDaysX, top + kTokenTopBaseline, 9);
-  text(row.seven_day.c_str(), kTokenTextX, top + kTokenTotalBaseline, 24, true);
-  chart(row, top, frame.sweep);
-  text_with_dots(row.today, kTokenTextX, top + kTokenTodayBaseline, 9);
+  text("7 days", after_name + kTokenNameLabelGap, hdr_base, 9);
+  text(row.seven_day.c_str(), kTokenTextX, total_base, m.total_pt, true);
+  chart(row, total_base, m.chart_h, frame.sweep);
+  text_with_dots(row.today, kTokenTextX, today_base, 9);
   std::string odo = row.lifetime;
   if (frame.sweep < 1.0f) {
     const long double rolled = (long double)row.lifetime_value * frame.sweep;
@@ -146,16 +167,16 @@ void row(size_t i, const TokenRowView& row, const TokenFrame& frame) {
     odo = format_tokens(value);
   }
   const int16_t value_w = text_w(odo.c_str(), 9, true);
-  text("ODO", kTokenChartRight - value_w - 7, top + kTokenTopBaseline,
+  text("ODO", kTokenChartRight - value_w - kTokenOdoGap, hdr_base,
        9, false, Align::Right);
-  text(odo.c_str(), kTokenChartRight, top + kTokenTopBaseline,
+  text(odo.c_str(), kTokenChartRight, hdr_base,
        9, true, Align::Right);
 }
 
 void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mode) {
-  rect(12, 275, 376, 1);
-  constexpr int16_t baseline = 294;
-  int16_t right = 388;
+  rect(kTokenMarginX, kTokenFooterRuleY, 376, 1);
+  constexpr int16_t baseline = kTokenFooterBaseline;
+  int16_t right = kTokenChartRight;
   const int16_t mode_w = text_w(runtime_mode_name(mode), 9, true) +
                          2 * kTokenChipPadding;
   chip(runtime_mode_name(mode), right - mode_w, baseline);
@@ -166,15 +187,17 @@ void footer(const TokenView& view, const BatteryReading& battery, RuntimeMode mo
   text(percent, right, baseline, 9, false, Align::Right);
   right -= text_w(percent, 9) + kTokenBatteryGap;
   const int16_t x = right - 24;
-  g->drawRect(x, 283, 22, 12, kInk);
-  rect(x + 22, 287, 2, 4);
-  if (battery.ok) rect(x + 2, 285, (18 * std::min<unsigned>(battery.pct, 100) + 50) / 100, 8);
+  g->drawRect(x, kTokenBatteryY, 22, 12, kInk);
+  rect(x + 22, kTokenBatteryY + 4, 2, 4);
+  if (battery.ok) {
+    rect(x + 2, kTokenBatteryY + 2,
+         (18 * std::min<unsigned>(battery.pct, 100) + 50) / 100, 8);
+  }
   if (!view.footer_chip.empty()) {
-    const int16_t width = chip(view.footer_chip.c_str(), 12, baseline);
-    rect(12 + width + 3, baseline - 5, 2, 2);
-    text(view.footer_text.c_str(), 12 + width + kTokenFooterTextGap, baseline, 9);
+    const int16_t width = chip(view.footer_chip.c_str(), kTokenMarginX, baseline);
+    text(view.footer_text.c_str(), kTokenMarginX + width + kTokenFooterTextGap, baseline, 9);
   } else {
-    text(view.footer_text.c_str(), 12, baseline, 9);
+    text(view.footer_text.c_str(), kTokenMarginX, baseline, 9);
   }
 }
 }  // namespace
@@ -185,7 +208,7 @@ void render_token(const TokenView& view, const BatteryReading& battery,
   if (!g) return;
   g->fillSprite(kPaper);
   headline(view);
-  for (size_t i = 0; i < view.rows.size(); i++) row(i, view.rows[i], frame);
+  for (size_t i = 0; i < view.count; i++) row(i, view.count, view.rows[i], frame);
   footer(view, battery, mode);
   display_push();
   g = nullptr;

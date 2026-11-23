@@ -67,6 +67,14 @@ void test_token_persistence_skips_served_at_only_changes() {
   TEST_ASSERT_TRUE(decode_token(nvs_load_token(), stored));
   TEST_ASSERT_EQUAL_UINT64(newer.served_at, stored.served_at);
   TEST_ASSERT_EQUAL_UINT64(newer.providers[0].days[0], stored.providers[0].days[0]);
+
+  TokenSnapshot subset;
+  TEST_ASSERT_TRUE(decode_token(two_token_response(), subset));
+  TEST_ASSERT_TRUE(persist_token_snapshot(subset));
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), stored));
+  TEST_ASSERT_EQUAL(2, stored.count);
+  TEST_ASSERT_EQUAL_STRING("codex", stored.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", stored.providers[1].id.c_str());
 }
 
 int main() {

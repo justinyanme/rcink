@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <vector>
 
+#include "net/fetch_diag.h"
 #include "proto/envelope.h"
+#include "render/link_status.h"
 #include "render/usage.h"
 #include "render/token.h"
 
@@ -18,9 +20,12 @@ enum class FetchResult : uint8_t {
 
 struct RefreshCompletion {
   FetchResult result = FetchResult::DataFailed;
+  LinkFailure link_failure = LinkFailure::None;
   std::vector<PageRecord> pages;
   UsageSnapshot usage;
   TokenSnapshot token;
+  FetchDiag usage_diag{};
+  FetchDiag token_diag{};
   bool token_attempted = false;
   bool token_ok = false;
   bool clock_synced = false;

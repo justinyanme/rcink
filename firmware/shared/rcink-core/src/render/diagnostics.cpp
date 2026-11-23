@@ -78,6 +78,12 @@ LayoutNode build_diagnostics_page(const DiagnosticsSnapshot& snap) {
   append_line(root, "WAKE", buf);
 
   append_line(root, "RESULT", snap.last_result && snap.last_result[0] ? snap.last_result : "-");
+  if (snap.allowance_diag && snap.allowance_diag[0]) {
+    append_line(root, "ALLOW", snap.allowance_diag);
+  }
+  if (snap.token_diag && snap.token_diag[0]) {
+    append_line(root, "TOKEN", snap.token_diag);
+  }
 
   return root;
 }

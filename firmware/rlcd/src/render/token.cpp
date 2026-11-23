@@ -6,9 +6,19 @@
 
 namespace rcpaper {
 namespace {
-const char* const kIds[kTokenProviderCount] = {"claude", "codex", "gemini"};
 constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kClockMaximum = 4102444800ULL;
+
+bool known_token_provider(const std::string& id) {
+  return id == "claude" || id == "codex" || id == "gemini";
+}
+
+bool has_provider(const TokenSnapshot& snapshot, size_t count, const std::string& id) {
+  for (size_t i = 0; i < count; i++) {
+    if (snapshot.providers[i].id == id) return true;
+  }
+  return false;
+}
 
 bool exact(JsonVariantConst value, std::initializer_list<const char*> fields) {
   if (!value.is<JsonObjectConst>() || value.size() != fields.size()) return false;
@@ -60,40 +70,88 @@ struct JsonReader {
     return count;
   }
 };
+
+bool fail(std::string* reason, const std::string& message) {
+  if (reason) *reason = message;
+  return false;
+}
+
+std::string row_tag(size_t p, const std::string& id = {}) {
+  return id.empty() ? "row[" + std::to_string(p) + "]"
+                    : "row[" + std::to_string(p) + "](" + id + ")";
+}
 }  // namespace
 
-bool decode_token(const std::string& json, TokenSnapshot& out) {
-  if (json.empty() || json.size() > kTokenMaximumBytes) return false;
+std::string token_provider_name(const std::string& id) {
+  if (id == "claude") return "Claude";
+  if (id == "codex") return "Codex";
+  if (id == "gemini") return "Gemini";
+  std::string name = id;
+  if (!name.empty() && name[0] >= 'a' && name[0] <= 'z') {
+    name[0] = (char)(name[0] - 'a' + 'A');
+  }
+  return name;
+}
+
+bool decode_token(const std::string& json, TokenSnapshot& out, std::string* reason) {
+  if (reason) reason->clear();
+  if (json.empty()) return fail(reason, "empty");
+  if (json.size() > kTokenMaximumBytes) return fail(reason, "oversized");
   JsonDocument doc;
   JsonReader reader{json};
-  if (deserializeJson(doc, reader, DeserializationOption::NestingLimit(8))) return false;
+  const DeserializationError err =
+      deserializeJson(doc, reader, DeserializationOption::NestingLimit(8));
+  if (err) return fail(reason, std::string("json-parse:") + err.c_str());
   while (reader.pos < json.size()) {
     const char c = json[reader.pos++];
-    if (c != ' ' && c != '\n' && c != '\r' && c != '\t') return false;
+    if (c != ' ' && c != '\n' && c != '\r' && c != '\t') {
+      return fail(reason, "trailing-data");
+    }
   }
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (!exact(root, {"schema", "servedAt", "today", "requiredSourceCollectedAt", "providers"}) ||
-      root["schema"] != "rcink.token-usage.v1" || !epoch(root["servedAt"]) ||
-      !root["today"].is<const char*>() ||
-      (!root["requiredSourceCollectedAt"].isNull() && !epoch(root["requiredSourceCollectedAt"])) ||
-      !root["providers"].is<JsonArrayConst>() ||
-      root["providers"].size() != kTokenProviderCount) return false;
+  if (!exact(root, {"schema", "servedAt", "today", "requiredSourceCollectedAt", "providers"})) {
+    return fail(reason, "root-fields");
+  }
+  if (root["schema"] != "rcink.token-usage.v2") return fail(reason, "schema");
+  if (!epoch(root["servedAt"])) return fail(reason, "served-at");
+  if (!root["today"].is<const char*>()) return fail(reason, "today-type");
+  if (!root["requiredSourceCollectedAt"].isNull() &&
+      !epoch(root["requiredSourceCollectedAt"])) {
+    return fail(reason, "collected-at");
+  }
+  if (!root["providers"].is<JsonArrayConst>() ||
+      root["providers"].size() > kTokenMaxProviders) {
+    return fail(reason, "providers-array");
+  }
 
   TokenSnapshot next;
+  next.count = root["providers"].size();
   next.served_at = root["servedAt"].as<uint64_t>();
   next.today = root["today"].as<const char*>();
-  if (!valid_date(next.today)) return false;
+  if (!valid_date(next.today)) return fail(reason, "today-date");
   if (!root["requiredSourceCollectedAt"].isNull()) {
     next.required_source_collected_at = root["requiredSourceCollectedAt"].as<uint64_t>();
   }
-  for (size_t p = 0; p < kTokenProviderCount; p++) {
+  for (size_t p = 0; p < next.count; p++) {
     JsonVariantConst row = root["providers"][p];
-    if (!exact(row, {"id", "days", "lifetime"}) || row["id"] != kIds[p] ||
-        !row["days"].is<JsonArrayConst>() || row["days"].size() != kTokenDays ||
-        !token_integer(row["lifetime"])) return false;
+    if (!exact(row, {"id", "days", "lifetime"}) || !row["id"].is<const char*>()) {
+      return fail(reason, row_tag(p) + ":fields");
+    }
+    const std::string id = row["id"].as<const char*>();
+    if (!known_token_provider(id)) return fail(reason, row_tag(p) + ":id");
+    if (has_provider(next, p, id)) return fail(reason, row_tag(p, id) + ":dup-id");
+    if (!row["days"].is<JsonArrayConst>() || row["days"].size() != kTokenDays) {
+      return fail(reason, row_tag(p, id) + ":days");
+    }
+    if (!token_integer(row["lifetime"])) {
+      return fail(reason, row_tag(p, id) + ":lifetime");
+    }
+    next.providers[p].id = id;
     next.providers[p].lifetime = row["lifetime"].as<uint64_t>();
     for (size_t i = 0; i < kTokenDays; i++) {
-      if (!token_integer(row["days"][i])) return false;
+      if (!token_integer(row["days"][i])) {
+        return fail(reason, row_tag(p, id) + ":day-val");
+      }
       next.providers[p].days[i] = row["days"][i].as<uint64_t>();
     }
   }
@@ -103,15 +161,15 @@ bool decode_token(const std::string& json, TokenSnapshot& out) {
 
 std::string encode_token(const TokenSnapshot& snapshot) {
   JsonDocument doc;
-  doc["schema"] = "rcink.token-usage.v1";
+  doc["schema"] = "rcink.token-usage.v2";
   doc["servedAt"] = snapshot.served_at;
   doc["today"] = snapshot.today;
   if (snapshot.required_source_collected_at == 0) doc["requiredSourceCollectedAt"] = nullptr;
   else doc["requiredSourceCollectedAt"] = snapshot.required_source_collected_at;
   JsonArray providers = doc["providers"].to<JsonArray>();
-  for (size_t p = 0; p < kTokenProviderCount; p++) {
+  for (size_t p = 0; p < snapshot.count; p++) {
     JsonObject row = providers.add<JsonObject>();
-    row["id"] = kIds[p];
+    row["id"] = snapshot.providers[p].id;
     JsonArray days = row["days"].to<JsonArray>();
     for (uint64_t value : snapshot.providers[p].days) days.add(value);
     row["lifetime"] = snapshot.providers[p].lifetime;
@@ -123,9 +181,11 @@ std::string encode_token(const TokenSnapshot& snapshot) {
 
 bool token_content_equal(const TokenSnapshot& a, const TokenSnapshot& b) {
   if (a.today != b.today ||
-      a.required_source_collected_at != b.required_source_collected_at) return false;
-  for (size_t p = 0; p < kTokenProviderCount; p++) {
-    if (a.providers[p].days != b.providers[p].days ||
+      a.required_source_collected_at != b.required_source_collected_at ||
+      a.count != b.count) return false;
+  for (size_t p = 0; p < a.count; p++) {
+    if (a.providers[p].id != b.providers[p].id ||
+        a.providers[p].days != b.providers[p].days ||
         a.providers[p].lifetime != b.providers[p].lifetime) return false;
   }
   return true;

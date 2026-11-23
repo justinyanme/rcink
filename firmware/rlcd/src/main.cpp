@@ -12,6 +12,7 @@
 #include "input/buttons.h"
 #include "input/interaction_policy.h"
 #include "input/navigation.h"
+#include "net/fetch_diag.h"
 #include "net/ntp.h"
 #include "net/refresh_controller.h"
 #include "net/refresh_flow.h"
@@ -25,6 +26,7 @@
 #include "render/dashboard_schedule.h"
 #include "render/deck_view.h"
 #include "render/diagnostics.h"
+#include "render/link_status.h"
 #include "render/page.h"
 #include "render/token_view.h"
 #include "sense/battery.h"
@@ -63,6 +65,12 @@ RTC_DATA_ATTR static uint32_t g_usage_frame_fingerprint = 0;
 RTC_DATA_ATTR static uint64_t g_usage_last_fetch_s = 0;
 RTC_DATA_ATTR static uint32_t g_usage_fetch_fingerprint = 0;
 RTC_DATA_ATTR static uint8_t g_usage_unchanged_fetches = 0;
+RTC_DATA_ATTR static LinkFailure g_link_failure = LinkFailure::None;
+RTC_DATA_ATTR static uint32_t g_retry_cooldown_s = 0;
+RTC_DATA_ATTR static FetchDiag g_usage_last_diag;
+RTC_DATA_ATTR static FetchDiag g_usage_last_err;
+RTC_DATA_ATTR static FetchDiag g_token_last_diag;
+RTC_DATA_ATTR static FetchDiag g_token_last_err;
 static uint64_t g_usage_evaluated_at_s = UINT64_MAX;
 static const char* g_last_result = "boot";
 #if RCRLCD_USAGE_ENABLED
@@ -138,6 +146,12 @@ static RefreshAppState refresh_app_state() {
       g_token_fetch_failed,
       g_token_last_ok_s,
       g_token_retry_at_s,
+      g_link_failure,
+      g_retry_cooldown_s,
+      g_usage_last_diag,
+      g_usage_last_err,
+      g_token_last_diag,
+      g_token_last_err,
   };
 }
 
@@ -161,13 +175,16 @@ static void try_enter_deep_sleep() {
 #if RCRLCD_USAGE_ENABLED
 static UsageSync usage_sync() {
   return {g_usage_fetch_failed, g_state.last_fetch_s, g_fetch_retry_not_before_s,
-          g_usage_sync_requested};
+          g_usage_sync_requested, g_link_failure, g_retry_cooldown_s, WIFI_SSID};
 }
 
 static TokenSync token_sync() {
-  const uint64_t retry = g_token_retry_at_s > g_fetch_retry_not_before_s
-      ? g_token_retry_at_s : g_fetch_retry_not_before_s;
-  return {g_token_fetch_failed, g_token_last_ok_s, retry, g_usage_sync_requested};
+  const uint64_t retry = g_link_failure != LinkFailure::None
+      ? g_fetch_retry_not_before_s
+      : (g_token_retry_at_s > g_fetch_retry_not_before_s
+          ? g_token_retry_at_s : g_fetch_retry_not_before_s);
+  return {g_token_fetch_failed, g_token_last_ok_s, retry,
+          g_usage_sync_requested, g_link_failure, g_retry_cooldown_s, WIFI_SSID};
 }
 
 static bool usage_animating() {
@@ -350,6 +367,32 @@ void render_diagnostics() {
   snap.unchanged_fetches = g_state.unchanged_fetches;
   snap.wake_count = g_wake_count;
   snap.last_result = g_last_result;
+#if RCRLCD_USAGE_ENABLED
+  char allow_buf[128] = {};
+  char token_buf[128] = {};
+  {
+    char last_buf[64] = {}, err_buf[64] = {};
+    format_fetch_diag(g_usage_last_diag, last_buf, sizeof(last_buf), false);
+    if (g_usage_last_err.attempted && g_usage_last_diag.ok) {
+      format_fetch_diag(g_usage_last_err, err_buf, sizeof(err_buf));
+      snprintf(allow_buf, sizeof(allow_buf), "%s | err:%s", last_buf, err_buf);
+    } else {
+      snprintf(allow_buf, sizeof(allow_buf), "%s", last_buf);
+    }
+    snap.allowance_diag = allow_buf;
+  }
+  {
+    char last_buf[64] = {}, err_buf[64] = {};
+    format_fetch_diag(g_token_last_diag, last_buf, sizeof(last_buf), false);
+    if (g_token_last_err.attempted && g_token_last_diag.ok) {
+      format_fetch_diag(g_token_last_err, err_buf, sizeof(err_buf));
+      snprintf(token_buf, sizeof(token_buf), "%s | err:%s", last_buf, err_buf);
+    } else {
+      snprintf(token_buf, sizeof(token_buf), "%s", last_buf);
+    }
+    snap.token_diag = token_buf;
+  }
+#endif
   PageRecord rec;
   rec.id = "diagnostics";
   rec.order = -1;
@@ -630,7 +673,12 @@ void console_dispatch(char c) {
       break;
     case 's':
       console_dump_state(g_view, g_runtime.mode, usb_host_present(), g_state,
-                         g_env, g_battery);
+                         g_env, g_battery
+#if RCRLCD_USAGE_ENABLED
+                         , &g_usage_last_diag, &g_usage_last_err,
+                         &g_token_last_diag, &g_token_last_err
+#endif
+                         );
       break;
     case 'q':
       if (g_state.pages.empty()) {
@@ -697,6 +745,12 @@ void setup() {
     g_dashboard_snapshot_valid = false;
     g_fetch_retry_not_before_s = 0;
     g_deck_frame_valid = false;
+    g_link_failure = LinkFailure::None;
+    g_retry_cooldown_s = 0;
+    g_usage_last_diag = FetchDiag{};
+    g_usage_last_err = FetchDiag{};
+    g_token_last_diag = FetchDiag{};
+    g_token_last_err = FetchDiag{};
   }
   display_init(panel_startup_for_deep_sleep_wake(resumed_from_deep_sleep));
   buttons::init(key_wake);
@@ -752,6 +806,7 @@ void setup() {
   g_runtime = initial_runtime_state(runtime_boot);
   if (g_runtime.mode == RuntimeMode::Host) {
     g_fetch_retry_not_before_s = 0;
+    g_retry_cooldown_s = 0;
 #if RCRLCD_USAGE_ENABLED
     g_token_retry_at_s = token_retry_on_host_entry(
         g_token_retry_at_s, g_token_fetch_failed);

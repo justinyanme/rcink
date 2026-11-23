@@ -242,11 +242,13 @@ Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
 applies it and builds one PageRecord. The `rcink.usage-limits.v2` `providers`
-array **is** the screen: the #3 collector lists its accounts (0–4 rows, unique
-ids, payload order — currently Codex, Kimi and Gemini/Antigravity) and the
-device mirrors exactly that. An account removed upstream drops out of the
-frame on the next successful fetch; a new one appears at once, even before its
-first observation. The collector selects an explicit stable account per
+array defines the active accounts (0–4 rows, unique ids — currently Codex,
+Kimi and Gemini/Antigravity); `UsageView` displays known providers in fixed order
+`claude`, `codex`, `gemini`, `kimi` (currently Codex, Gemini/Antigravity and
+Kimi), with any unknown ids following in payload order. An account removed
+upstream drops out of the frame on the next successful fetch; a new one appears
+at once, even before its first observation. The collector selects an explicit
+stable account per
 provider: Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing or invalid
 sources keep their row as Unavailable; the API retains each account's last
 successful observation under its original expiry. Unobserved rows show `--`,
@@ -263,9 +265,12 @@ The Deck's second page is a hand-drawn 400×300 Token view
 `src/render/token.cpp` and `src/render/token_view.cpp`. It fetches the private
 `GET /api/usage-tokens` at the same origin as `RCRLCD_USAGE_URL`, using the same
 read key and bounded HTTPS policy as Allowance. Its schema is
-`rcink.token-usage.v1`; all daily and lifetime values decode as 64-bit integers.
+`rcink.token-usage.v2`, mirroring the active token-capable providers from the
+Allowance list (0–3 of `claude`/`codex`/`gemini`, vertically centered when fewer
+than three; `gemini` sums Antigravity CLI `transcript.jsonl` step tokens in
+`Asia/Shanghai`). All daily and lifetime values decode as 64-bit integers.
 
-- Claude, Codex and Gemini use the Allowance names/logos. Each row shows its
+- Active token providers keep the Allowance names/logos. Each row shows its
   last-seven-day total, today versus the mean of the seven complete days before
   it, a per-row-scaled 30-day bar chart, and lifetime `ODO`. Today's bar is
   hollow and the Usual-day marker is dotted. All-zero rows remain explicit.
@@ -273,8 +278,12 @@ read key and bounded HTTPS policy as Allowance. Its schema is
   Provider this week, or waits when every seven-day total is zero. OLD DATA or a
   Token failure suppresses the tear headline without hiding retained numbers.
 - The footer independently reports `Synced HH:MM`, `OLD DATA · M4 HH:MM`,
-  `SYNC FAILED · retry HH:MM`, or `SYNCING`. Allowance and Token failures do not
-  contaminate each other's page.
+  `SYNC FAILED · retry HH:MM`, `NO CLOCK · waiting for NTP`, `NO WIFI`,
+  `NO NTP`, or `SYNCING`. Device-level link failures (`NO WIFI` with
+  `No Wi-Fi: <SSID>` headline, or `NO NTP` with `NTP timed out. Clock not set.`
+  headline when clock-blocking NTP fails) are shared by both Pages and fall back
+  to static coarse intervals (`retry ~1m`, `retry ~30m`, etc.) when no clock is
+  set; Page-level `SYNC FAILED` remains independent between Allowance and Token.
 - At local midnight the pure view shifts the cached series and appends a zero
   today; it never relabels yesterday. The last complete validated response has
   its own bounded, versioned `token` NVS blob, restored on boot/wake and written
@@ -282,7 +291,7 @@ read key and bounded HTTPS policy as Allowance. Its schema is
 - HOST alone animates a 0.9-second left-to-right bar sweep and odometer roll on
   page entry or Token sync. There is no idle Token animation; ACTIVE/ECO and
   retained deep-sleep frames are static.
-- Console `q` on this page prints its `rcink.token-view.v1` `layout_json`, which
+- Console `q` on this page prints its `rcink.token-view.v2` `layout_json`, which
   is also the redraw fingerprint and contains the shifted series and bar model.
 
 #### Road view
@@ -322,14 +331,19 @@ Synced 11:34                        [batt] 99% HOST
   row is stale the screen says it once: `No new numbers since HH:MM.` with an
   `OLD DATA` footer (`checked HH:MM`) when the GET worked but the source has
   gone quiet, or `Can't sync. Numbers from HH:MM.` with `SYNC FAILED` when it
-  did not. An untrusted clock shows `What day is it? Clock not set.` and no
-  pace ticks. Never-observed rows show `--` and `no data yet`, with no car.
-- Source samples expire 10 minutes after they are taken, but the source, its
-  uploader and the device each run their own 5-minute schedule. In `HOST` the
-  device therefore refetches 10 s after a sample that was fresh at the last
-  fetch expires, then every 60 s while the source is late, until 30 minutes
-  after that sample; then it falls back to the normal 5-minute poll. Battery
-  modes keep their adaptive schedule.
+  did not. Device-level link failures beat the initial `NO CLOCK · waiting for NTP`
+  fallback: Wi-Fi association failure shows `No Wi-Fi: <SSID>` in the headline
+  with a `NO WIFI` footer, while clock-blocking NTP timeout shows
+  `NTP timed out. Clock not set.` with a `NO NTP` footer (showing `retry ~1m` /
+  `retry ~30m` when the clock is unset). An untrusted clock still keeps rows
+  stale with `What day is it? Clock not set.` before the first link failure and
+  draws no pace ticks. Never-observed rows show `--` and `no data yet`, with no car.
+- Source samples expire 10 minutes after they are taken, while the source, its
+  uploader and the device each run independent schedules. In `HOST` the device
+  pre-fetches 60 s before a fresh sample expires (clamped to at least 60 s after
+  the previous fetch), then chases every 60 s while the source is late until
+  30 minutes after that sample; then it falls back to the normal 5-minute poll.
+  Battery modes keep their adaptive schedule.
 - The `gemini` row is Antigravity's Gemini weekly pool, marked by the small
   arch logo.
 - In `HOST` only, the view animates at ~7 fps (lane marks scroll, cars bob and
@@ -355,14 +369,21 @@ HTTPS uses GTS Root R4 (certificate source and fingerprint in
 10 seconds; TLS handshake, response headers and the body get 20 seconds each.
 On the device's Wi-Fi (measured 2026-11-12: ~250 ms RTT with loss to
 Cloudflare) a handshake takes 5-10 s, about 1 s of it certificate checks, so
-10-second deadlines failed roughly one fetch in six. `[usage] GET status=N after
-M ms` logs each request's time. HTTP/1.0 requests close-delimited identity
-bodies; unexpected transfer encoding is rejected. Bodies are bounded to 4096 bytes for
-Allowance and 8192 bytes for Token. Redirects are refused, so the read key cannot follow a
-Location header. A failed HTTP/status/schema/size/time check preserves the last
-good snapshot and displays `SYNC FAILED`; serial logs expose only
-sanitized diagnostics/status codes. An unknown clock cannot display fresh rows
-or cause a TLS bypass. No insecure TLS fallback exists.
+10-second deadlines failed roughly one fetch in six. Each fetch logs separate
+DNS, GET, and body timings (`GET status=N dns=M ms get=K ms (attempt A)`).
+Within the same Wi-Fi session, transient transport or gateway errors
+(`status < 0`, `502`/`503`/`504`, DNS failure, or an incomplete body) retry once
+after 500 ms with a fresh TLS/HTTP client; 4xx responses, header rejections,
+oversized bodies, and schema decode failures never retry. HTTP/1.0 requests
+close-delimited identity bodies; unexpected transfer encoding is rejected.
+Bodies are bounded to 4096 bytes for Allowance and 8192 bytes for Token.
+Redirects are refused, so the read key cannot follow a Location header. A failed
+HTTP/status/schema/size/time check preserves the last good snapshot and
+displays `SYNC FAILED`, while `RTC_DATA_ATTR` diagnostics retain the sanitized
+last fetch and last failure details for console `s` and diagnostics page `d`;
+serial logs expose only sanitized diagnostics/status codes. An unknown clock
+cannot display fresh rows or cause a TLS bypass. No insecure TLS fallback
+exists.
 
 ### Persistent/offline lifecycle (#5)
 

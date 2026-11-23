@@ -85,19 +85,40 @@ bool ranged(JsonVariantConst value, int lo, int hi, int& out) {
   out = value.as<int>();
   return out >= lo && out <= hi;
 }
+
+int provider_display_rank(const std::string& id) {
+  if (id == "claude") return 0;
+  if (id == "codex") return 1;
+  if (id == "gemini") return 2;
+  if (id == "kimi") return 3;
+  return 4;
+}
 }  // namespace
 
 UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
                             const UsageSync& sync) {
   UsageView view;
-  view.count = snapshot.count;
+  const size_t count = std::min(snapshot.count, kUsageMaxProviders);
+  view.count = count;
+  std::array<size_t, kUsageMaxProviders> order;
+  for (size_t i = 0; i < count; i++) order[i] = i;
+  for (size_t i = 1; i < count; i++) {
+    const size_t idx = order[i];
+    const int rank = provider_display_rank(snapshot.providers[idx].id);
+    size_t j = i;
+    while (j > 0 && provider_display_rank(snapshot.providers[order[j - 1]].id) > rank) {
+      order[j] = order[j - 1];
+      j--;
+    }
+    order[j] = idx;
+  }
   const bool clock = now >= kClockMinimum;
   double pace[kUsageMaxProviders] = {-1, -1, -1, -1};
   uint64_t newest_sample = 0;
   bool any = false, all_stale = true;
 
-  for (size_t i = 0; i < snapshot.count; i++) {
-    const UsageProvider& p = snapshot.providers[i];
+  for (size_t i = 0; i < count; i++) {
+    const UsageProvider& p = snapshot.providers[order[i]];
     UsageRowView& row = view.rows[i];
     row.id = p.id;
     if (p.status == UsageStatus::Unavailable) { row.verdict = "no data yet"; continue; }
@@ -129,14 +150,23 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
   all_stale = any && all_stale;
 
   // Name the odd one out; when everything is stale the footer says it once.
-  for (size_t i = 0; i < snapshot.count; i++) {
+  for (size_t i = 0; i < count; i++) {
     UsageRowView& row = view.rows[i];
     if (row.state != UsageRowState::Stale || all_stale) continue;
-    const uint64_t fetched = snapshot.providers[i].fetched_at;
+    const uint64_t fetched = snapshot.providers[order[i]].fetched_at;
     row.chip = clock && now + 300 >= fetched ? age_label(now > fetched ? now - fetched : 0) : "stale";
   }
 
-  if (!clock) {
+  if (sync.link_failure == LinkFailure::WifiFailed) {
+    view.headline_icon = UsageIcon::Face;
+    view.headline_face = UsageMood::Low;
+    view.headline = wifi_failed_headline(sync.wifi_ssid);
+    view.pick = -1;
+  } else if (sync.link_failure == LinkFailure::NtpFailed) {
+    view.headline_icon = UsageIcon::Clock;
+    view.headline = ntp_failed_headline();
+    view.pick = -1;
+  } else if (!clock) {
     view.headline_icon = UsageIcon::Clock;
     view.headline = "What day is it? Clock not set.";
   } else if (!any) {
@@ -182,12 +212,21 @@ UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
   if (sync.syncing) {  // acknowledge the press; the fetch takes several seconds
     view.footer_chip = "SYNCING";
     view.footer_text = "fetching now";
+  } else if (sync.link_failure == LinkFailure::WifiFailed) {
+    view.footer_chip = "NO WIFI";
+    view.footer_text = retry_footer_text(
+        now, clock, sync.retry_at_s, sync.retry_cooldown_s);
+  } else if (sync.link_failure == LinkFailure::NtpFailed) {
+    view.footer_chip = "NO NTP";
+    view.footer_text = retry_footer_text(
+        now, clock, sync.retry_at_s, sync.retry_cooldown_s);
   } else if (!clock) {
     view.footer_chip = "NO CLOCK";
     view.footer_text = "waiting for NTP";
   } else if (sync.fetch_failed) {
     view.footer_chip = "SYNC FAILED";
-    view.footer_text = sync.retry_at_s > now ? "retry " + local_hhmm(sync.retry_at_s) : "retrying";
+    view.footer_text = retry_footer_text(
+        now, clock, sync.retry_at_s, sync.retry_cooldown_s);
   } else if (all_stale) {
     // "Synced" would read as fresh; the GET worked but the numbers are old.
     view.footer_chip = "OLD DATA";

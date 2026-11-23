@@ -84,6 +84,7 @@ bool start_network_refresh(RefreshAppState app, bool force_token) {
       network_failure_retry_sec(app.runtime_mode, battery_interval(app),
                                 RCRLCD_USAGE_ENABLED);
   app.retry_not_before_s = (uint64_t)time(nullptr) + cooldown;
+  app.retry_cooldown_s = cooldown;
   Serial.printf("[auto] retry gate %u s result=task-failed\n",
                 (unsigned)cooldown);
   return false;
@@ -100,9 +101,15 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
   // The worker deliberately owns no board state. Reconcile on the Arduino loop
   // task so NVS, ADC, and RTC/I2C cannot race rendering or input.
   if (completion.clock_synced) write_rtc_from_clock();
+  app.link_failure = completion.link_failure;
   app.battery = read_battery();
   const bool success = fetch_succeeded(completion.result);
 #if RCRLCD_USAGE_ENABLED
+  if (completion.usage_diag.attempted) {
+    completion.usage_diag.at_s = completion.completed_at_s;
+    app.usage_last_diag = completion.usage_diag;
+    if (!completion.usage_diag.ok) app.usage_last_err = completion.usage_diag;
+  }
   app.usage_fetch_failed = !success;
   if (success) {
     merge_usage(completion.usage, app.usage);
@@ -121,6 +128,11 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
     }
     record_successful_fetch(app.device, observations);
     app.device.last_fetch_s = completion.completed_at_s;
+  }
+  if (completion.token_diag.attempted) {
+    completion.token_diag.at_s = completion.completed_at_s;
+    app.token_last_diag = completion.token_diag;
+    if (!completion.token_diag.ok) app.token_last_err = completion.token_diag;
   }
   if (completion.token_attempted) {
     app.token_fetch_failed = !completion.token_ok;
@@ -166,19 +178,26 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
   }
 #endif
   app.retry_not_before_s = gate;
+  app.retry_cooldown_s = (uint32_t)(gate - completion.completed_at_s);
 #if RCRLCD_USAGE_ENABLED
   // After the gate is known, so a failure can say when it will retry.
+  const uint64_t token_retry = app.link_failure != LinkFailure::None
+      ? app.retry_not_before_s
+      : std::max(app.token_retry_at_s, app.retry_not_before_s);
   allowance_page_changed = update_usage_page(
       app.device, app.usage, completion.completed_at_s,
-      {!success, app.device.last_fetch_s, app.retry_not_before_s, false});
+      {!success, app.device.last_fetch_s, app.retry_not_before_s, false,
+       app.link_failure, app.retry_cooldown_s, WIFI_SSID});
   const bool token_changed = update_token_page(
       app.device, app.token, completion.completed_at_s,
-      {app.token_fetch_failed, app.token_last_ok_s,
-       std::max(app.token_retry_at_s, app.retry_not_before_s), false});
+      {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
+       app.link_failure, app.retry_cooldown_s, WIFI_SSID});
   usage_page_changed = allowance_page_changed || token_changed;
 #endif
-  Serial.printf("[auto] retry gate %u s result=%u\n",
-                (unsigned)(gate - completion.completed_at_s), (unsigned)completion.result);
+  Serial.printf("[auto] retry gate %u s result=%u link=%u\n",
+                (unsigned)(gate - completion.completed_at_s),
+                (unsigned)completion.result,
+                (unsigned)app.link_failure);
   return true;
 }
 
@@ -198,11 +217,14 @@ void adjust_refresh_gate_for_runtime_change(RefreshAppState app,
     // A real data host gets its own fixed policy, independent of an older
     // battery-mode cooldown.
     app.retry_not_before_s = 0;
+    app.retry_cooldown_s = 0;
   } else if (previous == RuntimeMode::Host &&
              app.retry_not_before_s > now) {
-    const uint64_t battery_gate = now + battery_interval(app);
+    const uint32_t adaptive = battery_interval(app);
+    const uint64_t battery_gate = now + adaptive;
     if (app.retry_not_before_s < battery_gate) {
       app.retry_not_before_s = battery_gate;
+      app.retry_cooldown_s = adaptive;
     }
   }
 }

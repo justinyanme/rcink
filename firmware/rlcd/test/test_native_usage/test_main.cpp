@@ -74,38 +74,59 @@ void test_validated_snapshot_becomes_a_truthful_road() {
 
 void test_bad_responses_do_not_replace_last_good_visible_values() {
   UsageSnapshot cache;
-  TEST_ASSERT_TRUE(decode_usage(response(), cache));
+  std::string reason = "stale-prior";
+  TEST_ASSERT_TRUE(decode_usage(response(), cache, &reason));
+  TEST_ASSERT_TRUE(reason.empty());
   const auto original = usage_page(cache, 1794297900, {}).layout_json;
-  const std::function<void(JsonDocument&)> mutations[] = {
-    [](JsonDocument& d) { d["schema"] = "unsupported"; },
-    [](JsonDocument& d) { d["extra"] = true; },
-    [](JsonDocument& d) { d["providers"][0]["id"] = ""; },
-    [](JsonDocument& d) { d["providers"][0]["id"] = "a-way-too-long-provider-id"; },
-    [](JsonDocument& d) { d["providers"][0]["id"] = 42; },
-    [](JsonDocument& d) { d["providers"][1]["id"] = "claude"; },
-    [](JsonDocument& d) { d["providers"][0]["usedPercent"] = -1; },
-    [](JsonDocument& d) { d["providers"][0]["usedPercent"] = "33.5"; },
-    [](JsonDocument& d) { d["providers"][0]["remainingPercent"] = 70; },
-    [](JsonDocument& d) { d["providers"][0]["fetchedAt"] = 1794298600; d["providers"][0]["expiresAt"] = 1794299200; },
-    [](JsonDocument& d) { d["providers"][0]["fetchedAt"] = 1794297600.5; },
-    [](JsonDocument& d) { d["providers"][0]["expiresAt"] = 1; },
-    [](JsonDocument& d) { d["providers"][0]["resetsAt"] = 0; },
-    [](JsonDocument& d) { d["providers"][0]["status"] = "fresh"; },
-    [](JsonDocument& d) { d["providers"][1]["remainingPercent"] = 100; },
-    [](JsonDocument& d) { d["providers"][1].as<JsonObject>().remove("resetsAt"); },
-    [](JsonDocument& d) { d["servedAt"] = 1794298200; },
+  const struct {
+    std::function<void(JsonDocument&)> mutate;
+    const char* expected_reason;
+  } mutations[] = {
+    {[](JsonDocument& d) { d["schema"] = "unsupported"; }, "schema"},
+    {[](JsonDocument& d) { d["extra"] = true; }, "root-fields"},
+    {[](JsonDocument& d) { d["providers"][0]["id"] = ""; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["id"] = "a-way-too-long-provider-id"; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["id"] = 42; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][1]["id"] = "claude"; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["usedPercent"] = -1; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["usedPercent"] = "33.5"; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["remainingPercent"] = 70; }, "row[0](claude):percent-sum"},
+    {[](JsonDocument& d) { d["providers"][0]["fetchedAt"] = 1794298600; d["providers"][0]["expiresAt"] = 1794299200; }, "row[0](claude):fetched-future"},
+    {[](JsonDocument& d) { d["providers"][0]["fetchedAt"] = 1794297600.5; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["expiresAt"] = 1; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["resetsAt"] = 0; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][0]["status"] = "fresh"; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][1]["remainingPercent"] = 100; }, nullptr},
+    {[](JsonDocument& d) { d["providers"][1].as<JsonObject>().remove("resetsAt"); }, nullptr},
+    {[](JsonDocument& d) { d["servedAt"] = 1794298200; }, "row[0](claude):ok-expired"},
   };
-  for (const auto& mutate : mutations) {
+  for (const auto& entry : mutations) {
     JsonDocument doc;
     deserializeJson(doc, response());
-    mutate(doc);
+    entry.mutate(doc);
     std::string malformed;
     serializeJson(doc, malformed);
-    TEST_ASSERT_FALSE(decode_usage(malformed, cache));
+    reason.clear();
+    TEST_ASSERT_FALSE(decode_usage(malformed, cache, &reason));
+    TEST_ASSERT_FALSE(reason.empty());
+    if (entry.expected_reason) {
+      TEST_ASSERT_EQUAL_STRING(entry.expected_reason, reason.c_str());
+    }
     TEST_ASSERT_EQUAL_STRING(original.c_str(), usage_page(cache, 1794297900, {}).layout_json.c_str());
   }
-  for (auto body : {std::string("{broken"), response() + "garbage", std::string(4097, ' ')}) {
-    TEST_ASSERT_FALSE(decode_usage(body, cache));
+  const struct {
+    std::string body;
+    const char* expected_reason;
+  } raw_cases[] = {
+    {std::string("{broken"), nullptr},
+    {response() + "garbage", "trailing-data"},
+    {std::string(4097, ' '), "oversized"},
+  };
+  for (const auto& c : raw_cases) {
+    reason.clear();
+    TEST_ASSERT_FALSE(decode_usage(c.body, cache, &reason));
+    TEST_ASSERT_FALSE(reason.empty());
+    if (c.expected_reason) TEST_ASSERT_EQUAL_STRING(c.expected_reason, reason.c_str());
   }
   // A failed GET keeps the still-valid sample and says so once, in the footer.
   const auto failed = view_of(cache, 1794297900, {true, 1794297000, 1794298200});
@@ -177,8 +198,12 @@ void test_four_rows_keep_independent_freshness_position_and_projection() {
   UsageSnapshot snapshot;
   TEST_ASSERT_TRUE(decode_usage(four_response(), snapshot));
   const auto view = view_of(snapshot, 1794298000);
-  const int left[] = {66, 58, 100, 25};
-  for (int i = 0; i < 4; i++) TEST_ASSERT_EQUAL(left[i], view.rows[i].left);
+  const char* const ids[] = {"claude", "codex", "gemini", "kimi"};
+  const int left[] = {66, 58, 25, 100};
+  for (int i = 0; i < 4; i++) {
+    TEST_ASSERT_EQUAL_STRING(ids[i], view.rows[i].id.c_str());
+    TEST_ASSERT_EQUAL(left[i], view.rows[i].left);
+  }
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[0].state);
   // Codex's own reset has passed without a new sample: stale, pace at the end.
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
@@ -186,29 +211,29 @@ void test_four_rows_keep_independent_freshness_position_and_projection() {
   TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].pace_px);
   TEST_ASSERT_EQUAL(63, view.rows[1].car_px);
   TEST_ASSERT_EQUAL_STRING("5m old", view.rows[1].chip.c_str());
-  // Kimi has no reset time: honest numbers, no pace tick or projection.
-  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[2].state);
-  TEST_ASSERT_EQUAL(0, view.rows[2].car_px);
-  TEST_ASSERT_EQUAL(-1, view.rows[2].pace_px);
-  TEST_ASSERT_TRUE(view.rows[2].verdict.empty());
   // Gemini burns 75 % in 28 % of its week: the car is far past the pace tick
   // and it runs dry days before the reset.
-  const auto& gemini = view.rows[3];
+  const auto& gemini = view.rows[2];
   TEST_ASSERT_EQUAL_STRING("5d 1h", gemini.countdown.c_str());
   TEST_ASSERT_EQUAL(113, gemini.car_px);
   TEST_ASSERT_EQUAL(42, gemini.pace_px);
   TEST_ASSERT_TRUE(gemini.runs_dry);
   TEST_ASSERT_EQUAL_STRING("dry 4d early", gemini.verdict.c_str());
   TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)gemini.mood);
+  // Kimi has no reset time: honest numbers, no pace tick or projection.
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[3].state);
+  TEST_ASSERT_EQUAL(0, view.rows[3].car_px);
+  TEST_ASSERT_EQUAL(-1, view.rows[3].pace_px);
+  TEST_ASSERT_TRUE(view.rows[3].verdict.empty());
   TEST_ASSERT_EQUAL(0, view.pick);
 
   // Source expiry is per row; a fresh GET (servedAt) does not refresh ages.
   const auto later = view_of(snapshot, 1794298380, {true, 1794298000, 1794298680});
   TEST_ASSERT_EQUAL_STRING("13m old", later.rows[0].chip.c_str());
   TEST_ASSERT_EQUAL_STRING("12m old", later.rows[1].chip.c_str());
-  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)later.rows[2].state);
-  TEST_ASSERT_TRUE(later.rows[2].chip.empty());
-  TEST_ASSERT_EQUAL_STRING("10m old", later.rows[3].chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("10m old", later.rows[2].chip.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)later.rows[3].state);
+  TEST_ASSERT_TRUE(later.rows[3].chip.empty());
   TEST_ASSERT_EQUAL_STRING("retry 16:18", later.footer_text.c_str());
 }
 
@@ -222,19 +247,19 @@ void test_headline_recommends_headroom_and_names_who_ran_out() {
   s.providers[3] = live(11.0, now, now + 74 * 3600 + 960, "gemini");
   auto view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
-  TEST_ASSERT_EQUAL(2, view.pick);  // Kimi: furthest above its even-pace line
+  TEST_ASSERT_EQUAL(3, view.pick);  // Kimi: furthest above its even-pace line
   TEST_ASSERT_EQUAL((int)UsageMood::Hot, (int)view.rows[0].mood);
   TEST_ASSERT_EQUAL_STRING("dry 25h early", view.rows[0].verdict.c_str());
   TEST_ASSERT_EQUAL_STRING("dry 6h early", view.rows[1].verdict.c_str());
-  TEST_ASSERT_EQUAL_STRING("~91% to spare", view.rows[2].verdict.c_str());
-  TEST_ASSERT_EQUAL((int)UsageMood::Open, (int)view.rows[2].mood);
+  TEST_ASSERT_EQUAL_STRING("~91% to spare", view.rows[3].verdict.c_str());
+  TEST_ASSERT_EQUAL((int)UsageMood::Open, (int)view.rows[3].mood);
 
   s.providers[0] = live(94.3, now, now + 27 * 3600 + 600, "claude");
   s.providers[1] = live(100, now, now + 5 * 3600 + 1200, "codex");
   view = view_of(s, now);
   TEST_ASSERT_EQUAL((int)UsageMood::Nap, (int)view.headline_face);
   TEST_ASSERT_EQUAL_STRING("Codex is napping. Try", view.headline.c_str());
-  TEST_ASSERT_EQUAL(2, view.pick);
+  TEST_ASSERT_EQUAL(3, view.pick);
   TEST_ASSERT_EQUAL_STRING("out of gas", view.rows[1].verdict.c_str());
   TEST_ASSERT_TRUE(view.rows[1].runs_dry);
   TEST_ASSERT_EQUAL(kUsageRoadPx, view.rows[1].car_px);  // parked at the pump
@@ -259,8 +284,10 @@ void test_host_refetches_when_samples_expire_and_chases_a_late_source() {
   s.providers[1] = live(20, t, t + 86400, "codex");
   s.providers[1].expires_at = t + 300;
   TEST_ASSERT_EQUAL_UINT64(0, usage_refetch_at_s(s, 0));  // never fetched: normal path
-  // Fresh at the last fetch: look again just after the earliest expiry.
-  TEST_ASSERT_EQUAL_UINT64(t + 300 + kUsageExpiryGraceS, usage_refetch_at_s(s, t));
+  // Fresh at the last fetch: pre-fetch 60 s before the earliest expiry.
+  TEST_ASSERT_EQUAL_UINT64(t + 300 - kUsagePreExpiryLeadS, usage_refetch_at_s(s, t));
+  // Already inside the pre-expiry window: clamp to at least kUsageChaseRetryS so it never spins.
+  TEST_ASSERT_EQUAL_UINT64(t + 255 + kUsageChaseRetryS, usage_refetch_at_s(s, t + 255));
   // That fetch found the same expired sample: the source is late, check back in a minute.
   TEST_ASSERT_EQUAL_UINT64(t + 310 + kUsageChaseRetryS, usage_refetch_at_s(s, t + 310));
   // Half an hour after the sample, a quiet source falls back to the normal interval.
@@ -310,6 +337,7 @@ void test_restart_restores_original_observations_without_redrawing_unchanged_pag
   TEST_ASSERT_TRUE(decode_usage_view(device.pages[0].layout_json, view));
   TEST_ASSERT_EQUAL_STRING("10m old", view.rows[0].chip.c_str());
   TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[2].state);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)view.rows[3].state);
   TEST_ASSERT_TRUE(update_usage_page(device, restored, 0, {true, 0, 0}));
   TEST_ASSERT_TRUE(decode_usage_view(device.pages[0].layout_json, view));
   for (const auto& row : view.rows) TEST_ASSERT_NOT_EQUAL((int)UsageRowState::Live, (int)row.state);
@@ -412,12 +440,15 @@ void test_later_stale_or_missing_evidence_retains_values_until_a_new_observation
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[1].state);
   TEST_ASSERT_EQUAL(58, view.rows[1].left);
   TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[2].state);
-  TEST_ASSERT_EQUAL(100, view.rows[2].left);
+  TEST_ASSERT_EQUAL(25, view.rows[2].left);
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)view.rows[3].state);
+  TEST_ASSERT_EQUAL(100, view.rows[3].left);
   TEST_ASSERT_EQUAL_UINT64(1794297660, cache.providers[1].fetched_at);
 }
 
 void test_provider_list_mirrors_the_source_adding_dropping_and_naming() {
-  // Fewer accounts upstream: three rows in payload order, no fixed slots.
+  // Fewer accounts upstream: payload stays codex, kimi, gemini while view shows
+  // codex, gemini, kimi.
   UsageSnapshot three;
   TEST_ASSERT_TRUE(decode_usage(three_response(), three));
   TEST_ASSERT_EQUAL(3, three.count);
@@ -428,6 +459,24 @@ void test_provider_list_mirrors_the_source_adding_dropping_and_naming() {
   TEST_ASSERT_EQUAL(3, view.count);
   TEST_ASSERT_EQUAL_STRING("codex", view.rows[0].id.c_str());
   TEST_ASSERT_EQUAL(58, view.rows[0].left);
+  TEST_ASSERT_EQUAL_STRING("gemini", view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL(25, view.rows[1].left);
+  TEST_ASSERT_EQUAL_STRING("kimi", view.rows[2].id.c_str());
+  TEST_ASSERT_EQUAL(100, view.rows[2].left);
+
+  // Unknown providers appear after known providers in relative payload order.
+  const uint64_t now = 1794362400;
+  UsageSnapshot mixed;
+  mixed.count = 4;
+  mixed.providers[0] = live(10, now, now + 86400, "beta");
+  mixed.providers[1] = live(20, now, now + 86400, "kimi");
+  mixed.providers[2] = live(30, now, now + 86400, "alpha");
+  mixed.providers[3] = live(40, now, now + 86400, "codex");
+  const auto mixed_view = view_of(mixed, now);
+  TEST_ASSERT_EQUAL_STRING("codex", mixed_view.rows[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("kimi", mixed_view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("beta", mixed_view.rows[2].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("alpha", mixed_view.rows[3].id.c_str());
 
   // Merging over a four-account cache drops the removed account's row and
   // takes the newer per-account sample.
@@ -439,6 +488,26 @@ void test_provider_list_mirrors_the_source_adding_dropping_and_naming() {
   TEST_ASSERT_EQUAL_UINT64(1794297800, cache.providers[0].fetched_at);
   TEST_ASSERT_EQUAL_UINT64(1794297780, cache.providers[2].fetched_at);
   TEST_ASSERT_EQUAL(3, view_of(cache, 1794297900).count);
+
+  // Reordering upstream providers updates cached payload order without losing per-id samples.
+  UsageSnapshot custom_cache;
+  custom_cache.served_at = now;
+  custom_cache.count = 2;
+  custom_cache.providers[0] = live(15, now, now + 86400, "beta");
+  custom_cache.providers[1] = live(35, now, now + 86400, "alpha");
+  UsageSnapshot reordered;
+  reordered.served_at = now;
+  reordered.count = 2;
+  reordered.providers[0] = live(99, now - 60, now + 86400, "alpha");
+  reordered.providers[1] = live(99, now - 60, now + 86400, "beta");
+  TEST_ASSERT_TRUE(merge_usage(reordered, custom_cache));
+  TEST_ASSERT_EQUAL_STRING("alpha", custom_cache.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_FLOAT(35, custom_cache.providers[0].used_percent);
+  TEST_ASSERT_EQUAL_UINT64(now - 180, custom_cache.providers[0].fetched_at);
+  TEST_ASSERT_EQUAL_STRING("beta", custom_cache.providers[1].id.c_str());
+  TEST_ASSERT_EQUAL_FLOAT(15, custom_cache.providers[1].used_percent);
+  TEST_ASSERT_EQUAL_UINT64(now - 180, custom_cache.providers[1].fetched_at);
+  TEST_ASSERT_FALSE(merge_usage(reordered, custom_cache));
 
   // No accounts at all is a valid, honest empty screen.
   JsonDocument doc;
@@ -504,6 +573,78 @@ void test_encoded_view_is_bounded_and_rejects_corruption() {
   }
 }
 
+void test_link_failures_beat_missing_clock_and_surface_ssid() {
+  UsageSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_usage(response(), snapshot));
+
+  // Wi-Fi failure without a wall clock beats NO CLOCK, shows SSID, and avoids epoch HH:MM.
+  const auto no_clock_wifi = view_of(
+      snapshot, 0, {false, 0, 60, false, LinkFailure::WifiFailed, 60, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL((int)UsageIcon::Face, (int)no_clock_wifi.headline_icon);
+  TEST_ASSERT_EQUAL((int)UsageMood::Low, (int)no_clock_wifi.headline_face);
+  TEST_ASSERT_EQUAL_STRING("No Wi-Fi: OnePlus 15 EAA8", no_clock_wifi.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, no_clock_wifi.pick);
+  TEST_ASSERT_EQUAL_STRING("NO WIFI", no_clock_wifi.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry ~1m", no_clock_wifi.footer_text.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Stale, (int)no_clock_wifi.rows[0].state);
+  TEST_ASSERT_EQUAL(-1, no_clock_wifi.rows[0].pace_px);
+  TEST_ASSERT_EQUAL_STRING("--", no_clock_wifi.rows[0].countdown.c_str());
+
+  // Wi-Fi failure with a valid clock still surfaces the SSID and keeps live rows.
+  const auto clock_wifi = view_of(
+      snapshot, 1794297900,
+      {true, 1794297000, 1794298200, false, LinkFailure::WifiFailed, 60, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL_STRING("No Wi-Fi: OnePlus 15 EAA8", clock_wifi.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, clock_wifi.pick);
+  TEST_ASSERT_EQUAL_STRING("NO WIFI", clock_wifi.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry 16:10", clock_wifi.footer_text.c_str());
+  TEST_ASSERT_EQUAL((int)UsageRowState::Live, (int)clock_wifi.rows[0].state);
+
+  // Sanitization & pixel-budgeted truncation across extreme SSID widths.
+  for (const char* blank : {(const char*)nullptr, "", "   ", "\xE4\xB8\xAD\xE6\x96\x87\xE7\x83\xAD\xE7\x82\xB9"}) {
+    const auto fallback = view_of(
+        snapshot, 0, {false, 0, 60, false, LinkFailure::WifiFailed, 60, blank});
+    TEST_ASSERT_EQUAL_STRING("No Wi-Fi.", fallback.headline.c_str());
+  }
+  for (const char* wide : {"MyVeryLongHomeWifiName", "WWWWWWWWWWWWWWWW",
+                           "iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii"}) {
+    const auto truncated = view_of(
+        snapshot, 0, {false, 0, 60, false, LinkFailure::WifiFailed, 60, wide});
+    TEST_ASSERT_TRUE(truncated.headline.rfind("No Wi-Fi: ", 0) == 0);
+    TEST_ASSERT_TRUE(truncated.headline.size() >= 3 &&
+                     truncated.headline.substr(truncated.headline.size() - 3) == "...");
+    TEST_ASSERT_LESS_OR_EQUAL(kMaxWifiHeadlinePx, freesans9_width(truncated.headline));
+    TEST_ASSERT_LESS_OR_EQUAL(38, truncated.headline.size());
+  }
+
+  // NTP timeout blocking HTTPS with no wall clock shows NO NTP + coarse interval.
+  const auto no_ntp_30m = view_of(
+      snapshot, 0, {false, 0, 1800, false, LinkFailure::NtpFailed, 1800, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL((int)UsageIcon::Clock, (int)no_ntp_30m.headline_icon);
+  TEST_ASSERT_EQUAL_STRING("NTP timed out. Clock not set.", no_ntp_30m.headline.c_str());
+  TEST_ASSERT_EQUAL(-1, no_ntp_30m.pick);
+  TEST_ASSERT_EQUAL_STRING("NO NTP", no_ntp_30m.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry ~30m", no_ntp_30m.footer_text.c_str());
+  TEST_ASSERT_EQUAL_STRING("retry ~2h",
+      view_of(snapshot, 0, {false, 0, 7200, false, LinkFailure::NtpFailed, 7200, "OnePlus 15 EAA8"}).footer_text.c_str());
+  TEST_ASSERT_EQUAL_STRING("retrying",
+      view_of(snapshot, 60, {false, 0, 60, false, LinkFailure::NtpFailed, 60, "OnePlus 15 EAA8"}).footer_text.c_str());
+
+  // SYNCING beats both NO WIFI and NO NTP.
+  for (LinkFailure link : {LinkFailure::WifiFailed, LinkFailure::NtpFailed}) {
+    const auto syncing = view_of(
+        snapshot, 0, {false, 0, 60, true, link, 60, "OnePlus 15 EAA8"});
+    TEST_ASSERT_EQUAL_STRING("SYNCING", syncing.footer_chip.c_str());
+    TEST_ASSERT_EQUAL_STRING("fetching now", syncing.footer_text.c_str());
+  }
+
+  // Before the first link failure without a clock, NO CLOCK still shows.
+  const auto cold = view_of(snapshot, 0, {false, 0, 0, false, LinkFailure::None, 0, "OnePlus 15 EAA8"});
+  TEST_ASSERT_EQUAL_STRING("What day is it? Clock not set.", cold.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("NO CLOCK", cold.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("waiting for NTP", cold.footer_text.c_str());
+}
+
 int main() {
   setenv("TZ", "SGT-8", 1);  // the device's LOCAL_TZ
   tzset();
@@ -521,5 +662,6 @@ int main() {
   RUN_TEST(test_provider_list_mirrors_the_source_adding_dropping_and_naming);
   RUN_TEST(test_persistence_does_not_change_display_rounding_near_a_half_percent);
   RUN_TEST(test_encoded_view_is_bounded_and_rejects_corruption);
+  RUN_TEST(test_link_failures_beat_missing_clock_and_surface_ssid);
   return UNITY_END();
 }

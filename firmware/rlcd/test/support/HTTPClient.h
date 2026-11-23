@@ -11,11 +11,28 @@ class HTTPClient {
   void collectHeaders(const char**, unsigned) {}
   void setUserAgent(const char*) {}
   void addHeader(const char*, const char*) {}
-  int GET() { http_fixture::requests++; return http_fixture::status; }
+  int GET() {
+    http_fixture::requests++;
+    http_fixture::cursor = 0;
+    test_millis += http_fixture::get_ms;
+    if (http_fixture::requests > 1 && http_fixture::use_second_status) {
+      return http_fixture::status_after_first;
+    }
+    return http_fixture::status;
+  }
   String header(const char* name) { return strcmp(name, "Content-Type") == 0 ? http_fixture::media : http_fixture::transfer; }
-  int getSize() { return http_fixture::declared; }
+  int getSize() {
+    if (http_fixture::requests > 1 && http_fixture::use_second_declared) {
+      return http_fixture::declared_after_first;
+    }
+    return http_fixture::declared;
+  }
   WiFiClient* getStreamPtr() { return stream_; }
-  bool connected() { return http_fixture::stalled || stream_->available() > 0; }
+  bool connected() {
+    const bool stalled = (http_fixture::requests > 1 && http_fixture::use_second_stalled)
+        ? http_fixture::stalled_after_first : http_fixture::stalled;
+    return stalled || stream_->available() > 0;
+  }
   void end() {}
  private:
   WiFiClient* stream_ = nullptr;

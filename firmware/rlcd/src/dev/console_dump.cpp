@@ -10,7 +10,11 @@ namespace rcpaper {
 void console_dump_state(View view, RuntimeMode runtime_mode,
                         bool usb_host_present, const DeviceState& state,
                         const Shtc3Reading& environment,
-                        const BatteryReading& battery) {
+                        const BatteryReading& battery,
+                        const FetchDiag* usage_last,
+                        const FetchDiag* usage_err,
+                        const FetchDiag* token_last,
+                        const FetchDiag* token_err) {
   Serial.printf(
       "[state] view=%s runtime=%s host=%d pages=%u idx=%u "
       "T=%.1f RH=%.0f env_ok=%d dark=%d last_fetch=%llu heap=%u "
@@ -22,6 +26,18 @@ void console_dump_state(View view, RuntimeMode runtime_mode,
       (int)st7305_dark_mode(), (unsigned long long)state.last_fetch_s,
       (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getFreePsram(),
       (unsigned)battery.pct, (unsigned)battery.mv);
+  if (usage_last || usage_err) {
+    char u_last[96] = "none", u_err[96] = "none";
+    if (usage_last) format_fetch_diag(*usage_last, u_last, sizeof(u_last));
+    if (usage_err) format_fetch_diag(*usage_err, u_err, sizeof(u_err));
+    Serial.printf("[diag] usage last=%s | err=%s\n", u_last, u_err);
+  }
+  if (token_last || token_err) {
+    char t_last[96] = "none", t_err[96] = "none";
+    if (token_last) format_fetch_diag(*token_last, t_last, sizeof(t_last));
+    if (token_err) format_fetch_diag(*token_err, t_err, sizeof(t_err));
+    Serial.printf("[diag] token last=%s | err=%s\n", t_last, t_err);
+  }
 }
 
 void console_dump_frame(View view, const DeviceState& state) {

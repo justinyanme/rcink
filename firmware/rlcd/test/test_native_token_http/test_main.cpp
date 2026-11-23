@@ -1,3 +1,4 @@
+#include <cstring>
 #include <unity.h>
 
 #include "render/token.h"
@@ -14,13 +15,25 @@ bool wall_clock_is_valid() { return http_fixture::clock_valid; }
 
 void reset_token_http() {
   http_fixture::status = 200;
+  http_fixture::status_after_first = 0;
+  http_fixture::use_second_status = false;
   http_fixture::declared = -1;
+  http_fixture::declared_after_first = -1;
+  http_fixture::use_second_declared = false;
   http_fixture::body = token_response();
   http_fixture::cursor = 0;
   http_fixture::stalled = false;
+  http_fixture::stalled_after_first = false;
+  http_fixture::use_second_stalled = false;
+  http_fixture::dns_ok = true;
+  http_fixture::dns_ok_after_first = true;
+  http_fixture::use_second_dns_ok = false;
+  http_fixture::dns_ms = 0;
+  http_fixture::get_ms = 0;
   http_fixture::clock_valid = true;
   http_fixture::ca_set = false;
   http_fixture::requests = 0;
+  http_fixture::dns_requests = 0;
   http_fixture::redirects_disabled = false;
   http_fixture::media = "application/json";
   http_fixture::transfer.clear();
@@ -32,10 +45,19 @@ void test_token_url_shares_allowance_origin_and_http_success_uses_strict_decoder
   reset_token_http();
   TokenSnapshot snapshot;
   TEST_ASSERT_TRUE(token_fetch(snapshot));
+  TEST_ASSERT_EQUAL(3, snapshot.count);
   TEST_ASSERT_EQUAL_UINT64(25900000000ULL, snapshot.providers[0].lifetime);
   TEST_ASSERT_TRUE(http_fixture::ca_set);
   TEST_ASSERT_TRUE(http_fixture::redirects_disabled);
   TEST_ASSERT_EQUAL(1, http_fixture::requests);
+
+  reset_token_http();
+  http_fixture::body = two_token_response();
+  TEST_ASSERT_TRUE(token_fetch(snapshot));
+  TEST_ASSERT_EQUAL(2, snapshot.count);
+  TEST_ASSERT_EQUAL_STRING("codex", snapshot.providers[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", snapshot.providers[1].id.c_str());
+  TEST_ASSERT_EQUAL_UINT64(1184080706ULL, snapshot.providers[1].lifetime);
 }
 
 void test_token_http_failures_preserve_last_complete_snapshot() {
@@ -52,14 +74,40 @@ void test_token_http_failures_preserve_last_complete_snapshot() {
       case 4: http_fixture::transfer = "chunked"; break;
       case 5: http_fixture::clock_valid = false; break;
     }
-    TEST_ASSERT_FALSE(token_fetch(cache));
+    FetchDiag diag;
+    TEST_ASSERT_FALSE(token_fetch(cache, &diag));
+    TEST_ASSERT_TRUE(diag.attempted);
+    TEST_ASSERT_FALSE(diag.ok);
     TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_token(cache).c_str());
+    if (failure == 0) {
+      TEST_ASSERT_EQUAL(1, diag.attempts);
+      TEST_ASSERT_EQUAL_STRING("http:401", diag.error);
+    } else if (failure == 2) {
+      TEST_ASSERT_EQUAL(1, diag.attempts);
+      TEST_ASSERT_EQUAL(0, strncmp(diag.error, "decode:", 7));
+    }
   }
+}
+
+void test_token_transient_failure_retries_once_and_recovers() {
+  reset_token_http();
+  http_fixture::status = -11;
+  http_fixture::status_after_first = 200;
+  http_fixture::use_second_status = true;
+  TokenSnapshot snapshot;
+  FetchDiag diag;
+  TEST_ASSERT_TRUE(token_fetch(snapshot, &diag));
+  TEST_ASSERT_EQUAL(2, http_fixture::requests);
+  TEST_ASSERT_EQUAL(2, diag.attempts);
+  TEST_ASSERT_TRUE(diag.ok);
+  TEST_ASSERT_EQUAL(200, diag.status);
+  TEST_ASSERT_EQUAL_STRING("", diag.error);
 }
 
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_token_url_shares_allowance_origin_and_http_success_uses_strict_decoder);
   RUN_TEST(test_token_http_failures_preserve_last_complete_snapshot);
+  RUN_TEST(test_token_transient_failure_retries_once_and_recovers);
   return UNITY_END();
 }

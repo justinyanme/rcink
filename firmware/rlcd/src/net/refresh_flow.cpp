@@ -18,6 +18,7 @@
 #include "net/ntp.h"
 #include "net/wifi.h"
 #include "power/refresh_schedule.h"
+#include "sense/clock.h"
 
 namespace rcpaper {
 namespace {
@@ -67,14 +68,27 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
   if (!wifi_connect()) {
     Serial.println("[main] wifi failed");
     completion.result = FetchResult::WifiFailed;
+    completion.link_failure = LinkFailure::WifiFailed;
     completion.token_attempted = consume_token_due();
   } else {
     completion.clock_synced = ntp_sync_once(LOCAL_TZ);
 #if RCRLCD_USAGE_ENABLED
-    completion.result = usage_fetch(completion.usage) ? FetchResult::Changed : FetchResult::DataFailed;
-    completion.token_attempted = consume_token_due();
-    if (completion.token_attempted) completion.token_ok = token_fetch(completion.token);
+    if (!wall_clock_is_valid()) {
+      Serial.println("[main] clock still invalid after NTP; skipping HTTPS");
+      completion.result = FetchResult::DataFailed;
+      completion.link_failure = LinkFailure::NtpFailed;
+      completion.token_attempted = consume_token_due();
+    } else {
+      completion.link_failure = LinkFailure::None;
+      completion.result = usage_fetch(completion.usage, &completion.usage_diag)
+          ? FetchResult::Changed : FetchResult::DataFailed;
+      completion.token_attempted = consume_token_due();
+      if (completion.token_attempted) {
+        completion.token_ok = token_fetch(completion.token, &completion.token_diag);
+      }
+    }
 #else
+    completion.link_failure = LinkFailure::None;
     std::vector<PageRecord> fresh;
     if (!axiom_fetch_pages(fresh) || fresh.empty()) {
       Serial.println("[main] fetch failed; keeping cache");
