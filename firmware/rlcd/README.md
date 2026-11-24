@@ -143,13 +143,14 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | Gesture | Dashboard | Deck |
 |---|---|---|
 | **KEY** (GPIO18) tap | Page 1 | next page; cycles Deck ring |
-| **KEY** (GPIO18) hold ≥ 600 ms | — | pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
+| **KEY** (GPIO18) hold ≥ 600 ms | pin/unpin `HOST` carousel | on Monument Page: cycle **Heatmap Window** (`1Y → 6M → 3M → 1Y`, NVS persisted, static redraw); on other pages: pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
+| **KEY + BOOT** chord | pin/unpin `HOST` carousel | pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) on *any* page without stray tap/sync on release |
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 | **BOOT** tap, usage build | Usage + sync now | sync now (Allowance + Token + Monument) |
 | **BOOT** (GPIO0) hold ≥ 600 ms | toggle dark mode | toggle & persist 1-bit dark/light polarity |
 
 In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles through the 3-page Deck ring (`Allowance ⇄ Token ⇄ Monument`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard). Notice room temperature & humidity from the onboard SHTC3 also appear cleanly as ambient chrome in the Allowance header and the Monument page.
-In USB `HOST` mode, unless pinned via a 600 ms `KEY` hold (or console `l`), the Deck auto-rotates every 90 seconds. Battery `ACTIVE` and `ECO` modes never auto-rotate.
+In USB `HOST` mode, unless pinned via `KEY + BOOT` chord (on any page), a 600 ms `KEY` hold on Allowance/Token, or console `l`, the Deck auto-rotates every 90 seconds. Cycling the Monument **Heatmap Window** also resets the 90-second timer. Battery `ACTIVE` and `ECO` modes never auto-rotate.
 BOOT tap means "sync now": on any Deck page it stays on that page and fetches
 Allowance, Token, and Monument annual history immediately; if climate Dashboard is enabled and active, BOOT opens Allowance and syncs. The
 visible page's footer reads `SYNCING · fetching now` until the fetch completes
@@ -157,11 +158,15 @@ visible page's footer reads `SYNCING · fetching now` until the fetch completes
 Token or Monument sync replays its 0.9-second sweep in HOST.
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
-advances exactly once through the ring; its eventual
-release is consumed rather than counted as a second press or long-hold. GPIO0/BOOT cannot
-wake `ECO`: it is polling-only because it doubles as the download strap. Firmware never sleeps or resets while
-either raw button is held. Timer and KEY wakes resume the retained image without
-a panel reset or intermediate blank frame.
+classifies the press by duration: if KEY is already released when setup polls
+GPIO18, it advances immediately as a tap with zero wait; if KEY is still held
+low, releasing before ~600 ms advances as a tap, while holding across the
+threshold runs `KEY` long-press in place on the retained page (cycling the
+Monument **Heatmap Window** or toggling `PINNED`) and keeps the 8-second `ACTIVE`
+grace window alive. GPIO0/BOOT cannot wake `ECO`: it is polling-only because it
+doubles as the download strap. Firmware never sleeps or resets while either raw
+button is held. Timer and KEY wakes resume the retained image without a panel
+reset or intermediate blank frame.
 
 ## Console
 
@@ -171,6 +176,7 @@ a panel reset or intermediate blank frame.
 - `n` next through Dashboard/Deck ring
 - `v` previous through Dashboard/Deck ring
 - `l` pin/unpin `HOST` 90s auto-carousel (`HOST` ↔ `PINNED`)
+- `w` cycle Monument **Heatmap Window** (`1Y → 6M → 3M → 1Y`), persist to NVS, and redraw immediately
 - `t` re-read sensors + redraw current view
 - `i` invert light/dark polarity + redraw current View
 - `a` toggle the usage view's HOST animation (off gives the static frame for `p`)

@@ -27,6 +27,7 @@
 #include "render/deck_view.h"
 #include "render/diagnostics.h"
 #include "render/link_status.h"
+#include "render/monument_persistence.h"
 #include "render/monument_view.h"
 #include "render/page.h"
 #include "render/token_view.h"
@@ -51,6 +52,7 @@ Shtc3Reading g_env;
 View g_view = View::Dashboard;
 RuntimeState g_runtime = {RuntimeMode::Eco, 0, 0, false};
 static bool g_carousel_pinned = false;
+static HeatmapWindow g_heatmap_window = HeatmapWindow::Year;
 static uint32_t g_carousel_last_switch_ms = 0;
 static uint64_t g_last_env_minute = UINT64_MAX;
 
@@ -160,6 +162,7 @@ static RefreshAppState refresh_app_state() {
       g_token_last_ok_s,
       g_token_retry_at_s,
       g_monument,
+      g_heatmap_window,
       g_link_failure,
       g_retry_cooldown_s,
       g_usage_last_diag,
@@ -281,19 +284,6 @@ static MonumentFrame monument_frame() {
   return frame;
 }
 
-static bool maybe_sample_env(uint64_t now, bool force = false) {
-  if (!force && !dashboard_sample_due(now, g_last_env_minute, g_env.ok)) {
-    return false;
-  }
-  const Shtc3Reading fresh = shtc3_read();
-  g_last_env_minute = now / 60;
-  const bool changed = !g_env.ok || !fresh.ok ||
-      lroundf(fresh.temp_c * 10.0f) != lroundf(g_env.temp_c * 10.0f) ||
-      lroundf(fresh.rh) != lroundf(g_env.rh);
-  g_env = fresh;
-  return changed;
-}
-
 // Draw exactly the model that was fingerprinted into the page record.
 static bool draw_usage_page(const PageRecord& rec) {
   if (rec.layout_json != g_usage_view_json) {
@@ -333,6 +323,19 @@ static bool draw_monument_page(const PageRecord& rec) {
   return true;
 }
 #endif
+
+static bool maybe_sample_env(uint64_t now, bool force = false) {
+  if (!force && !dashboard_sample_due(now, g_last_env_minute, g_env.ok)) {
+    return false;
+  }
+  const Shtc3Reading fresh = shtc3_read();
+  g_last_env_minute = now / 60;
+  const bool changed = !g_env.ok || !fresh.ok ||
+      lroundf(fresh.temp_c * 10.0f) != lroundf(g_env.temp_c * 10.0f) ||
+      lroundf(fresh.rh) != lroundf(g_env.rh);
+  g_env = fresh;
+  return changed;
+}
 
 void render_dashboard_now(bool force_sample = false) {
   const uint64_t now = (uint64_t)time(nullptr);
@@ -380,7 +383,7 @@ void render_current() {
   maybe_sample_env(now);
   if (g_state.pages[g_state.page_index].id == kMonumentPageId) {
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
-                         g_runtime.mode);
+                         g_runtime.mode, g_heatmap_window);
   }
   const PageRecord& rec = g_state.pages[g_state.page_index];
   if (rec.id == kUsagePageId) {
@@ -562,7 +565,7 @@ static void request_usage_sync() {
   update_usage_page(g_state, g_usage, now, usage_sync());
   update_token_page(g_state, g_token, now, token_sync());
   update_monument_page(g_state, g_monument, g_token, now, token_sync(),
-                       g_runtime.mode);
+                       g_runtime.mode, g_heatmap_window);
 }
 #endif
 
@@ -616,7 +619,7 @@ static bool poll_refresh_completion() {
     update_usage_page(g_state, g_usage, now, usage_sync());
     update_token_page(g_state, g_token, now, token_sync());
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
-                         g_runtime.mode);
+                         g_runtime.mode, g_heatmap_window);
     usage_page_changed = true;
   }
   if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
@@ -646,7 +649,7 @@ static bool poll_usage_freshness() {
       update_token_page(g_state, g_token, now, token_sync());
   const bool monument_changed =
       update_monument_page(g_state, g_monument, g_token, now, token_sync(),
-                           g_runtime.mode);
+                           g_runtime.mode, g_heatmap_window);
   const bool env_changed = g_view == View::Deck && maybe_sample_env(now);
   if (g_view != View::Deck || g_state.page_index >= g_state.pages.size()) {
     return false;
@@ -712,6 +715,27 @@ static void poll_monument_animation() {
 #endif
 }
 
+static void toggle_carousel_pin(const char* source) {
+  g_carousel_pinned = !g_carousel_pinned;
+  nvs_save_carousel_pinned(g_carousel_pinned);
+  g_carousel_last_switch_ms = millis();
+  Serial.printf("%s -> carousel pinned=%d\n", source, (int)g_carousel_pinned);
+}
+
+#if RCRLCD_USAGE_ENABLED
+static void cycle_heatmap_window(const char* source) {
+  g_heatmap_window = next_heatmap_window(g_heatmap_window);
+  save_heatmap_window(g_heatmap_window);
+  g_monument_sweeping = false;
+  g_carousel_last_switch_ms = millis();
+  const uint64_t now = (uint64_t)time(nullptr);
+  update_monument_page(g_state, g_monument, g_token, now, token_sync(),
+                       g_runtime.mode, g_heatmap_window);
+  Serial.printf("%s -> heatmap window=%s\n", source,
+                heatmap_window_label(g_heatmap_window));
+}
+#endif
+
 struct InteractionDecision {
   bool screen_changed;
   bool sleep_requested;
@@ -726,11 +750,22 @@ static InteractionDecision poll_interaction() {
     activity = true;
   }
   if (events.key_long) {
-    g_carousel_pinned = !g_carousel_pinned;
-    nvs_save_carousel_pinned(g_carousel_pinned);
-    g_carousel_last_switch_ms = millis();
-    Serial.printf("[btn] KEY long -> carousel pinned=%d\n",
-                  (int)g_carousel_pinned);
+    const std::string active_id =
+        g_view == View::Deck && g_state.page_index < g_state.pages.size()
+            ? g_state.pages[g_state.page_index].id
+            : std::string();
+    if (key_long_action_for_page(g_view, active_id, RCRLCD_USAGE_ENABLED) ==
+        KeyLongAction::CycleHeatmapWindow) {
+#if RCRLCD_USAGE_ENABLED
+      cycle_heatmap_window("[btn] KEY long");
+#endif
+    } else {
+      toggle_carousel_pin("[btn] KEY long");
+    }
+    activity = true;
+  }
+  if (events.chord) {
+    toggle_carousel_pin("[btn] KEY+BOOT chord");
     activity = true;
   }
   if (events.boot_tap) {
@@ -775,8 +810,8 @@ static InteractionDecision poll_interaction() {
 void console_help() {
   Serial.println(
       "[console] f fetch, r render, d diagnostics, m toggle-view, n next, "
-      "v previous, l pin-carousel, t read-sensors, i invert, a usage-animation, "
-      "s state, q layout, p frame, c clear, R reboot, h help");
+      "v previous, l pin-carousel, w heatmap-window, t read-sensors, i invert, "
+      "a usage-animation, s state, q layout, p frame, c clear, R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -815,11 +850,16 @@ void console_dispatch(char c) {
       render_current_view();
       break;
     case 'l':
-      g_carousel_pinned = !g_carousel_pinned;
-      nvs_save_carousel_pinned(g_carousel_pinned);
-      g_carousel_last_switch_ms = millis();
-      Serial.printf("[console] carousel pinned=%d\n", (int)g_carousel_pinned);
+      toggle_carousel_pin("[console]");
       render_current_view();
+      break;
+    case 'w':
+#if RCRLCD_USAGE_ENABLED
+      cycle_heatmap_window("[console]");
+      render_current_view();
+#else
+      Serial.println("[console] usage disabled");
+#endif
       break;
     case 't':
       if (g_view == View::Dashboard) {
@@ -933,7 +973,8 @@ void setup() {
   display_init(panel_startup_for_deep_sleep_wake(resumed_from_deep_sleep));
   st7305_set_dark_mode(nvs_load_dark_mode(RCRLCD_DEFAULT_DARK_MODE != 0));
   g_carousel_pinned = nvs_load_carousel_pinned(false);
-  buttons::init(key_wake);
+  g_heatmap_window = load_heatmap_window();
+  const buttons::WakeKeyDisposition wake_key = buttons::init(key_wake);
 
   rtc_begin();
   shtc3_begin();
@@ -984,7 +1025,8 @@ void setup() {
   g_state.pages = {
       usage_page(g_usage, now, usage_sync()),
       token_page(g_token, now, token_sync()),
-      monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode),
+      monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode,
+                    g_heatmap_window),
   };
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
 #endif
@@ -998,7 +1040,7 @@ void setup() {
   g_view = view_from_nvs(g_state.view_id);
   Serial.printf("[view] loaded %s\n", view_name(g_view));
 
-  if (key_wake) navigate_next();
+  if (wake_key == buttons::WakeKeyDisposition::ImmediateTap) navigate_next();
 #if RCRLCD_USAGE_ENABLED
   if (!resumed_from_deep_sleep && g_view == View::Deck) {
     const std::string& pid = g_state.pages[g_state.page_index].id;
@@ -1016,9 +1058,10 @@ void setup() {
     g_render_pending = true;
   }
 #endif
-  Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s pinned=%d render=%d\n",
+  Serial.printf("[wake] cause=%d key=%d host=%d runtime=%s pinned=%d window=%s render=%d\n",
                 (int)wake, (int)key_wake, (int)host,
                 runtime_mode_name(g_runtime.mode), (int)g_carousel_pinned,
+                heatmap_window_label(g_heatmap_window),
                 (int)g_render_pending);
   if (host || kAlwaysActive) {
     console_help();

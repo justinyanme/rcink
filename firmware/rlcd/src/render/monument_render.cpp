@@ -33,25 +33,30 @@ const char* const kGlyphM[] = {"#.#", "###", "#.#", "#.#", "#.#"};
 const char* const kGlyphW[] = {"#.#", "#.#", "###", "###", "#.#"};
 const char* const kGlyphF[] = {"###", "#..", "##.", "#..", "#.."};
 
-void draw_cell(int16_t x, int16_t y, uint8_t level) {
+void draw_cell(int16_t x, int16_t y, int16_t w, uint8_t level) {
+  constexpr int16_t h = kMonumentCellSize;
   switch (level) {
     case 0:
-      g->drawPixel(x + 2, y + 2, kInk);
+      g->drawPixel(x + w / 2, y + 2, kInk);
       break;
     case 1:
-      g->drawRect(x, y, kMonumentCellSize, kMonumentCellSize, kInk);
+      g->drawRect(x, y, w, h, kInk);
       break;
     case 2:
-      g->drawRect(x, y, kMonumentCellSize, kMonumentCellSize, kInk);
-      g->drawPixel(x + 2, y + 2, kInk);
+      g->drawRect(x, y, w, h, kInk);
+      for (int16_t dx = 2; dx <= w - 3; dx += 2) {
+        g->drawPixel(x + dx, y + 2, kInk);
+      }
       break;
     case 3:
-      g->fillRect(x, y, kMonumentCellSize, kMonumentCellSize, kInk);
-      g->drawPixel(x + 2, y + 2, kPaper);
+      g->fillRect(x, y, w, h, kInk);
+      for (int16_t dx = 2; dx <= w - 3; dx += 2) {
+        g->drawPixel(x + dx, y + 2, kPaper);
+      }
       break;
     case 4:
     default:
-      g->fillRect(x, y, kMonumentCellSize, kMonumentCellSize, kInk);
+      g->fillRect(x, y, w, h, kInk);
       break;
   }
 }
@@ -108,8 +113,15 @@ void draw_hero(const MonumentView& view, const MonumentFrame& frame) {
 
   rlcd_chrome::text(g, "TOTAL ODO", kMonumentOdoX, kMonumentHeroCaptionBaseline,
                     FontRole::Body);
+  const int16_t days_w =
+      rlcd_chrome::text_w(g, view.active_badge.c_str(), FontRole::Body);
   rlcd_chrome::text(g, view.active_badge.c_str(), kMonumentRightX,
                     kMonumentHeroCaptionBaseline, FontRole::Body, Align::Right);
+  if (!view.window_label.empty()) {
+    rlcd_chrome::chip(g, view.window_label.c_str(),
+                      (int16_t)(kMonumentRightX - days_w - kMonumentWindowBadgeGap),
+                      kMonumentHeroCaptionBaseline, Align::Right);
+  }
 
   std::string odo = view.total_odo;
   if (frame.sweep < 1.0f && view.total_odo_value > 0) {
@@ -125,8 +137,17 @@ void draw_hero(const MonumentView& view, const MonumentFrame& frame) {
   rlcd_chrome::draw_dotted_text(g, view.summary_left, kMonumentMarginX,
                                 kMonumentSummaryBaseline, FontRole::Body);
   if (!view.summary_right.empty()) {
-    rlcd_chrome::text(g, view.summary_right.c_str(), kMonumentRightX,
-                      kMonumentSummaryBaseline, FontRole::Body, Align::Right);
+    const int16_t text_w =
+        rlcd_chrome::dotted_text_width(g, view.summary_right, FontRole::Body);
+    const int16_t x0 =
+        (int16_t)(kMonumentRightX -
+                  (kMonumentSigmaGlyphW + kMonumentSigmaGap + text_w));
+    rlcd_chrome::pixels(g, rlcd_chrome::kSigma, x0,
+                        kMonumentSummaryBaseline - 11);
+    rlcd_chrome::draw_dotted_text(
+        g, view.summary_right,
+        (int16_t)(x0 + kMonumentSigmaGlyphW + kMonumentSigmaGap),
+        kMonumentSummaryBaseline, FontRole::Body);
   }
   for (int16_t x = kMonumentMarginX; x < kMonumentRightX; x += 4) {
     g->drawPixel(x, kMonumentHeroDividerY, kInk);
@@ -134,14 +155,14 @@ void draw_hero(const MonumentView& view, const MonumentFrame& frame) {
 }
 
 void draw_heatmap(const MonumentView& view, const MonumentFrame& frame) {
+  const size_t total_cols = std::min<size_t>(
+      view.cols == 0 ? kMonumentMaxCols : view.cols, kMonumentMaxCols);
   int16_t last_month_right = -100;
   for (size_t i = 0; i < view.month_count; i++) {
-    const int16_t x =
-        std::min<int16_t>(358, kMonumentGridX +
-                                   (int16_t)view.months[i].col *
-                                       kMonumentCellPitch);
+    const MonumentGridCol mc = monument_grid_col(view.months[i].col, total_cols);
     const int16_t w =
         rlcd_chrome::text_w(g, view.months[i].label, FontRole::Chip);
+    const int16_t x = std::min<int16_t>((int16_t)(kMonumentRightX - w), mc.x);
     if (x >= last_month_right + 8) {
       rlcd_chrome::text(g, view.months[i].label, x, kMonumentMonthBaseline,
                         FontRole::Chip);
@@ -156,13 +177,14 @@ void draw_heatmap(const MonumentView& view, const MonumentFrame& frame) {
                       kMonumentGridY + 4 * kMonumentCellPitch);
 
   const size_t visible_cols = std::min(
-      kMonumentCols, (size_t)std::lround(frame.sweep * kMonumentCols));
+      total_cols, (size_t)std::lround(frame.sweep * total_cols));
   for (size_t col = 0; col < visible_cols; col++) {
+    const MonumentGridCol gc = monument_grid_col(col, total_cols);
     for (size_t row = 0; row < kMonumentRows; row++) {
       const uint8_t lvl = view.cells[col * kMonumentRows + row];
       if (lvl == kMonumentCellOutside) continue;
-      draw_cell(kMonumentGridX + (int16_t)col * kMonumentCellPitch,
-                kMonumentGridY + (int16_t)row * kMonumentCellPitch, lvl);
+      draw_cell(gc.x, kMonumentGridY + (int16_t)row * kMonumentCellPitch,
+                gc.w, lvl);
     }
   }
   for (int16_t x = kMonumentMarginX; x < kMonumentRightX; x += 4) {
@@ -195,7 +217,7 @@ void draw_lower_strip(const MonumentView& view, const Shtc3Reading& env,
                     FontRole::Chip);
   for (uint8_t lvl = 0; lvl <= 4; lvl++) {
     draw_cell(legend_left + less_w + 4 + (int16_t)lvl * 8,
-              kMonumentMilestoneBaseline - 8, lvl);
+              kMonumentMilestoneBaseline - 8, kMonumentCellSize, lvl);
   }
   rlcd_chrome::text(g, "MORE", kMonumentRightX, kMonumentMilestoneBaseline,
                     FontRole::Chip, Align::Right);

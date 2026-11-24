@@ -119,13 +119,23 @@ bool small_str(JsonVariantConst v, std::string& out, size_t max_len = 64) {
   return out.size() <= max_len;
 }
 
+bool valid_window_shape(const std::string& label, uint8_t cols) {
+  return (label == "1Y" && cols == 53) || (label == "6M" && cols == 27) ||
+         (label == "3M" && cols == 14);
+}
+
 }  // namespace
 
 MonumentView derive_monument_view(const MonumentSnapshot& monument,
                                   const TokenSnapshot& token, uint64_t now,
                                   const TokenSync& sync,
-                                  RuntimeMode runtime_mode) {
+                                  RuntimeMode runtime_mode,
+                                  HeatmapWindow window) {
+  const size_t window_days = heatmap_window_days(window);
+  const size_t window_cols = heatmap_window_cols(window);
   MonumentView view;
+  view.window_label = heatmap_window_label(window);
+  view.cols = (uint8_t)window_cols;
   view.cells.fill(kMonumentCellOutside);
   const bool clock_valid = now >= kClockMinimum;
 
@@ -147,7 +157,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
   }
 
   std::vector<uint64_t> shifted(kMonumentDays, 0);
-  int64_t start_c = 0;
+  int64_t end_c = 0;
   bool has_monument =
       !monument.end_date.empty() && monument.days.size() == kMonumentDays;
   if (has_monument) {
@@ -155,7 +165,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
     if (!parse_ymd(monument.end_date, y, m, d)) {
       has_monument = false;
     } else {
-      int64_t end_c = days_from_civil(y, (unsigned)m, (unsigned)d);
+      end_c = days_from_civil(y, (unsigned)m, (unsigned)d);
       const int64_t elapsed = elapsed_days_utc8(monument.end_date, now);
       if (elapsed <= 0) {
         shifted = monument.days;
@@ -170,31 +180,21 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
         }
         end_c += elapsed;
       }
-      start_c = end_c - (int64_t)(kMonumentDays - 1);
     }
   } else if (clock_valid) {
-    const int64_t device_c = (int64_t)(now + 8 * 3600) / 86400;
-    start_c = device_c - (int64_t)(kMonumentDays - 1);
+    end_c = (int64_t)(now + 8 * 3600) / 86400;
+  }
+
+  // Merge live today Token usage into the final slot and compute full-365d
+  // invariants (Total ODO floor and uninterrupted streak) before slicing.
+  const uint64_t tok_today = sum_token_today(token, now);
+  if (tok_today > shifted[kMonumentDays - 1]) {
+    shifted[kMonumentDays - 1] = tok_today;
   }
 
   uint64_t year_sum = 0;
-  uint64_t peak_day = 0;
-  uint32_t active_days = 0;
-  std::vector<uint64_t> nonzero;
-  nonzero.reserve(kMonumentDays);
   for (size_t i = 0; i < kMonumentDays; i++) {
-    uint64_t v = shifted[i];
-    if (i == kMonumentDays - 1) {
-      const uint64_t tok_today = sum_token_today(token, now);
-      if (tok_today > v) v = tok_today;
-      shifted[i] = v;
-    }
-    year_sum = sat_add(year_sum, v);
-    if (v > peak_day) peak_day = v;
-    if (v > 0) {
-      active_days++;
-      nonzero.push_back(v);
-    }
+    year_sum = sat_add(year_sum, shifted[i]);
   }
 
   uint64_t token_lifetime_sum = 0;
@@ -204,16 +204,34 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
   view.total_odo_value = std::max(token_lifetime_sum, year_sum);
   view.total_odo = format_tokens(view.total_odo_value);
 
-  char badge_buf[24];
-  std::snprintf(badge_buf, sizeof(badge_buf), "%u DAYS", (unsigned)active_days);
-  view.active_badge = badge_buf;
-
   uint32_t streak = 0;
   for (int i = (int)kMonumentDays - 2; i >= 0; i--) {
     if (shifted[(size_t)i] > 0) streak++;
     else break;
   }
   if (shifted[kMonumentDays - 1] > 0) streak++;
+
+  // Slice trailing `window_days` for window-scoped quartiles, active days,
+  // cumulative volume, and peak day.
+  const size_t slice_offset = kMonumentDays - window_days;
+  uint64_t window_sum = 0;
+  uint64_t window_peak = 0;
+  uint32_t active_days = 0;
+  std::vector<uint64_t> nonzero;
+  nonzero.reserve(window_days);
+  for (size_t i = 0; i < window_days; i++) {
+    const uint64_t v = shifted[slice_offset + i];
+    window_sum = sat_add(window_sum, v);
+    if (v > window_peak) window_peak = v;
+    if (v > 0) {
+      active_days++;
+      nonzero.push_back(v);
+    }
+  }
+
+  char badge_buf[16];
+  std::snprintf(badge_buf, sizeof(badge_buf), "%ud", (unsigned)active_days);
+  view.active_badge = badge_buf;
 
   if (!has_monument && token_lifetime_sum == 0) {
     view.summary_left = "Waiting for annual history";
@@ -225,7 +243,8 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
                   "today %s \xC2\xB7 %ud streak", today_str.c_str(),
                   (unsigned)streak);
     view.summary_left = sum_left;
-    view.summary_right = "peak " + format_tokens(peak_day);
+    view.summary_right = format_tokens(window_sum) + " \xC2\xB7 peak " +
+                         format_tokens(window_peak);
   }
 
   // Next Odometer milestone target.
@@ -249,7 +268,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
         99, std::lround((long double)view.total_odo_value * 100.0L / target));
   }
 
-  // Quantize nonzero days into 1..4 intensity quartiles.
+  // Quantize window nonzero days into 1..4 intensity quartiles.
   uint64_t q1 = 0, q2 = 0, q3 = 0;
   if (!nonzero.empty()) {
     std::sort(nonzero.begin(), nonzero.end());
@@ -259,16 +278,17 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
     q3 = nonzero[(3 * n) / 4];
   }
 
-  if (start_c != 0) {
+  if (end_c != 0) {
     static const char* const kMonths[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
                                           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    const int64_t start_c = end_c - (int64_t)(window_days - 1);
     const int start_dow = monday_weekday(start_c);
-    for (size_t i = 0; i < kMonumentDays; i++) {
+    for (size_t i = 0; i < window_days; i++) {
       const size_t pos = (size_t)start_dow + i;
       const size_t col = pos / kMonumentRows;
       const size_t row = pos % kMonumentRows;
-      if (col < kMonumentCols) {
-        const uint64_t v = shifted[i];
+      if (col < window_cols) {
+        const uint64_t v = shifted[slice_offset + i];
         uint8_t lvl = 0;
         if (v > 0) {
           if (v >= q3) lvl = 4;
@@ -281,7 +301,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
       int y = 0;
       unsigned m = 0, d = 0;
       civil_from_days(start_c + (int64_t)i, y, m, d);
-      if (d == 1 && col < kMonumentCols && view.month_count < 12) {
+      if (d == 1 && col < window_cols && view.month_count < view.months.size()) {
         MonumentMonthTick& tick = view.months[view.month_count++];
         tick.col = (uint8_t)col;
         std::snprintf(tick.label, sizeof(tick.label), "%s", kMonths[(m - 1) % 12]);
@@ -289,7 +309,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
     }
   } else {
     // Still render empty matrix grid before clock/data arrive.
-    for (size_t col = 0; col < kMonumentCols - 1; col++) {
+    for (size_t col = 0; col + 1 < window_cols; col++) {
       for (size_t row = 0; row < kMonumentRows; row++) {
         view.cells[col * kMonumentRows + row] = 0;
       }
@@ -335,7 +355,9 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
 
 std::string encode_monument_view(const MonumentView& view) {
   JsonDocument doc;
-  doc["schema"] = "rcink.monument-view.v1";
+  doc["schema"] = "rcink.monument-view.v2";
+  doc["win"] = view.window_label;
+  doc["cols"] = view.cols;
   doc["headerLeft"] = view.header_left;
   doc["clockCap"] = view.clock_caption;
   doc["clock"] = view.clock_hhmm;
@@ -348,9 +370,12 @@ std::string encode_monument_view(const MonumentView& view) {
   doc["msPct"] = view.milestone_pct;
   doc["fChip"] = view.footer_chip;
   doc["fText"] = view.footer_text;
+  const size_t active_cells =
+      std::min<size_t>((size_t)view.cols * kMonumentRows, view.cells.size());
   std::string cell_str;
-  cell_str.reserve(view.cells.size());
-  for (uint8_t c : view.cells) {
+  cell_str.reserve(active_cells);
+  for (size_t i = 0; i < active_cells; i++) {
+    const uint8_t c = view.cells[i];
     cell_str.push_back(c == kMonumentCellOutside ? '.' : (char)('0' + (c & 7)));
   }
   doc["cells"] = cell_str;
@@ -370,18 +395,23 @@ bool decode_monument_view(const std::string& json, MonumentView& out) {
   JsonDocument doc;
   if (deserializeJson(doc, json)) return false;
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (root["schema"] != "rcink.monument-view.v1" ||
+  if (root["schema"] != "rcink.monument-view.v2" ||
+      !root["cols"].is<uint8_t>() ||
       !root["odoVal"].is<uint64_t>() || !root["msPct"].is<uint8_t>() ||
       !root["cells"].is<const char*>() ||
       !root["months"].is<JsonArrayConst>()) {
     return false;
   }
   MonumentView next;
+  next.cells.fill(kMonumentCellOutside);
+  next.cols = root["cols"].as<uint8_t>();
   next.total_odo_value = root["odoVal"].as<uint64_t>();
   const int pct = root["msPct"].as<int>();
   if (pct < 0 || pct > 100) return false;
   next.milestone_pct = (uint8_t)pct;
-  if (!small_str(root["headerLeft"], next.header_left) ||
+  if (!small_str(root["win"], next.window_label, 8) ||
+      !valid_window_shape(next.window_label, next.cols) ||
+      !small_str(root["headerLeft"], next.header_left) ||
       !small_str(root["clockCap"], next.clock_caption, 24) ||
       !small_str(root["clock"], next.clock_hhmm, 12) ||
       !small_str(root["odo"], next.total_odo, 16) ||
@@ -394,7 +424,8 @@ bool decode_monument_view(const std::string& json, MonumentView& out) {
     return false;
   }
   const std::string cell_str = root["cells"].as<const char*>();
-  if (cell_str.size() != next.cells.size()) return false;
+  const size_t expected_cells = (size_t)next.cols * kMonumentRows;
+  if (cell_str.size() != expected_cells) return false;
   for (size_t i = 0; i < cell_str.size(); i++) {
     const char ch = cell_str[i];
     if (ch == '.') next.cells[i] = kMonumentCellOutside;
@@ -406,7 +437,7 @@ bool decode_monument_view(const std::string& json, MonumentView& out) {
   next.month_count = months.size();
   for (size_t i = 0; i < next.month_count; i++) {
     JsonVariantConst m = months[i];
-    if (!m["c"].is<uint8_t>() || m["c"].as<uint8_t>() >= kMonumentCols ||
+    if (!m["c"].is<uint8_t>() || m["c"].as<uint8_t>() >= next.cols ||
         !m["l"].is<const char*>()) {
       return false;
     }
@@ -422,19 +453,22 @@ bool decode_monument_view(const std::string& json, MonumentView& out) {
 
 PageRecord monument_page(const MonumentSnapshot& monument,
                          const TokenSnapshot& token, uint64_t now,
-                         const TokenSync& sync, RuntimeMode runtime_mode) {
+                         const TokenSync& sync, RuntimeMode runtime_mode,
+                         HeatmapWindow window) {
   PageRecord page;
   page.id = kMonumentPageId;
   page.data_ts = now;
   page.layout_json = encode_monument_view(
-      derive_monument_view(monument, token, now, sync, runtime_mode));
+      derive_monument_view(monument, token, now, sync, runtime_mode, window));
   return page;
 }
 
 bool update_monument_page(DeviceState& device, const MonumentSnapshot& monument,
                           const TokenSnapshot& token, uint64_t now,
-                          const TokenSync& sync, RuntimeMode runtime_mode) {
-  PageRecord page = monument_page(monument, token, now, sync, runtime_mode);
+                          const TokenSync& sync, RuntimeMode runtime_mode,
+                          HeatmapWindow window) {
+  PageRecord page =
+      monument_page(monument, token, now, sync, runtime_mode, window);
   for (PageRecord& existing : device.pages) {
     if (existing.id != kMonumentPageId) continue;
     if (existing.layout_json == page.layout_json) return false;

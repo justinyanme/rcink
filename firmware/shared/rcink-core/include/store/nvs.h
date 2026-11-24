@@ -40,6 +40,8 @@ bool nvs_load_dark_mode(bool default_val = false);
 void nvs_save_dark_mode(bool enabled);
 bool nvs_load_carousel_pinned(bool default_val = false);
 void nvs_save_carousel_pinned(bool pinned);
+uint8_t nvs_load_heatmap_window(uint8_t default_val = 0);
+void nvs_save_heatmap_window(uint8_t window);
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
 
 inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {

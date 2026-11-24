@@ -209,6 +209,22 @@ void nvs_save_carousel_pinned(bool pinned) {
   p.end();
 }
 
+uint8_t nvs_load_heatmap_window(uint8_t default_val) {
+  Preferences p;
+  if (!p.begin(NS, true, PART)) return default_val;
+  const uint8_t val =
+      p.isKey("hwin") ? p.getUChar("hwin", default_val) : default_val;
+  p.end();
+  return val;
+}
+
+void nvs_save_heatmap_window(uint8_t window) {
+  Preferences p;
+  if (!p.begin(NS, false, PART)) return;
+  p.putUChar("hwin", window);
+  p.end();
+}
+
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {
   // Tiny partial write — keep the render-dedup tuple cheap to update every
   // render. Re-serializing the full pages blob (~15 KB) would defeat the
