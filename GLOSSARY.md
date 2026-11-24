@@ -41,8 +41,12 @@ A monotonic cumulative token total counted per provider (`ODO`) or across all pr
 _Avoid_: Counter, lifetime gauge, mileage
 
 **Monument Page**:
-The third Deck page combining the desktop wall clock, 53×7 annual activity heatmap, Total Odometer milestone progress, and indoor micro-climate strip.
-_Avoid_: Heatmap view, climate screen, clock tab
+The third Deck page combining the desktop wall clock, rolling activity heatmap, Total Odometer milestone progress, and indoor micro-climate strip.
+_Avoid_: Dashboard view, heatmap view, climate screen, clock tab
+
+**Heatmap Window**:
+The user-selected rolling lookback span (`1Y`, `6M`, or `3M`) ending today over which the Monument Page frames its activity heatmap and window summary metrics.
+_Avoid_: Date filter, zoom level, calendar mode
 
 **Ambient Chrome**:
 Compact room temperature and humidity telemetry embedded cleanly in page headers so the owner can glance at desk climate from any view without a dedicated thermometer screen.

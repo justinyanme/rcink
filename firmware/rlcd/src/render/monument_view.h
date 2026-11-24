@@ -11,6 +11,7 @@
 namespace rcpaper {
 
 constexpr size_t kMonumentCols = 53;
+constexpr size_t kMonumentMaxCols = kMonumentCols;
 constexpr size_t kMonumentRows = 7;
 constexpr uint8_t kMonumentCellOutside = 255;
 
@@ -29,10 +30,12 @@ struct MonumentView {
   std::string clock_hhmm;
   uint64_t total_odo_value = 0;
   std::string total_odo;
+  std::string window_label = "1Y";
   std::string active_badge;
   std::string summary_left;
   std::string summary_right;
-  std::array<uint8_t, kMonumentCols * kMonumentRows> cells{};
+  uint8_t cols = (uint8_t)kMonumentMaxCols;
+  std::array<uint8_t, kMonumentMaxCols * kMonumentRows> cells{};
   std::array<MonumentMonthTick, 12> months{};
   size_t month_count = 0;
   std::string milestone_label;
@@ -44,9 +47,10 @@ struct MonumentView {
 inline bool operator==(const MonumentView& a, const MonumentView& b) {
   return a.header_left == b.header_left && a.clock_caption == b.clock_caption &&
          a.clock_hhmm == b.clock_hhmm && a.total_odo_value == b.total_odo_value &&
-         a.total_odo == b.total_odo && a.active_badge == b.active_badge &&
+         a.total_odo == b.total_odo && a.window_label == b.window_label &&
+         a.active_badge == b.active_badge &&
          a.summary_left == b.summary_left && a.summary_right == b.summary_right &&
-         a.cells == b.cells && a.month_count == b.month_count &&
+         a.cols == b.cols && a.cells == b.cells && a.month_count == b.month_count &&
          std::equal(a.months.begin(), a.months.begin() + a.month_count,
                     b.months.begin()) &&
          a.milestone_label == b.milestone_label &&
@@ -54,17 +58,19 @@ inline bool operator==(const MonumentView& a, const MonumentView& b) {
          a.footer_text == b.footer_text;
 }
 
-MonumentView derive_monument_view(const MonumentSnapshot& monument,
-                                  const TokenSnapshot& token, uint64_t now,
-                                  const TokenSync& sync,
-                                  RuntimeMode runtime_mode);
+MonumentView derive_monument_view(
+    const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
+    const TokenSync& sync, RuntimeMode runtime_mode,
+    HeatmapWindow window = HeatmapWindow::Year);
 std::string encode_monument_view(const MonumentView& view);
 bool decode_monument_view(const std::string& json, MonumentView& out);
 PageRecord monument_page(const MonumentSnapshot& monument,
                          const TokenSnapshot& token, uint64_t now,
-                         const TokenSync& sync, RuntimeMode runtime_mode);
+                         const TokenSync& sync, RuntimeMode runtime_mode,
+                         HeatmapWindow window = HeatmapWindow::Year);
 bool update_monument_page(DeviceState& device, const MonumentSnapshot& monument,
                           const TokenSnapshot& token, uint64_t now,
-                          const TokenSync& sync, RuntimeMode runtime_mode);
+                          const TokenSync& sync, RuntimeMode runtime_mode,
+                          HeatmapWindow window = HeatmapWindow::Year);
 
 }  // namespace rcpaper

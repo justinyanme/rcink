@@ -8,8 +8,7 @@
 namespace rcpaper::buttons {
 namespace {
 
-ButtonGestureTracker g_boot_tracker;
-ButtonGestureTracker g_key_tracker;
+DualButtonGestureTracker g_tracker;
 
 bool raw_is_down(int pin) {
   return digitalRead(pin) == LOW;
@@ -17,27 +16,30 @@ bool raw_is_down(int pin) {
 
 }  // namespace
 
-void init(bool consumed_key_wake) {
+WakeKeyDisposition init(bool key_wake) {
   const uint32_t now = millis();
   pinMode(PIN_BUTTON_1, INPUT_PULLUP);
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
-  g_boot_tracker.init(raw_is_down(PIN_BUTTON_1), false, now);
-  g_key_tracker.init(raw_is_down(PIN_BUTTON_2), consumed_key_wake, now);
+  const bool boot_down = raw_is_down(PIN_BUTTON_1);
+  const bool key_down = raw_is_down(PIN_BUTTON_2);
+  const WakeKeyDisposition disp = classify_key_wake(key_wake, key_down);
+  const uint32_t key_pre_elapsed =
+      disp == WakeKeyDisposition::TrackHold ? kWakePressPreElapsedMs : 0;
+  g_tracker.init(boot_down, key_down, false, now, key_pre_elapsed);
+  return disp;
 }
 
 Events poll() {
   const uint32_t now = millis();
+  const DualButtonGestureOutput out =
+      g_tracker.poll(raw_is_down(PIN_BUTTON_1), raw_is_down(PIN_BUTTON_2), now);
   Events events;
-  const ButtonGestureOutput boot =
-      g_boot_tracker.poll(raw_is_down(PIN_BUTTON_1), now);
-  const ButtonGestureOutput key =
-      g_key_tracker.poll(raw_is_down(PIN_BUTTON_2), now);
-
-  events.activity = boot.activity || key.activity;
-  events.boot_tap = boot.tap;
-  events.boot_long = boot.long_press;
-  events.key_tap = key.tap;
-  events.key_long = key.long_press;
+  events.activity = out.activity;
+  events.boot_tap = out.boot_tap;
+  events.key_tap = out.key_tap;
+  events.boot_long = out.boot_long;
+  events.key_long = out.key_long;
+  events.chord = out.chord;
   return events;
 }
 

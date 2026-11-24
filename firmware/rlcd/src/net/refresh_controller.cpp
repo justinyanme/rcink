@@ -211,7 +211,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
       app.device, app.monument, app.token, completion.completed_at_s,
       {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
        app.link_failure, app.retry_cooldown_s, WIFI_SSID},
-      app.runtime_mode);
+      app.runtime_mode, app.heatmap_window);
   usage_page_changed = allowance_page_changed || token_changed || monument_changed;
 #endif
   Serial.printf("[auto] retry gate %u s result=%u link=%u\n",

@@ -26,6 +26,7 @@ struct RefreshAppState {
   uint64_t& token_last_ok_s;
   uint64_t& token_retry_at_s;
   MonumentSnapshot& monument;
+  HeatmapWindow heatmap_window;
   LinkFailure& link_failure;
   uint32_t& retry_cooldown_s;
   FetchDiag& usage_last_diag;

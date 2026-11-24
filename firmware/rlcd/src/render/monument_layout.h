@@ -1,11 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace rcpaper {
 
-// Pure pixel boxes for Page 3 ("year-monument": Clock + Total ODO + 53x7
-// Annual Heatmap + Milestone & Desk Micro-Climate) on the 400x300 1-bit RLCD.
+// Pure pixel boxes for Page 3 ("year-monument": Clock + Total ODO + 7-row
+// Heatmap Window + Milestone & Desk Micro-Climate) on the 400x300 1-bit RLCD.
 constexpr int16_t kMonumentMarginX = 12;
 constexpr int16_t kMonumentRightX = 388;
 constexpr int16_t kMonumentHeaderBaseline = 19;
@@ -14,8 +15,11 @@ constexpr int16_t kMonumentHeaderRuleY = 28;
 constexpr int16_t kMonumentHeroSepX = 196;
 constexpr int16_t kMonumentOdoX = 208;
 constexpr int16_t kMonumentHeroCaptionBaseline = 42;
+constexpr int16_t kMonumentWindowBadgeGap = 5;
 constexpr int16_t kMonumentHeroBaseline = 88;
 constexpr int16_t kMonumentSummaryBaseline = 108;
+constexpr int16_t kMonumentSigmaGlyphW = 8;
+constexpr int16_t kMonumentSigmaGap = 4;
 constexpr int16_t kMonumentHeroDividerY = 116;
 
 constexpr int16_t kMonumentMonthBaseline = 133;
@@ -26,6 +30,34 @@ constexpr int16_t kMonumentCellPitch = 7;
 constexpr int16_t kMonumentGridW = 53 * kMonumentCellPitch - 2;  // 369 px -> right = 388
 constexpr int16_t kMonumentGridH = 7 * kMonumentCellPitch - 2;   // 47 px -> bottom = 187
 constexpr int16_t kMonumentGridDividerY = 194;
+
+constexpr size_t kMonumentGridCols1Y = 53;
+constexpr size_t kMonumentGridCols6M = 27;
+constexpr size_t kMonumentGridCols3M = 14;
+
+struct MonumentGridCol {
+  int16_t x;
+  int16_t w;
+};
+
+// Uniform brick width per preset (all odd so 1-bit dot/stipple textures center
+// symmetrically across 5 px, 11 px, and 23 px bricks).
+inline int16_t monument_cell_width(size_t cols) {
+  if (cols <= kMonumentGridCols3M) return 23;
+  if (cols <= kMonumentGridCols6M) return 11;
+  return kMonumentCellSize;
+}
+
+// Integer column placement spanning x = 19..388 flush at both edges.
+inline MonumentGridCol monument_grid_col(size_t col, size_t cols) {
+  const int16_t w = monument_cell_width(cols);
+  if (cols <= 1) return {kMonumentGridX, w};
+  const int32_t span = (int32_t)(kMonumentGridW - w);
+  const int32_t denom = (int32_t)(cols - 1);
+  const int16_t x =
+      (int16_t)(kMonumentGridX + ((int32_t)col * span + denom / 2) / denom);
+  return {x, w};
+}
 
 constexpr int16_t kMonumentMilestoneBaseline = 216;
 constexpr int16_t kMonumentMilestoneBarY = 205;
@@ -101,7 +133,7 @@ inline MonumentLayoutGeometry monument_layout_geometry(
        (int16_t)(kMonumentOdoX + hero.odo_caption),
        (int16_t)(kMonumentHeroCaptionBaseline + 4)},
       {(int16_t)(kMonumentRightX - hero.active_badge),
-       (int16_t)(kMonumentHeroCaptionBaseline - 12), kMonumentRightX,
+       (int16_t)(kMonumentHeroCaptionBaseline - 13), kMonumentRightX,
        (int16_t)(kMonumentHeroCaptionBaseline + 4)},
       {kMonumentOdoX, (int16_t)(kMonumentHeroBaseline - 37),
        (int16_t)(kMonumentOdoX + hero.total_odo),
