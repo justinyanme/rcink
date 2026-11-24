@@ -29,3 +29,7 @@ active tree on 2026-07-04. See git history for the full text.
 - 2026-05-20 `tlsr-layout - Phase 8: Power Validation (Manual)` - shipped; see git history.
 - 2026-05-20 `Hardware bring-up findings - 2026-05-20` - shipped; see git history.
 - 2026-05-20 `tlsr-layout - Protocol & System Design` - shipped; see git history.
+
+## firmware/rlcd
+
+- 2026-11-10..2026-11-11 `firmware/rlcd/README.md` tickets `#2`–`#5` rollout & hardware acceptance closeout logs - shipped; see git history (`47e80dd`).

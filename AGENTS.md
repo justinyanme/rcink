@@ -5,6 +5,7 @@ This is an umbrella repo for multi-device e-ink dashboards. Six firmware targets
 ## Where things are
 
 - DSL contract: `dsl/SPEC.md`, `dsl/schema.json`. Read these before touching producer or any firmware.
+- Domain & design language: `GLOSSARY.md` (RLCD pages & telemetry metrics), `CONTEXT.md` (device runtime, panel refresh & connectivity states), `PRODUCT.md` (RLCD visual principles). Read before changing UI copy, layouts, or specs.
 - Producer: `producer/rcink/` — Python ≥3.13, uv-managed. Run with `uv run rcink ...`.
 - Firmwares: each in `firmware/<device>/` with its own build system. Do not unify.
 - Lab firmware for PaperColor panel Trials: `firmware/papercolor-lab/` (raw driver + console, no M5 libs; see its README).
