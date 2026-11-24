@@ -24,16 +24,16 @@ lab-host-test:
     uv run firmware/papercolor-lab/tools/gen_demo_luts.py --check
 
 native-t-amoled:
-    {{ pio }} test -d firmware/t-amoled -e native
+    {{ pio-run }} t-amoled test -d firmware/t-amoled -e native
 
 native-c3-x4:
-    {{ pio }} test -d firmware/c3-x4 -e native
+    {{ pio-run }} c3-x4 test -d firmware/c3-x4 -e native
 
 native-rlcd:
-    {{ pio }} test -d firmware/rlcd -e native
+    {{ pio-run }} rlcd test -d firmware/rlcd -e native
 
 native-epd397:
-    {{ pio }} test -d firmware/epd397 -e native
+    {{ pio-run }} epd397 test -d firmware/epd397 -e native
 
 tlsr-host-test:
     cmake -S firmware/tlsr/firmware/host_test -B firmware/tlsr/firmware/host_test/build

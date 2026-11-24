@@ -1,6 +1,6 @@
 # rcink
 
-Language for dashboard content, device interaction, and low-power operation.
+Language for device runtime, panel refresh waveforms, low-power operation, and connectivity states. For RLCD Deck pages, Providers, Allowance, and Token telemetry metrics, see `GLOSSARY.md`.
 
 ## Language
 
@@ -76,51 +76,6 @@ Two-tone update with an Own waveform that drives every pixel regardless of the
 previous image; slower than Fast mono, residue close to a Native refresh.
 _Avoid_: full mono, slow mono
 
-**Page**:
-One screen of the Deck View. KEY steps through the Pages and the Dashboard in
-a single ring.
-_Avoid_: board, 看板, screen
-
-**Allowance**:
-The unused share of a Provider's weekly subscription limit. It belongs to an
-account, so it is never summed across machines.
-_Avoid_: quota, limit, usage
-
-**Token usage**:
-Tokens a Provider's CLI consumed in a local day, summed across Sources.
-_Avoid_: usage (alone), consumption, spend
-
-**Source**:
-A machine that uploads its own Token usage, such as the M4 or the MacBook.
-_Avoid_: device, host
-
-**Allowance page**:
-The Page that shows each Provider's Allowance as a fuel road.
-_Avoid_: usage page, usage dashboard
-
-**Token page**:
-The Page that shows each Provider's Token usage.
-_Avoid_: tokens dashboard, usage page
-
-**Provider**:
-An AI service the device reports on, named the same on every Page: Claude,
-Codex, Kimi or Gemini. Kimi has an Allowance but no Token usage.
-_Avoid_: vendor, model, Claude Code, Antigravity, Gemini CLI
-
-**Seven-day total**:
-Token usage summed over today and the six days before it. It is not tied to
-any Allowance reset.
-_Avoid_: this week, weekly usage
-
-**Usual day**:
-The mean daily Token usage of the seven complete days before today. Today's
-Token usage is reported as a share of it.
-_Avoid_: average day, normal, baseline
-
-**Lifetime**:
-Token usage summed since the first record (2025-09-18). It only grows.
-_Avoid_: total, all-time
-
 **Link failure**:
 Device-level connectivity failure during a refresh—either Wi-Fi association failed or NTP timed out while no valid wall clock exists, blocking HTTPS. Shared by every networked Deck Page and cleared once Wi-Fi and wall clock succeed.
 _Avoid_: network error, sync failure
@@ -130,5 +85,5 @@ Page-level failure to fetch or validate a single Page's HTTPS payload after Wi-F
 _Avoid_: link failure, network failure
 
 **Old data**:
-Page-level staleness shown when the last sync succeeded (no Link failure or Sync failure) but the underlying data is past its freshness boundary—every observed Provider expired on the Allowance page, or the required Source (M4) has not collected for over two hours on the Token page.
+Page-level staleness shown when the last sync succeeded (no Link failure or Sync failure) but the underlying data is past its freshness boundary—every observed Provider expired on the Allowance Page, or the required Source (M4) has not collected for over two hours on the Token Page.
 _Avoid_: sync failure, stale fetch, offline

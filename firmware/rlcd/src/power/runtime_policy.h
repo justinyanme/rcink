@@ -4,6 +4,9 @@
 
 namespace rcpaper {
 
+static_assert(__cplusplus >= 201703L,
+              "RLCD requires C++17 parity across native tests and ESP32-S3 builds");
+
 enum class RuntimeMode : uint8_t {
   Eco,
   Active,

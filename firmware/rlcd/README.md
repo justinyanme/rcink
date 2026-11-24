@@ -125,6 +125,8 @@ Native logic tests (palette, parser, layout engine, ST7305 1 bpp packing):
 pio test -e native
 ```
 
+From the repo root, `just native-rlcd` and `just build-rlcd` (via `scripts/pio-run.sh`) set `PLATFORMIO_CORE_DIR` and auto-select a compatible macOS Xcode `DEVELOPER_DIR` when the active host linker predates the installed SDK.
+
 Monitor without DTR/RTS toggling the S3 into download mode:
 
 ```bash
@@ -224,7 +226,7 @@ match the device exactly.
 uv run tools/preview_dashboard.py && open /tmp/rlcd_dashboard.png
 ```
 
-## Optional weekly allowance source (#2–#3)
+## Optional weekly allowance source
 
 Define both settings in the gitignored `include/config.h` to replace this
 RLCD's Axiom Deck with the private weekly allowance page:
@@ -393,7 +395,7 @@ serial logs expose only sanitized diagnostics/status codes. An unknown clock
 cannot display fresh rows or cause a TLS bypass. No insecure TLS fallback
 exists.
 
-### Persistent/offline lifecycle (#5)
+### Persistent/offline lifecycle
 
 The main task merges only completely validated responses. A strictly newer
 per-provider `fetchedAt` replaces that slot, including lower usage after a reset.
@@ -423,222 +425,7 @@ deep sleep, preserving the adaptive battery/low-battery policy. No new wake
 source, network button action or retry loop is added. Cold restart immediately
 shows restored values in the saved view before the next network completion.
 
-Local #5 verification (2026-11-11): full native suite **93/93**, including actual
-HTTP consumer failure fixtures (timeout, connectivity, 401/429, stalled/truncated,
-oversized, unsupported/malformed response and unknown clock), production NVS
-serialization with a Preferences IO fixture, restart/view restoration, per-slot
-merge, offline expiry/reset, same-second content changes and precision. Existing
-navigation/runtime/HOST/ECO/low-battery/retained-display policy suites pass.
-These are automated boundaries, not ESP32 TLS handshakes or physical outage tests.
-Production builds with unconfigured and usage-enabled safe placeholders passed;
-only local `.pio/core` and `.pio/uv-cache` were used. The prior config file was
-preserved/restored by rename; no private contents or binaries were inspected.
-
-Deployment/rollback belongs to the supervisor after published-PR review.
-This firmware uses the already-deployed four-slot API; #5 needs no Worker,
-migration, credential or uploader change. Build the reviewed firmware with the
-supervisor-owned configuration and normal verified identity/backup procedure.
-Rollback restores the prior firmware; the separate usage NVS blob and additive
-D1 table may remain. If backend rollback is needed, preserve the unrelated
-production WordPress retry patch. Stop only the allowance LaunchAgent if needed;
-leave the original daily collector, completion state, heatmap and data intact.
-Five-minute source/upload/device schedules remain independent and do not promise
-five-minute end-to-end latency.
-
-The user waived #5 physical outage/disconnection/restart and HOST/ECO acceptance.
-Those checks are **waived, not passed**. No M4, live API, device, flash, secret
-configuration or simulator access was used here. Supervisor focused verification
-also passed native usage/HTTP/persistence/navigation **23/23** and Worker usage/D1
-**9/9**, with clean diff checks. Publication is authorized; root owns fresh
-GPT-6 Astra review of the published PRs, merge and rollout.
-
-### #3 local handoff
-
-The native suite passes **81/81**, including two new four-provider tests using
-the same anonymous observations as Just Ship's source → D1 → GET integration
-fixture. They check complementary rounding (including half percentages), valid
-0% used, source ages, independent reset/expiry state, remaining bars and geometry
-inside the 344×300 content area at nominal font sizes. Four full rows plus the
-unknown-clock warning and fetch-failure header fit without a scaling pass.
-Unavailable rows remain bar-free. These geometry checks use conservative text
-measurements; they do not establish real glyph/framebuffer or physical readability.
-
-Both production `waveshare-s3-rlcd` builds passed with safe placeholder config:
-unconfigured **62,960 bytes RAM / 1,394,005 bytes flash**, usage-enabled
-**62,956 bytes RAM / 1,395,929 bytes flash**. Local private config was preserved
-and restored by rename, without reading its contents. Tool/dependency/build
-state for the completed builds stays inside this worktree. Those placeholder
-artifacts were not committed and were not rollout firmware. Two preliminary PIO
-commands failed before building because they ran at the repo root; corrected commands ran from `firmware/rlcd`.
-
-Only the usage page builder/tests and these notes changed. Scheduling, HOST
-polling, startup selection, persistent cache and automatic offline redraw remain
-with #4/#5. #4 is implemented/reviewed separately and is not incorporated here.
-
-### #3 completed hardware acceptance (2026-11-11)
-
-The supervisor reports that GPT-6 Astra pre-rollout review passed, followed by
-collector **11/11**, Worker usage **8/8** and native usage **6/6** checks. The
-reviewed M4 collector uploaded all four selected snapshots; exact API fields
-agree with the source observations. No private account IDs or live values are
-recorded here.
-
-The supervisor built production firmware and flashed the verified board with a
-successful written-data hash check. An external Wi-Fi outage initially produced
-`NO_AP_FOUND`; the user resolved connectivity and the actual device now reports
-**GET 200**. This did not require an implementation change.
-
-**#3 hardware acceptance is complete.** Supervisor evidence is recorded in
-`i3-device-acceptance.json`, `i3-device-api.json` and `i3-device-usage.png` for
-reviewed runtime commits rcink `72ee727` / Just Ship `8750ef0`. Actual source/API/
-layout percentages, status, original reset times, source age and complementary
-remaining bars agree for all four providers. The captured remaining values were
-Claude **37%**, Codex **33%**, Kimi **94%** and Gemini **100%**; these are historical
-acceptance observations. The exact 400×300 framebuffer is readable without
-clipping, including `Gemini (Antigravity) 100% left` and the existing sidebar.
-The D1 latest-snapshot table contains exactly **four rows**.
-
-Actual console next reached the climate Dashboard with `env_ok=1`; previous
-returned to Usage. Physical controls were user-confirmed during #2 and their
-input paths are unchanged. No further user confirmation is required for #3.
-
-Fresh focused checks before publication passed native usage **6/6**, collector/
-projection **29/29** and Worker usage/D1 **8/8**. Both branches were fetched and
-rebased onto `origin/main` without changes (rcink base `d9c479c`, Just Ship base
-`16facba`). The reviewed implementation is unchanged; only documentation was
-committed during closeout. No production firmware rebuild or private config/
-binary access occurred in this closeout.
-
-The GitHub workflow requires self-hosted runners, but `justinyanme/rcink` has
-**zero registered runners** and existing CI runs are queued. Remote CI is not
-claimed green; local checks and supervisor hardware evidence are recorded above.
-Merge the companion Just Ship PR **before** this firmware PR. Published-PR Astra
-closeout and merging remain supervisor-owned; no further deployment/device/M4
-operation is part of this closeout. #4 remains separate and #5 remains outside
-this branch.
-
-### Local evidence and pending acceptance
-
-On 2026-11-10 the following passed in the isolated #2 worktree:
-
-- Native suite: **79/79** tests, including four new response/view tests. The
-  anonymous Claude response uses the same sample/expiry/reset and percentages
-  as Just Ship's source-fixture → projection → PUT → test D1 → GET test. It also
-  covers half-rounding, missing slots, stale/unknown time, malformed/oversized
-  responses and last-good visible values on failure. Layout geometry is tested
-  inside the existing 344×300 content area beside the 56px sidebar; this is not
-  a real framebuffer/font or physical-device acceptance claim.
-- Production `waveshare-s3-rlcd` build with unconfigured safe placeholders:
-  success, 62,960 bytes RAM and 1,392,997 bytes flash.
-- The same production build with usage-enabled safe placeholders: success,
-  62,956 bytes RAM and 1,394,465 bytes flash. Original private configuration was
-  restored byte-for-byte afterward. These build artifacts contain placeholders
-  and are not deployment firmware.
-
-Commands (run from `firmware/rlcd`):
-
-```sh
-DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with platformio==6.1.19 --with esptool==4.9.0 pio test -e native
-DEVELOPER_DIR=/Applications/Xcode-27.2.0.app/Contents/Developer uv run --with platformio==6.1.19 --with esptool==4.9.0 pio run -e waveshare-s3-rlcd
-```
-
-As of 2026-11-11, supervisor evidence (`m4-deployment.json`,
-`m4-live-api-results.json`, `supervisor-state.json` and
-`i2-acceptance-evidence.json`) confirms the backend deployed from M4 staging
-based on Just Ship `02ead98`: migration 0004, separate read authentication,
-real cached Claude upload/read-back, duplicate suppression and legacy API/D1
-preservation passed. HTTP/1.0 GET returned bounded JSON with Content-Length and
-no transfer encoding. M4 SSH and M4-native Cloudflare authorization succeeded.
-
-GPT-6 Astra reviewed the feature twice. The bar-height finding was fixed in
-rcink `d9d3ebf`; final review of `d9d3ebf` / Just Ship `02ead98` had no actionable
-findings. The staging rollout preserved a pre-existing, already-deployed
-WordPress retry patch absent from the reviewed Just Ship branch. Future Worker
-deployments/rollbacks must preserve that patch; its checksum and boundary are
-recorded in Just Ship's `docs/usage-limits.md`. No unrelated WordPress code was
-incorporated, and the original dirty M4 checkout remained untouched.
-
-Supervisor hardware preflight (`i2-hardware-preflight.json`) verified the
-ESP32-S3 identity, 16 MiB flash / 8 MiB PSRAM, and the original full 16 MiB
-backup's SHA256. With user-provided Wi-Fi, the supervisor then built production
-firmware and flashed that verified board with written-data hash verification.
-
-Device acceptance on 2026-11-11 (`i2-device-acceptance.json`,
-`i2-device-api.json`, `i2-device-usage.png`) passed actual ESP32 authenticated
-GET 200 with CA/hostname verification and NTP. During that run, source/API/layout
-agreed on Claude 63% used / 37% remaining and sampling/reset UTC; the other three
-slots were unavailable. The actual 15,000-byte framebuffer decoded to a readable
-400×300 image with the remaining bar visible and no clipping. These percentages
-are recorded acceptance evidence, not fixed or necessarily current values.
-
-Ticket #2 acceptance is **complete**: the user confirmed that the physical
-display and KEY/BOOT navigation operate normally. This completes the user
-confirmation following the source/API/framebuffer and production-device checks.
-Supervisor retains device, private configuration, M4 and live-service access.
-No periodic uploader is enabled; #3–#5 retain their provider, cadence/startup
-and persistent offline scope.
-
-For supervisor-owned rollback, stop allowance uploads and restore the
-appropriate prior Worker/firmware while preserving unrelated production fixes.
-The additive D1 table and original daily token uploader/heatmap can remain.
-The backend/operator contract is in Just Ship's `docs/usage-limits.md` and ADR
-0005. Merge and any further deployment remain supervisor-owned.
-
-### #4 automatic updates: local verification and handoff
-
-Before the #3 integration rebase on 2026-11-11, in the assigned isolated worktree,
-native tests passed **83/83**,
-including usage HOST success/failure boundaries, unchanged battery/low-battery
-and Axiom intervals, cold startup selection and deep-sleep/navigation behavior.
-The existing runtime, interaction, retained-display and wake tests also passed.
-Production `waveshare-s3-rlcd` builds passed with both unconfigured safe
-placeholders and usage-enabled safe placeholders. The original local config
-was restored by rename without reading or printing its private contents. No
-generated firmware is committed or suitable for rollout.
-
-The commands above used additional worktree-local caches:
-`PLATFORMIO_CORE_DIR="$PWD/.pio/core" UV_CACHE_DIR="$PWD/.pio/uv-cache"`.
-No simulator, serial access, flash, M4 mutation or live service access occurred.
-
-The independent M4 uploader's private-env migration, install/disable commands,
-filtered Worker tail and expected D1 metrics are in Just Ship's
-`docs/usage-limits-automatic.md`. After independent review, the supervisor must
-enable that job and verify at least two automatic cycles through real source,
-API, device and framebuffer, including newer samples with unchanged percentages.
-Source/upload/device schedules are independent: five-minute intervals do not
-guarantee five-minute end-to-end latency. Real startup/buttons, HOST/ECO and
-power checks, D1 write telemetry and four-row storage bounds remain live
-acceptance criteria for #4. Merged #3 supplies accepted four-provider mapping,
-detail layout and completed Wi-Fi/device acceptance; those are not pending.
-#5 owns persistent usage values and offline expiry. #4 does not claim those
-lifecycle criteria complete.
-
-After the #3 merge, #4 rebased without conflicts onto `origin/main`
-`88c91f48e49eb5646f7976d6f7eb558fd71d738b` (PR7); the companion Just Ship base is
-`ac89e97d42087bb4662896c9e7abf26971d04f31` (PR45). #4 runtime remains unchanged
-from reviewed rcink `87c66a5336b67cb3abc1cab734612921c1c94843`. The imported #3
-renderer/tests and completed hardware evidence are preserved. Using the same
-local caches and pinned PIO command above, focused `native` suites
-`test_native_usage`, `test_native_refresh_schedule`, `test_native_network_policy`
-and `test_native_navigation` passed **26/26**. Production builds were not repeated:
-#4 runtime is unchanged and #3 completed its own builds/hardware acceptance.
-Only #4 docs changed during this integration closeout. No private config, M4,
-device or live service access occurred during that integration closeout.
-
-### #4 supervisor live rollout and user-waived remaining acceptance (2026-11-11)
-
-Reviewed production firmware from rcink `23e8bbf` was flashed with hash
-verification and starts in Usage HOST. Initial all-four-provider values, status
-and reset times agree across source, API and framebuffer. The reviewed M4
-LaunchAgent from Just Ship `7641c65` is installed; its initial automatic upload
-of four providers succeeded. No new Worker deployment was needed. The existing
-daily job and production WordPress retry patch were verified unchanged.
-
-After initially pausing observation, the user explicitly waived the remaining
-two-subsequent-automatic-300-second-cycle acceptance and requested merge, then
-#5. Those criteria are **waived, not passed**; the initial hardware evidence
-above remains valid. Observation/tail stopped while the automatic service
-remains running. No additional tests, rebuilds or live acceptance are requested.
-Root owns fresh Astra closeout and backend-first merge of the crosslinked PRs.
-Remote CI is not passed: there are zero registered self-hosted runners. Private
-config and build artifacts remain untouched by the builder.
+Five-minute source/upload/device schedules run independently and do not promise
+five-minute end-to-end latency. Firmware rollback restores the prior binary while
+leaving the additive `usage`/`token`/`monument` NVS blobs and Just Ship D1 tables
+intact.
