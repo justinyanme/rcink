@@ -46,12 +46,14 @@ void test_decoder_rejects_malformed_bounded_and_non_integer_responses_without_mu
       {[](JsonDocument& d) { d["today"] = "12-11-2026"; }, "today-date"},
       {[](JsonDocument& d) { d["requiredSourceCollectedAt"] = 0; }, "collected-at"},
       {[](JsonDocument& d) {
-        JsonObject extra = d["providers"].as<JsonArray>().add<JsonObject>();
-        extra["id"] = "kimi";
-        extra["days"].to<JsonArray>();
-        extra["lifetime"] = 0;
+        for (const char* id : {"kimi", "extra"}) {
+          JsonObject extra = d["providers"].as<JsonArray>().add<JsonObject>();
+          extra["id"] = id;
+          extra["days"].to<JsonArray>();
+          extra["lifetime"] = 0;
+        }
       }, "providers-array"},
-      {[](JsonDocument& d) { d["providers"][0]["id"] = "kimi"; }, "row[0]:id"},
+      {[](JsonDocument& d) { d["providers"][0]["id"] = "mistral"; }, "row[0]:id"},
       {[](JsonDocument& d) { d["providers"][1]["id"] = "claude"; }, "row[1](claude):dup-id"},
       {[](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().remove(0); }, "row[0](claude):days"},
       {[](JsonDocument& d) { d["providers"][0]["days"].as<JsonArray>().add(0); }, "row[0](claude):days"},
@@ -407,6 +409,43 @@ void test_mirrors_active_provider_subset_and_empty_deck() {
   TEST_ASSERT_EQUAL_STRING("Waiting for the first numbers.", empty_view.headline.c_str());
 }
 
+void test_four_provider_kimi_ordering_and_primary_pool_headline_priority() {
+  TokenSnapshot four;
+  TEST_ASSERT_TRUE(decode_token(four_token_response(), four));
+  TEST_ASSERT_EQUAL(4, four.count);
+  // Encode/decode round-trip preserves all 4 providers including kimi.
+  TokenSnapshot roundtrip;
+  TEST_ASSERT_TRUE(decode_token(encode_token(four), roundtrip));
+  TEST_ASSERT_TRUE(token_content_equal(four, roundtrip));
+
+  // Unsorted upstream order (kimi, gemini, codex, claude) normalizes to canonical order.
+  const TokenView view = view_of(
+      four, 1795446400ULL,
+      {false, 1795446400ULL, 0, false, LinkFailure::None, 0, nullptr});
+  TEST_ASSERT_EQUAL(4, view.count);
+  TEST_ASSERT_EQUAL_STRING("claude", view.rows[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("codex", view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("gemini", view.rows[2].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("kimi", view.rows[3].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("28.4M", view.rows[3].seven_day.c_str());
+  TEST_ASSERT_EQUAL_STRING("120M", view.rows[3].lifetime.c_str());
+
+  // Even if Kimi has the largest 7-day volume AND a massive today spike,
+  // Primary Providers (claude/codex/gemini) retain headline priority.
+  TokenSnapshot kimi_heavy = four;
+  for (size_t p = 0; p < kimi_heavy.count; p++) {
+    if (kimi_heavy.providers[p].id == "kimi") {
+      for (size_t i = 22; i <= 28; i++) kimi_heavy.providers[p].days[i] = 50000000ULL;
+      kimi_heavy.providers[p].days[29] = 500000000ULL;  // 10x usual day
+    }
+  }
+  const TokenView primary_wins = view_of(
+      kimi_heavy, 1795446400ULL,
+      {false, 1795446400ULL, 0, false, LinkFailure::None, 0, nullptr});
+  TEST_ASSERT_EQUAL_STRING("Busiest this week: Claude", primary_wins.headline.c_str());
+  TEST_ASSERT_EQUAL(0, primary_wins.headline_pick);
+}
+
 int main() {
   setenv("TZ", "SGT-8", 1);
   tzset();
@@ -426,5 +465,6 @@ int main() {
   RUN_TEST(test_number_format_uses_at_most_three_significant_digits);
   RUN_TEST(test_link_failures_share_device_state_and_avoid_epoch_retry);
   RUN_TEST(test_mirrors_active_provider_subset_and_empty_deck);
+  RUN_TEST(test_four_provider_kimi_ordering_and_primary_pool_headline_priority);
   return UNITY_END();
 }

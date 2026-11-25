@@ -25,6 +25,7 @@
 #include "proto/parser.h"
 #include "render/dashboard_schedule.h"
 #include "render/deck_view.h"
+#include "render/desk_cat.h"
 #include "render/diagnostics.h"
 #include "render/link_status.h"
 #include "render/monument_persistence.h"
@@ -54,6 +55,8 @@ View g_view = View::Dashboard;
 RuntimeState g_runtime = {RuntimeMode::Eco, 0, 0, false};
 static bool g_carousel_pinned = false;
 static HeatmapWindow g_heatmap_window = HeatmapWindow::Year;
+static HeatmapWindow g_station_heatmap_window = HeatmapWindow::SixMonths;
+static bool g_desk_cat_enabled = true;
 static uint32_t g_carousel_last_switch_ms = 0;
 static uint64_t g_last_env_minute = UINT64_MAX;
 
@@ -116,6 +119,8 @@ static bool g_station_sweeping = false;
 static bool g_station_last_colon = true;
 static uint32_t g_station_sweep_start_ms = 0;
 static uint32_t g_station_last_frame_ms = 0;
+static uint32_t g_station_tick = 0;
+static DeskCatState g_desk_cat = desk_cat_initial();
 static std::string g_station_view_json;
 static StationView g_station_view;
 #endif
@@ -170,6 +175,7 @@ static RefreshAppState refresh_app_state() {
       g_token_retry_at_s,
       g_monument,
       g_heatmap_window,
+      g_station_heatmap_window,
       g_link_failure,
       g_retry_cooldown_s,
       g_usage_last_diag,
@@ -339,7 +345,11 @@ static void start_station_sweep() {
 
 static StationFrame station_frame() {
   StationFrame frame;
+  frame.cat_enabled = g_desk_cat_enabled;
+  frame.cat = g_desk_cat;
   if (!monument_animating()) return frame;
+  frame.animating = true;
+  frame.tick = g_station_tick;
   if (g_station_sweeping) {
     const uint32_t elapsed = millis() - g_station_sweep_start_ms;
     if (elapsed >= kUsageSweepMs) {
@@ -428,7 +438,8 @@ void render_current() {
   maybe_sample_env(now);
   if (g_state.pages[g_state.page_index].id == kStationPageId) {
     update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
-                        token_sync(), now, g_runtime.mode, g_heatmap_window);
+                        token_sync(), now, g_runtime.mode,
+                        g_station_heatmap_window);
   } else if (g_state.pages[g_state.page_index].id == kMonumentPageId) {
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
                          g_runtime.mode, g_heatmap_window);
@@ -621,7 +632,8 @@ static void request_usage_sync() {
   }
   const uint64_t now = (uint64_t)time(nullptr);
   update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
-                      token_sync(), now, g_runtime.mode, g_heatmap_window);
+                      token_sync(), now, g_runtime.mode,
+                      g_station_heatmap_window);
   update_usage_page(g_state, g_usage, now, usage_sync());
   update_token_page(g_state, g_token, now, token_sync());
   update_monument_page(g_state, g_monument, g_token, now, token_sync(),
@@ -677,7 +689,8 @@ static bool poll_refresh_completion() {
   if (g_usage_sync_requested) {
     const uint64_t now = (uint64_t)time(nullptr);
     update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
-                        token_sync(), now, g_runtime.mode, g_heatmap_window);
+                        token_sync(), now, g_runtime.mode,
+                        g_station_heatmap_window);
     update_usage_page(g_state, g_usage, now, usage_sync());
     update_token_page(g_state, g_token, now, token_sync());
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
@@ -712,7 +725,8 @@ static bool poll_usage_freshness() {
   g_usage_evaluated_at_s = now;
   const bool station_changed =
       update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
-                          token_sync(), now, g_runtime.mode, g_heatmap_window);
+                          token_sync(), now, g_runtime.mode,
+                          g_station_heatmap_window);
   const bool allowance_changed =
       update_usage_page(g_state, g_usage, now, usage_sync());
   const bool token_changed =
@@ -774,16 +788,18 @@ static void poll_monument_animation() {
   const std::string& id = g_state.pages[g_state.page_index].id;
   const uint32_t now = millis();
   if (id == kStationPageId) {
-    if (g_station_sweeping) {
-      if (now - g_station_last_frame_ms < kUsageFrameMs) return;
-      g_station_last_frame_ms = now;
-      draw_station_page(g_state.pages[g_state.page_index]);
-      return;
+    if (now - g_station_last_frame_ms < kUsageFrameMs) return;
+    g_station_last_frame_ms = now;
+    g_station_tick++;
+    if (g_desk_cat_enabled) {
+      const DeskCatContext ctx = {
+          g_runtime.mode,
+          g_station_view.minutes_of_day,
+          g_station_view.today_tokens > 0,
+      };
+      step_desk_cat(g_desk_cat, ctx);
     }
-    if (station_frame().show_colon != g_station_last_colon) {
-      g_station_last_frame_ms = now;
-      draw_station_page(g_state.pages[g_state.page_index]);
-    }
+    draw_station_page(g_state.pages[g_state.page_index]);
     return;
   }
   if (id != kMonumentPageId) return;
@@ -809,17 +825,31 @@ static void toggle_carousel_pin(const char* source) {
 
 #if RCRLCD_USAGE_ENABLED
 static void cycle_heatmap_window(const char* source) {
+  const bool on_station =
+      g_view == View::Deck && g_state.page_index < g_state.pages.size() &&
+      g_state.pages[g_state.page_index].id == kStationPageId;
+  const uint64_t now = (uint64_t)time(nullptr);
+  g_carousel_last_switch_ms = millis();
+  if (on_station) {
+    g_station_heatmap_window = next_heatmap_window(g_station_heatmap_window);
+    save_station_heatmap_window(g_station_heatmap_window);
+    g_station_sweeping = false;
+    update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                        token_sync(), now, g_runtime.mode,
+                        g_station_heatmap_window);
+    Serial.printf(
+        "%s -> station heatmap=%s skyline=%s\n", source,
+        heatmap_window_label(g_station_heatmap_window),
+        skyline_scale_label(
+            skyline_scale_for_window(g_station_heatmap_window)));
+    return;
+  }
   g_heatmap_window = next_heatmap_window(g_heatmap_window);
   save_heatmap_window(g_heatmap_window);
-  g_station_sweeping = false;
   g_monument_sweeping = false;
-  g_carousel_last_switch_ms = millis();
-  const uint64_t now = (uint64_t)time(nullptr);
-  update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
-                      token_sync(), now, g_runtime.mode, g_heatmap_window);
   update_monument_page(g_state, g_monument, g_token, now, token_sync(),
                        g_runtime.mode, g_heatmap_window);
-  Serial.printf("%s -> heatmap window=%s\n", source,
+  Serial.printf("%s -> monument heatmap window=%s\n", source,
                 heatmap_window_label(g_heatmap_window));
 }
 #endif
@@ -898,8 +928,9 @@ static InteractionDecision poll_interaction() {
 void console_help() {
   Serial.println(
       "[console] f fetch, r render, d diagnostics, m toggle-view, n next, "
-      "v previous, l pin-carousel, w heatmap-window, t read-sensors, i invert, "
-      "a usage-animation, s state, q layout, p frame, c clear, R reboot, h help");
+      "v previous, l pin-carousel, w heatmap-window, k desk-cat, t read-sensors, "
+      "i invert, a usage-animation, s state, q layout, p frame, c clear, "
+      "R reboot, h help");
 }
 
 void console_dispatch(char c) {
@@ -944,6 +975,17 @@ void console_dispatch(char c) {
     case 'w':
 #if RCRLCD_USAGE_ENABLED
       cycle_heatmap_window("[console]");
+      render_current_view();
+#else
+      Serial.println("[console] usage disabled");
+#endif
+      break;
+    case 'k':
+#if RCRLCD_USAGE_ENABLED
+      g_desk_cat_enabled = !g_desk_cat_enabled;
+      save_desk_cat_enabled(g_desk_cat_enabled);
+      Serial.printf("[console] desk cat %s\n",
+                    g_desk_cat_enabled ? "on" : "off");
       render_current_view();
 #else
       Serial.println("[console] usage disabled");
@@ -1065,6 +1107,8 @@ void setup() {
   st7305_set_dark_mode(nvs_load_dark_mode(RCRLCD_DEFAULT_DARK_MODE != 0));
   g_carousel_pinned = nvs_load_carousel_pinned(false);
   g_heatmap_window = load_heatmap_window();
+  g_station_heatmap_window = load_station_heatmap_window();
+  g_desk_cat_enabled = load_desk_cat_enabled();
   const buttons::WakeKeyDisposition wake_key = buttons::init(key_wake);
 
   rtc_begin();
@@ -1115,7 +1159,7 @@ void setup() {
   const uint64_t now = (uint64_t)time(nullptr);
   g_state.pages = {
       station_page(g_usage, usage_sync(), g_token, g_monument, token_sync(),
-                   now, g_runtime.mode, g_heatmap_window),
+                   now, g_runtime.mode, g_station_heatmap_window),
       usage_page(g_usage, now, usage_sync()),
       token_page(g_token, now, token_sync()),
       monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode,

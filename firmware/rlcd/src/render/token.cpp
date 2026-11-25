@@ -10,7 +10,7 @@ constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kClockMaximum = 4102444800ULL;
 
 bool known_token_provider(const std::string& id) {
-  return id == "claude" || id == "codex" || id == "gemini";
+  return id == "claude" || id == "codex" || id == "gemini" || id == "kimi";
 }
 
 bool has_provider(const TokenSnapshot& snapshot, size_t count, const std::string& id) {
@@ -86,6 +86,7 @@ std::string token_provider_name(const std::string& id) {
   if (id == "claude") return "Claude";
   if (id == "codex") return "Codex";
   if (id == "gemini") return "Gemini";
+  if (id == "kimi") return "Kimi";
   std::string name = id;
   if (!name.empty() && name[0] >= 'a' && name[0] <= 'z') {
     name[0] = (char)(name[0] - 'a' + 'A');

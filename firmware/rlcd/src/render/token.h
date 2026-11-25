@@ -12,7 +12,7 @@
 namespace rcpaper {
 
 constexpr size_t kTokenDays = 30;
-constexpr size_t kTokenMaxProviders = 3;
+constexpr size_t kTokenMaxProviders = 4;
 constexpr size_t kTokenMaximumBytes = 8192;
 
 struct TokenProvider {

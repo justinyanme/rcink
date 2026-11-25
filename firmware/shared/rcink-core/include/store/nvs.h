@@ -42,6 +42,10 @@ bool nvs_load_carousel_pinned(bool default_val = false);
 void nvs_save_carousel_pinned(bool pinned);
 uint8_t nvs_load_heatmap_window(uint8_t default_val = 0);
 void nvs_save_heatmap_window(uint8_t window);
+uint8_t nvs_load_station_heatmap_window(uint8_t default_val = 1);
+void nvs_save_station_heatmap_window(uint8_t window);
+bool nvs_load_desk_cat_enabled(bool default_val = true);
+void nvs_save_desk_cat_enabled(bool enabled);
 void nvs_record_rendered_page(DeviceState& state, const PageRecord& page);
 
 inline bool render_marker_matches(const DeviceState& state, const PageRecord& page) {

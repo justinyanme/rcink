@@ -61,3 +61,32 @@ inline std::string two_token_response() {
   serializeJson(doc, json);
   return json;
 }
+
+// Four-provider payload including Kimi from local pi JSONL sessions (intentionally unsorted).
+inline std::string four_token_response() {
+  JsonDocument doc;
+  doc["schema"] = "rcink.token-usage.v2";
+  doc["servedAt"] = 1795446400ULL;
+  doc["today"] = "2026-11-24";
+  doc["requiredSourceCollectedAt"] = 1795446100ULL;
+  JsonArray providers = doc["providers"].to<JsonArray>();
+  const char* ids[] = {"kimi", "gemini", "codex", "claude"};
+  const uint64_t last7[][7] = {
+      {4000000ULL, 5000000ULL, 3000000ULL, 4200000ULL, 3800000ULL, 4400000ULL, 4000000ULL},
+      {2000000ULL, 2500000ULL, 2000000ULL, 3000000ULL, 2500000ULL, 3000000ULL, 2500000ULL},
+      {5000000ULL, 6000000ULL, 5500000ULL, 5200000ULL, 6000000ULL, 5000000ULL, 6000000ULL},
+      {8000000ULL, 9000000ULL, 8200000ULL, 9000000ULL, 8500000ULL, 9500000ULL, 9000000ULL},
+  };
+  const uint64_t lifetimes[] = {120000000ULL, 600000000ULL, 820000000ULL, 950000000ULL};
+  for (size_t p = 0; p < 4; p++) {
+    JsonObject row = providers.add<JsonObject>();
+    row["id"] = ids[p];
+    JsonArray days = row["days"].to<JsonArray>();
+    for (size_t i = 0; i < 23; i++) days.add(1000000ULL * (p + 1));
+    for (size_t i = 0; i < 7; i++) days.add(last7[p][i]);
+    row["lifetime"] = lifetimes[p];
+  }
+  std::string json;
+  serializeJson(doc, json);
+  return json;
+}

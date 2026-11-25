@@ -208,7 +208,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
                             app.retry_cooldown_s, WIFI_SSID};
   const bool station_changed = update_station_page(
       app.device, app.usage, u_sync, app.token, app.monument, t_sync,
-      completion.completed_at_s, app.runtime_mode, app.heatmap_window);
+      completion.completed_at_s, app.runtime_mode, app.station_heatmap_window);
   allowance_page_changed =
       update_usage_page(app.device, app.usage, completion.completed_at_s, u_sync);
   const bool token_changed =

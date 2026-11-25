@@ -41,11 +41,13 @@ struct TokenRowMetrics {
   int16_t chart_h;
   int16_t today_base;
   int16_t logo_y;
+  bool compact_name;
 };
 
 inline TokenRowMetrics token_row_metrics(size_t count) {
-  if (count >= 3) return {80, 18, 19, 54, 28, 71, 26};
-  return {114, 24, 25, 74, 42, 98, 43};
+  if (count >= 4) return {60, 12, 16, 39, 18, 54, 16, true};
+  if (count == 3) return {80, 18, 19, 54, 28, 71, 26, false};
+  return {114, 24, 25, 74, 42, 98, 43, false};
 }
 
 struct TokenBox {
@@ -131,11 +133,13 @@ inline TokenRowGeometry token_row_geometry(size_t index, const TokenTextWidths& 
   const int16_t total_base = top + m.total_base;
   const int16_t today_base = top + m.today_base;
   const int16_t seven_x = kTokenTextX + text.provider + kTokenNameLabelGap;
-  const int16_t total_asc = m.total_pt >= 24 ? 33 : 24;
+  const int16_t provider_asc = m.compact_name ? 13 : 17;
+  const int16_t total_asc =
+      m.total_pt >= 24 ? 33 : (m.total_pt >= 18 ? 24 : 17);
   const int16_t total_desc = 1;
   return {
-      {kTokenTextX, (int16_t)(hdr_base - 17), (int16_t)(kTokenTextX + text.provider),
-       (int16_t)(hdr_base + 1)},
+      {kTokenTextX, (int16_t)(hdr_base - provider_asc),
+       (int16_t)(kTokenTextX + text.provider), (int16_t)(hdr_base + 1)},
       {seven_x, (int16_t)(hdr_base - 11), (int16_t)(seven_x + 51),
        (int16_t)(hdr_base + 4)},
       {kTokenTextX, (int16_t)(total_base - total_asc),

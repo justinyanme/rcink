@@ -21,21 +21,25 @@ bool overlaps(const TokenBox& a, const TokenBox& b) {
 
 void test_worst_case_token_rows_have_real_glyph_and_element_gaps() {
   // Exact baked Barlow widths from tools/bake_rlcd_fonts.py --metrics:
-  // Gemini Name24 (72) + 6 + Antigravity (12) = 90;
-  // widest 99.9M/9.99M: Hero36 = 89 (3 rows), Hero48 = 118 (1-2 rows);
+  // 1-3 rows: Gemini Name24 (72) + 6 + Antigravity (12) = 90;
+  //   widest 99.9M/9.99M: Hero36 = 89 (3 rows), Hero48 = 118 (1-2 rows);
+  // 4 rows: Gemini BodyBold18 (56) + 6 + Antigravity (12) = 74;
+  //   widest 99.9M in Name24 = 65;
   // widest today line: today 999M (92) + symmetric dot (12) + 999%+ of a usual day (166) = 270;
   // ODO (33) + 6 + 999B (41) = 80.
-  for (size_t count : {(size_t)1, (size_t)2, (size_t)3}) {
-    const int16_t total_w = count >= 3 ? 89 : 118;
-    const TokenTextWidths worst = {90, total_w, 270, 80};
+  for (size_t count : {(size_t)1, (size_t)2, (size_t)3, (size_t)4}) {
+    const int16_t prov_w = count >= 4 ? 74 : 90;
+    const int16_t total_w = count >= 4 ? 65 : (count == 3 ? 89 : 118);
+    const TokenTextWidths worst = {prov_w, total_w, 270, 80};
     const TokenRowMetrics m = token_row_metrics(count);
+    const int min_row_gap = count >= 4 ? 2 : 4;
     for (size_t i = 0; i < count; i++) {
       const TokenRowGeometry row = token_row_geometry(i, worst, count);
       TEST_ASSERT_GREATER_OR_EQUAL(4, vertical_gap(row.provider, row.total));
-      TEST_ASSERT_GREATER_OR_EQUAL(4, vertical_gap(row.seven_days, row.total));
+      TEST_ASSERT_GREATER_OR_EQUAL(min_row_gap, vertical_gap(row.seven_days, row.total));
       TEST_ASSERT_GREATER_OR_EQUAL(4, vertical_gap(row.odometer, row.chart));
-      TEST_ASSERT_GREATER_OR_EQUAL(4, vertical_gap(row.chart, row.today));
-      TEST_ASSERT_GREATER_OR_EQUAL(4, vertical_gap(row.total, row.today));
+      TEST_ASSERT_GREATER_OR_EQUAL(count >= 4 ? 3 : 4, vertical_gap(row.chart, row.today));
+      TEST_ASSERT_GREATER_OR_EQUAL(count >= 4 ? 3 : 4, vertical_gap(row.total, row.today));
       TEST_ASSERT_GREATER_OR_EQUAL(10, row.odometer.left - row.seven_days.right);
       TEST_ASSERT_GREATER_OR_EQUAL(10, row.chart.left - row.total.right);
 
@@ -51,7 +55,10 @@ void test_worst_case_token_rows_have_real_glyph_and_element_gaps() {
         }
       }
       const int divider_y = token_row_top(i, count) + m.pitch;
-      TEST_ASSERT_GREATER_OR_EQUAL(4, divider_y - row.today.bottom);
+      TEST_ASSERT_GREATER_OR_EQUAL(min_row_gap, divider_y - row.today.bottom);
+      if (i > 0) {
+        TEST_ASSERT_GREATER_OR_EQUAL(2, row.provider.top - token_row_top(i, count));
+      }
     }
   }
 }

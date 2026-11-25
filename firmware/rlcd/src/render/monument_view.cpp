@@ -126,10 +126,9 @@ bool valid_window_shape(const std::string& label, uint8_t cols) {
 
 }  // namespace
 
-void derive_monument_totals(const MonumentSnapshot& monument,
-                            const TokenSnapshot& token, uint64_t now,
-                            bool& has_data, uint64_t& today_tokens,
-                            uint32_t& streak_days) {
+std::vector<uint64_t> derive_monument_shifted_days(
+    const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
+    bool& has_data) {
   std::vector<uint64_t> shifted(kMonumentDays, 0);
   bool has_monument =
       !monument.end_date.empty() && monument.days.size() == kMonumentDays;
@@ -158,6 +157,15 @@ void derive_monument_totals(const MonumentSnapshot& monument,
     token_lifetime_sum = sat_add(token_lifetime_sum, token.providers[p].lifetime);
   }
   has_data = has_monument || !token.today.empty() || token_lifetime_sum > 0;
+  return shifted;
+}
+
+void derive_monument_totals(const MonumentSnapshot& monument,
+                            const TokenSnapshot& token, uint64_t now,
+                            bool& has_data, uint64_t& today_tokens,
+                            uint32_t& streak_days) {
+  const std::vector<uint64_t> shifted =
+      derive_monument_shifted_days(monument, token, now, has_data);
   today_tokens = shifted[kMonumentDays - 1];
   streak_days = 0;
   for (int i = (int)kMonumentDays - 2; i >= 0; i--) {

@@ -12,7 +12,19 @@ namespace rcpaper {
 namespace {
 constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kOldSourceAgeS = 2 * 3600;
-constexpr size_t kTokenViewMaximumBytes = 6144;
+constexpr size_t kTokenViewMaximumBytes = 8192;
+
+int token_provider_display_rank(const std::string& id) {
+  if (id == "claude") return 0;
+  if (id == "codex") return 1;
+  if (id == "gemini") return 2;
+  if (id == "kimi") return 3;
+  return 4;
+}
+
+bool is_primary_token_provider(const std::string& id) {
+  return id == "claude" || id == "codex" || id == "gemini";
+}
 
 std::string local_hhmm(uint64_t epoch_s) {
   const time_t instant = (time_t)epoch_s;
@@ -164,7 +176,21 @@ std::string format_tokens(uint64_t value) {
 TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
                             const TokenSync& sync) {
   TokenView view;
-  view.count = snapshot.count;
+  const size_t count = std::min(snapshot.count, kTokenMaxProviders);
+  view.count = count;
+  std::array<size_t, kTokenMaxProviders> order{};
+  for (size_t i = 0; i < count; i++) order[i] = i;
+  for (size_t i = 1; i < count; i++) {
+    const size_t idx = order[i];
+    const int rank = token_provider_display_rank(snapshot.providers[idx].id);
+    size_t j = i;
+    while (j > 0 &&
+           token_provider_display_rank(snapshot.providers[order[j - 1]].id) > rank) {
+      order[j] = order[j - 1];
+      j--;
+    }
+    order[j] = idx;
+  }
   const int64_t elapsed = elapsed_local_days(snapshot.today, now);
   const bool clock_valid = now >= kClockMinimum;
   const bool has_snapshot = !snapshot.today.empty();
@@ -174,11 +200,14 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
         now - snapshot.required_source_collected_at > kOldSourceAgeS));
   long double combined_usual = 0;
   uint64_t combined_seven_day = 0;
-  uint64_t busiest_total = 0;
-  int busiest = -1;
-  for (size_t p = 0; p < snapshot.count; p++) {
-    view.rows[p].id = snapshot.providers[p].id;
-    shift_days(snapshot.providers[p], elapsed, view.rows[p]);
+  uint64_t busiest_primary_total = 0;
+  int busiest_primary = -1;
+  uint64_t busiest_any_total = 0;
+  int busiest_any = -1;
+  for (size_t p = 0; p < count; p++) {
+    const TokenProvider& src = snapshot.providers[order[p]];
+    view.rows[p].id = src.id;
+    shift_days(src, elapsed, view.rows[p]);
     combined_usual += active_window_usual_day(view.rows[p].shifted_days,
                                               view.rows[p].first_active_day);
     const uint64_t seven = saturated_sum(view.rows[p].shifted_days, 23);
@@ -187,12 +216,17 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
     } else {
       combined_seven_day += seven;
     }
-    if (seven > busiest_total) {
-      busiest_total = seven;
-      busiest = (int)p;
+    if (seven > busiest_any_total) {
+      busiest_any_total = seven;
+      busiest_any = (int)p;
+    }
+    if (is_primary_token_provider(src.id) && seven > busiest_primary_total) {
+      busiest_primary_total = seven;
+      busiest_primary = (int)p;
     }
   }
-  view.total_seven_day = snapshot.count > 0
+  const int busiest = busiest_primary >= 0 ? busiest_primary : busiest_any;
+  view.total_seven_day = count > 0
       ? format_tokens(combined_seven_day) + " 7d"
       : "";
 
@@ -200,6 +234,7 @@ TokenView derive_token_view(const TokenSnapshot& snapshot, uint64_t now,
   if (clock_valid && !old_data && !sync.fetch_failed &&
       sync.link_failure == LinkFailure::None) {
     for (size_t p = 0; p < view.count; p++) {
+      if (!is_primary_token_provider(view.rows[p].id)) continue;
       const auto& days = view.rows[p].shifted_days;
       const long double usual =
           active_window_usual_day(days, view.rows[p].first_active_day);

@@ -11,6 +11,7 @@
 #include "store/nvs.h"
 #include "render/usage_view.h"
 #include "render/token_view.h"
+#include "render/desk_cat.h"
 #endif
 
 namespace rcpaper {
@@ -76,9 +77,17 @@ void render_monument(const MonumentView& view, const Shtc3Reading& env,
                      const BatteryReading& batt, RuntimeMode runtime_mode,
                      const MonumentFrame& frame, bool carousel_pinned = false);
 
-// Station home overview page shares Monument's 0.9 s entry/sync sweep and
-// 1 Hz HOST clock colon while remaining static in ACTIVE and ECO.
-using StationFrame = MonumentFrame;
+// Station home overview page animates its 0.9 s entry/sync sweep, 1 Hz HOST
+// clock colon, Token Skyline sky/beacon, and 8 FPS Desk Cat in HOST mode while
+// remaining crisp static frames in ACTIVE and ECO.
+struct StationFrame {
+  float sweep = 1.0f;
+  bool show_colon = true;
+  bool animating = false;
+  uint32_t tick = 0;
+  bool cat_enabled = true;
+  DeskCatState cat{};
+};
 struct StationView;
 void render_station(const StationView& view, const Shtc3Reading& env,
                     const BatteryReading& batt, RuntimeMode runtime_mode,

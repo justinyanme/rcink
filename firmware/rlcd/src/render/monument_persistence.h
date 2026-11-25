@@ -25,4 +25,25 @@ inline void save_heatmap_window(HeatmapWindow window) {
   nvs_save_heatmap_window(raw);
 }
 
+inline HeatmapWindow load_station_heatmap_window() {
+  const uint8_t raw = nvs_load_station_heatmap_window(
+      heatmap_window_to_u8(HeatmapWindow::SixMonths));
+  if (raw > 2) return HeatmapWindow::SixMonths;
+  return heatmap_window_from_u8(raw);
+}
+
+inline void save_station_heatmap_window(HeatmapWindow window) {
+  const uint8_t raw = heatmap_window_to_u8(window);
+  if (nvs_load_station_heatmap_window(255) == raw) return;
+  nvs_save_station_heatmap_window(raw);
+}
+
+inline bool load_desk_cat_enabled() {
+  return nvs_load_desk_cat_enabled(true);
+}
+
+inline void save_desk_cat_enabled(bool enabled) {
+  nvs_save_desk_cat_enabled(enabled);
+}
+
 }  // namespace rcpaper

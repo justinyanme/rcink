@@ -9,11 +9,11 @@ The ordered ring of live dashboard pages cycled by the `KEY` button and `HOST` a
 _Avoid_: Carousel list, tab bar, app screens
 
 **Provider**:
-An AI service tracked on the instrument (`Claude`, `Codex`, `Gemini`, or `Kimi`), named identically across every Deck page. `Kimi` reports Allowance without daily Token Usage.
+An AI service tracked on the instrument (`Claude`, `Codex`, `Gemini`, or `Kimi`), named identically across every Deck page. All four Providers report both Allowance and daily Token Usage (`Kimi` via local `pi` session logs), while remaining independently classified as primary or secondary pools for recommendations.
 _Avoid_: Vendor, model, Claude Code, Antigravity, Gemini CLI
 
 **Primary Provider**:
-A subscription pool actively tracked across both Allowance and daily Token Usage (`Claude`, `Codex`, `Gemini`), prioritized over secondary backup pools when recommending a provider.
+A primary subscription pool (`Claude`, `Codex`, `Gemini`) prioritized over secondary backup pools such as `Kimi` when recommending a provider or highlighting primary headlines, independent of whether a backup pool also reports daily Token Usage.
 _Avoid_: Main tier, default account, active vendor
 
 **Allowance**:
@@ -21,7 +21,7 @@ The unused share of a Provider's weekly subscription limit, scoped to a single a
 _Avoid_: Quota, limit, usage
 
 **Station Page**:
-The home Deck page uniting the desktop wall clock, Total Odometer, rolling activity heatmap, ambient desk climate, and compact per-provider Allowance and Seven-Day Total telemetry on one screen.
+The home Deck page uniting the desktop wall clock, Total Odometer, rolling activity heatmap paired with the Token Skyline, ambient desk climate, compact per-provider Allowance and Seven-Day Total telemetry, and the Desk Cat roaming its horizontal divider ledges in `HOST` mode.
 _Avoid_: Dashboard view, summary screen, overview tab, all-in-one page
 
 **Allowance Page**:
@@ -53,7 +53,7 @@ Token Usage summed over today and the six preceding local days, independent of a
 _Avoid_: This week, weekly usage
 
 **Token Page**:
-The dedicated Deck page displaying per-provider 7-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
+The dedicated Deck page displaying up to four Providers (`Claude`, `Codex`, `Gemini`, `Kimi`) with per-provider 7-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
 _Avoid_: Metrics screen, billing view, cost page
 
 **Active-Window Usual Day**:
@@ -69,8 +69,16 @@ The dedicated Deck page combining the desktop wall clock, rolling activity heatm
 _Avoid_: Dashboard view, heatmap view, climate screen, clock tab
 
 **Heatmap Window**:
-The user-selected rolling lookback span (`1Y`, `6M`, or `3M`) ending today over which the Monument Page frames its activity heatmap and window summary metrics.
+The user-selected rolling lookback span (`1Y`, `6M`, or `3M`) ending today. On Monument Page (`1Y` default) it frames the full-width activity heatmap and window summary metrics; on Station Page (`6M` default) it couples the left rolling heatmap with the right Token Skyline scale (`6M ↔ 8W`, `3M ↔ 7D`, `1Y ↔ 6M`).
 _Avoid_: Date filter, zoom level, calendar mode
+
+**Token Skyline**:
+The multi-scale 1-bit pixel-city bar chart beside the Station Page heatmap showing rolling `8W` (weekly), `7D` (daily), or `6M` (monthly) Token Usage against a prior-period dashed baseline and `WoW`/`MoM` delta chip, backed by a local-RTC Dawn/Day/Dusk/Night sky.
+_Avoid_: Mini chart, city widget, bar graph, skyline plot
+
+**Desk Cat**:
+The `15×10 px` 1-bit pixel companion roaming Station Page's three collision-free horizontal divider ledges (`y = 28`, `y = 151`, `y = 272`) at 8 FPS in USB `HOST` mode and resting in a static `SIT` pose in `ACTIVE` and `ECO` modes.
+_Avoid_: Virtual pet, mascot, screensaver cat
 
 **Ambient Chrome**:
 Compact room temperature and humidity telemetry embedded cleanly in page headers so the owner can glance at desk climate from any view without a dedicated thermometer screen.

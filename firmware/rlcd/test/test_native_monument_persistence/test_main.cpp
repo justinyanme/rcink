@@ -71,10 +71,36 @@ void test_heatmap_window_key_is_isolated_from_other_nvs_preferences_and_blobs() 
   TEST_ASSERT_TRUE(nvs_load_carousel_pinned(false));
 }
 
+void test_station_heatmap_window_and_desk_cat_defaults_and_isolation() {
+  nvs_fixture::values.clear();
+  nvs_fixture::fail_write = false;
+
+  // Station defaults to 6M independently of Monument's 1Y default; Desk Cat defaults on.
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(HeatmapWindow::SixMonths),
+                          static_cast<uint8_t>(load_station_heatmap_window()));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(HeatmapWindow::Year),
+                          static_cast<uint8_t>(load_heatmap_window()));
+  TEST_ASSERT_TRUE(load_desk_cat_enabled());
+
+  save_station_heatmap_window(HeatmapWindow::ThreeMonths);
+  save_desk_cat_enabled(false);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(HeatmapWindow::ThreeMonths),
+                          static_cast<uint8_t>(load_station_heatmap_window()));
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(HeatmapWindow::Year),
+                          static_cast<uint8_t>(load_heatmap_window()));
+  TEST_ASSERT_FALSE(load_desk_cat_enabled());
+
+  // Out-of-range station byte falls back cleanly to 6M.
+  nvs_fixture::values["shwin"] = "99";
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(HeatmapWindow::SixMonths),
+                          static_cast<uint8_t>(load_station_heatmap_window()));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_heatmap_window_defaults_to_1y_and_round_trips_presets);
   RUN_TEST(test_heatmap_window_falls_back_to_1y_on_corrupt_or_out_of_range_bytes);
   RUN_TEST(test_heatmap_window_key_is_isolated_from_other_nvs_preferences_and_blobs);
+  RUN_TEST(test_station_heatmap_window_and_desk_cat_defaults_and_isolation);
   return UNITY_END();
 }

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <limits>
 
 namespace rcpaper {
 namespace {
@@ -13,7 +14,8 @@ namespace {
 constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kOldSourceAgeS = 2 * 3600;
 constexpr size_t kStationViewMaxBytes = 4096;
-constexpr const char* kStationSchema = "rcink.station-view.v1";
+constexpr const char* kStationSchema = "rcink.station-view.v2";
+constexpr double kPi = 3.14159265358979323846;
 
 std::string local_hhmm(uint64_t epoch_s) {
   const time_t instant = (time_t)epoch_s;
@@ -24,7 +26,34 @@ std::string local_hhmm(uint64_t epoch_s) {
   return buf;
 }
 
-bool is_known_token_provider(const std::string& id) {
+uint16_t local_minutes_of_day(uint64_t epoch_s) {
+  const time_t instant = (time_t)epoch_s;
+  std::tm local = {};
+  localtime_r(&instant, &local);
+  const int mins = local.tm_hour * 60 + local.tm_min;
+  return (uint16_t)((mins % 1440 + 1440) % 1440);
+}
+
+uint64_t sat_add(uint64_t a, uint64_t b) {
+  if (b > std::numeric_limits<uint64_t>::max() - a) {
+    return std::numeric_limits<uint64_t>::max();
+  }
+  return a + b;
+}
+
+uint64_t sum_range(const std::vector<uint64_t>& days, size_t start, size_t end) {
+  uint64_t total = 0;
+  const size_t clamped_end = std::min(end, days.size());
+  for (size_t i = start; i < clamped_end; i++) {
+    total = sat_add(total, days[i]);
+  }
+  return total;
+}
+
+// Primary token providers always reserve a numeric 7D slot ("--" before sync,
+// "0" when zero); backup providers such as Kimi populate 7D when present in
+// TokenSnapshot and fall back to an em-dash when absent.
+bool is_always_numeric_token_provider(const std::string& id) {
   return id == "claude" || id == "codex" || id == "gemini";
 }
 
@@ -45,7 +74,170 @@ bool valid_window_shape(const std::string& label, uint8_t cols) {
          (label == "3M" && cols == 14);
 }
 
+bool valid_skyline_shape(SkylineScale scale, const std::string& label,
+                         uint8_t bar_count) {
+  switch (scale) {
+    case SkylineScale::SevenDays:  return label == "7D" && bar_count == 7;
+    case SkylineScale::EightWeeks: return label == "8W" && bar_count == 8;
+    case SkylineScale::SixMonths:  return label == "6M" && bar_count == 6;
+  }
+  return false;
+}
+
 }  // namespace
+
+SkyPhase sky_phase_for_minutes(uint16_t minutes_of_day) {
+  const uint16_t m = (uint16_t)(minutes_of_day % 1440);
+  if (m >= 330 && m < 450) return SkyPhase::Dawn;    // 05:30–07:30
+  if (m >= 450 && m < 1020) return SkyPhase::Day;    // 07:30–17:00
+  if (m >= 1020 && m < 1170) return SkyPhase::Dusk;  // 17:00–19:30
+  return SkyPhase::Night;                            // 19:30–05:30
+}
+
+SkyVisualState derive_sky_visual(uint16_t minutes_of_day, bool animating,
+                                 uint32_t tick) {
+  const uint16_t m = (uint16_t)(minutes_of_day % 1440);
+  SkyVisualState sky;
+  sky.phase = sky_phase_for_minutes(m);
+  sky.beacon_on = !animating || (((tick >> 1) & 1u) == 0);
+
+  if (sky.phase == SkyPhase::Night) {
+    sky.is_moon = true;
+    const uint16_t night_mins =
+        m >= 1170 ? (uint16_t)(m - 1170) : (uint16_t)(m + 270);
+    const double nt = std::max(0.0, std::min(1.0, (double)night_mins / 600.0));
+    sky.body_x = (int16_t)(kStationSkylineX + 6 +
+                           std::lround(nt * (kStationSkylineW - 18)));
+    sky.body_y = (int16_t)(kStationSkylineTop + 12 -
+                           std::lround(std::sin(nt * kPi) * 11.0));
+    sky.twinkle_phase = animating ? (uint8_t)((tick / 3u) % 4u) : 0;
+  } else {
+    sky.is_moon = false;
+    const double dt =
+        std::max(0.0, std::min(1.0, (double)((int)m - 330) / 840.0));
+    sky.body_x = (int16_t)(kStationSkylineX + 4 +
+                           std::lround(dt * (kStationSkylineW - 15)));
+    sky.body_y = (int16_t)(kStationSkylineTop + 13 -
+                           std::lround(std::sin(dt * kPi) * 12.0));
+    if (animating) {
+      const int32_t span = kStationSkylineW + 16;
+      sky.cloud1_x = (int16_t)(((int32_t)((tick * 45u) / 100u) % span) - 8);
+      sky.cloud2_x =
+          (int16_t)(((int32_t)((tick * 28u) / 100u + 56u) % span) - 8);
+    } else {
+      sky.cloud1_x = 18;
+      sky.cloud2_x = 72;
+    }
+  }
+  return sky;
+}
+
+TokenSkylineView derive_token_skyline(const std::vector<uint64_t>& shifted_days,
+                                      bool has_data, SkylineScale scale) {
+  TokenSkylineView out;
+  out.scale = scale;
+  out.label = skyline_scale_label(scale);
+  out.has_data = has_data;
+  out.bar_heights.fill(0);
+  out.above_baseline.fill(0);
+
+  std::array<uint64_t, kSkylineMaxBars> raw{};
+  long double baseline = 0.0L;
+  const bool have_full_year = shifted_days.size() >= kMonumentDays;
+
+  if (scale == SkylineScale::SevenDays) {
+    out.bar_count = 7;
+    if (have_full_year) {
+      for (size_t i = 0; i < 7; i++) {
+        raw[i] = shifted_days[kMonumentDays - 7 + i];
+      }
+      out.current_sum = sum_range(shifted_days, kMonumentDays - 7, kMonumentDays);
+      out.prior_sum =
+          sum_range(shifted_days, kMonumentDays - 14, kMonumentDays - 7);
+      baseline = (long double)out.prior_sum / 7.0L;
+    }
+  } else if (scale == SkylineScale::SixMonths) {
+    out.bar_count = 6;
+    if (have_full_year) {
+      for (size_t m = 0; m < 6; m++) {
+        const size_t offset = (5 - m) * 30;
+        const size_t end = kMonumentDays - offset;
+        raw[m] = sum_range(shifted_days, end - 30, end);
+      }
+      out.current_sum = raw[5];
+      out.prior_sum = raw[4];
+      long double prior_five = 0.0L;
+      for (size_t i = 0; i < 5; i++) prior_five += (long double)raw[i];
+      baseline = prior_five / 5.0L;
+    }
+  } else {
+    out.bar_count = 8;
+    if (have_full_year) {
+      for (size_t w = 0; w < 8; w++) {
+        const size_t offset = (7 - w) * 7;
+        const size_t end = kMonumentDays - offset;
+        raw[w] = sum_range(shifted_days, end - 7, end);
+      }
+      out.current_sum = raw[7];
+      out.prior_sum = raw[6];
+      long double prior_seven = 0.0L;
+      for (size_t i = 0; i < 7; i++) prior_seven += (long double)raw[i];
+      baseline = prior_seven / 7.0L;
+    }
+  }
+
+  if (!has_data) {
+    out.has_delta = false;
+    out.delta_pct = 0;
+    out.delta_positive = false;
+    out.delta_label = "--";
+  } else if (out.prior_sum == 0 && out.current_sum == 0) {
+    out.has_delta = false;
+    out.delta_pct = 0;
+    out.delta_positive = false;
+    out.delta_label = "0%";
+  } else if (out.prior_sum == 0) {
+    out.has_delta = true;
+    out.delta_pct = 999;
+    out.delta_positive = true;
+    out.delta_label = "NEW";
+  } else {
+    const long double diff =
+        (long double)out.current_sum - (long double)out.prior_sum;
+    const long pct_raw = std::lround((diff * 100.0L) / (long double)out.prior_sum);
+    const long pct = std::max<long>(-100, std::min<long>(999, pct_raw));
+    out.has_delta = true;
+    out.delta_pct = (int16_t)pct;
+    out.delta_positive = pct >= 0;
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%s%ld%%", pct >= 0 ? "+" : "", pct);
+    out.delta_label = buf;
+  }
+
+  long double bar_max = baseline * 1.1L;
+  for (size_t i = 0; i < out.bar_count; i++) {
+    bar_max = std::max(bar_max, (long double)raw[i]);
+  }
+  if (bar_max > 0.0L) {
+    out.baseline_px = (uint8_t)std::min<long>(
+        kStationSkylineMaxBarH,
+        std::max<long>(
+            0, std::lround((baseline / bar_max) * kStationSkylineMaxBarH)));
+    for (size_t i = 0; i < out.bar_count; i++) {
+      const long h = std::lround(((long double)raw[i] / bar_max) *
+                                 kStationSkylineMaxBarH);
+      out.bar_heights[i] =
+          (uint8_t)std::min<long>(kStationSkylineMaxBarH, std::max<long>(5, h));
+      out.above_baseline[i] =
+          ((long double)raw[i] >= baseline && raw[i] > 0) ? 1 : 0;
+    }
+  } else if (has_data) {
+    out.bar_heights.fill(5);
+    out.baseline_px = 0;
+  }
+
+  return out;
+}
 
 StationView derive_station_view(const UsageSnapshot& usage,
                                 const UsageSync& usage_sync,
@@ -60,7 +252,7 @@ StationView derive_station_view(const UsageSnapshot& usage,
   const TokenView tv = derive_token_view(token, now, token_sync);
 
   StationView view;
-  view.header_left = mv.header_left;
+  view.header_left = "STATION";
   view.eco_last_sync = (runtime_mode == RuntimeMode::Eco);
 
   const bool clock_valid = now >= kClockMinimum;
@@ -68,24 +260,37 @@ StationView derive_station_view(const UsageSnapshot& usage,
       std::max(usage_sync.last_ok_s, token_sync.last_ok_s);
   if (clock_valid) {
     if (view.eco_last_sync) {
-      view.clock_hhmm = newest_sync_ok >= kClockMinimum
-                            ? local_hhmm(newest_sync_ok)
-                            : "--:--";
+      if (newest_sync_ok >= kClockMinimum) {
+        view.clock_hhmm = local_hhmm(newest_sync_ok);
+        view.minutes_of_day = local_minutes_of_day(newest_sync_ok);
+      } else {
+        view.clock_hhmm = "--:--";
+        view.minutes_of_day = 750;
+      }
     } else {
       view.clock_hhmm = local_hhmm(now);
+      view.minutes_of_day = local_minutes_of_day(now);
     }
   } else {
     view.clock_hhmm = "--:--";
+    view.minutes_of_day = 750;
   }
 
   view.total_odo_value = mv.total_odo_value;
   view.total_odo = mv.total_odo;
 
   bool has_token_history = false;
-  uint64_t today_tokens = 0;
+  const std::vector<uint64_t> shifted_days =
+      derive_monument_shifted_days(monument, token, now, has_token_history);
+  uint64_t today_tokens = shifted_days[kMonumentDays - 1];
   uint32_t streak_days = 0;
-  derive_monument_totals(monument, token, now, has_token_history, today_tokens,
-                         streak_days);
+  for (int i = (int)kMonumentDays - 2; i >= 0; i--) {
+    if (shifted_days[(size_t)i] > 0) streak_days++;
+    else break;
+  }
+  if (today_tokens > 0) streak_days++;
+
+  view.today_tokens = today_tokens;
   view.today_total = has_token_history ? format_tokens(today_tokens) : "--";
   char streak_buf[16];
   std::snprintf(streak_buf, sizeof(streak_buf), "%ud", (unsigned)streak_days);
@@ -96,6 +301,9 @@ StationView derive_station_view(const UsageSnapshot& usage,
   view.cells = mv.cells;
   view.months = mv.months;
   view.month_count = mv.month_count;
+
+  view.skyline = derive_token_skyline(shifted_days, has_token_history,
+                                      skyline_scale_for_window(window));
 
   view.row_count = uv.count;
   bool any_allowance_observed = false;
@@ -133,7 +341,7 @@ StationView derive_station_view(const UsageSnapshot& usage,
     if (token_idx >= 0) {
       dst.has_token = true;
       dst.seven_day = tv.rows[(size_t)token_idx].seven_day;
-    } else if (is_known_token_provider(src.id)) {
+    } else if (is_always_numeric_token_provider(src.id)) {
       dst.has_token = true;
       dst.seven_day = token.today.empty() ? "--" : "0";
     } else {
@@ -222,8 +430,10 @@ std::string encode_station_view(const StationView& view) {
   doc["headerLeft"] = view.header_left;
   doc["ecoSync"] = view.eco_last_sync;
   doc["clock"] = view.clock_hhmm;
+  doc["mins"] = view.minutes_of_day;
   doc["odoVal"] = view.total_odo_value;
   doc["odo"] = view.total_odo;
+  doc["todayVal"] = view.today_tokens;
   doc["today"] = view.today_total;
   doc["streak"] = view.streak_label;
   doc["fChip"] = view.footer_chip;
@@ -244,6 +454,22 @@ std::string encode_station_view(const StationView& view) {
     JsonObject m = months.add<JsonObject>();
     m["c"] = view.months[i].col;
     m["l"] = view.months[i].label;
+  }
+
+  JsonObject sky = doc["sky"].to<JsonObject>();
+  sky["sc"] = (int)view.skyline.scale;
+  sky["lbl"] = view.skyline.label;
+  sky["base"] = (int)view.skyline.baseline_px;
+  sky["dPct"] = (int)view.skyline.delta_pct;
+  sky["dHas"] = view.skyline.has_delta;
+  sky["dPos"] = view.skyline.delta_positive;
+  sky["dLbl"] = view.skyline.delta_label;
+  sky["ok"] = view.skyline.has_data;
+  JsonArray bars = sky["bars"].to<JsonArray>();
+  JsonArray hi = sky["hi"].to<JsonArray>();
+  for (size_t i = 0; i < view.skyline.bar_count && i < kSkylineMaxBars; i++) {
+    bars.add((int)view.skyline.bar_heights[i]);
+    hi.add((int)view.skyline.above_baseline[i]);
   }
 
   JsonArray rows = doc["rows"].to<JsonArray>();
@@ -274,8 +500,9 @@ bool decode_station_view(const std::string& json, StationView& out) {
   JsonVariantConst root = doc.as<JsonVariantConst>();
   if (root["schema"] != kStationSchema || !root["cols"].is<uint8_t>() ||
       !root["ecoSync"].is<bool>() || !root["odoVal"].is<uint64_t>() ||
-      !root["cells"].is<const char*>() ||
+      !root["todayVal"].is<uint64_t>() || !root["cells"].is<const char*>() ||
       !root["months"].is<JsonArrayConst>() ||
+      !root["sky"].is<JsonObjectConst>() ||
       !root["rows"].is<JsonArrayConst>()) {
     return false;
   }
@@ -284,7 +511,11 @@ bool decode_station_view(const std::string& json, StationView& out) {
   next.cells.fill(kMonumentCellOutside);
   next.cols = root["cols"].as<uint8_t>();
   next.eco_last_sync = root["ecoSync"].as<bool>();
+  int mins_i = 0;
+  if (!ranged_int(root["mins"], 0, 1439, mins_i)) return false;
+  next.minutes_of_day = (uint16_t)mins_i;
   next.total_odo_value = root["odoVal"].as<uint64_t>();
+  next.today_tokens = root["todayVal"].as<uint64_t>();
   if (!small_str(root["win"], next.window_label, 8) ||
       !valid_window_shape(next.window_label, next.cols) ||
       !small_str(root["headerLeft"], next.header_left) ||
@@ -323,6 +554,41 @@ bool decode_station_view(const std::string& json, StationView& out) {
                   lbl.c_str());
   }
 
+  JsonObjectConst sky = root["sky"].as<JsonObjectConst>();
+  int v = 0;
+  if (!ranged_int(sky["sc"], 0, (int)SkylineScale::SixMonths, v)) return false;
+  next.skyline.scale = (SkylineScale)v;
+  if (!small_str(sky["lbl"], next.skyline.label, 8) ||
+      !small_str(sky["dLbl"], next.skyline.delta_label, 12) ||
+      !ranged_int(sky["base"], 0, kStationSkylineMaxBarH, v)) {
+    return false;
+  }
+  next.skyline.baseline_px = (uint8_t)v;
+  if (!ranged_int(sky["dPct"], -100, 999, v)) return false;
+  next.skyline.delta_pct = (int16_t)v;
+  if (!sky["dHas"].is<bool>() || !sky["dPos"].is<bool>() ||
+      !sky["ok"].is<bool>() || !sky["bars"].is<JsonArrayConst>() ||
+      !sky["hi"].is<JsonArrayConst>()) {
+    return false;
+  }
+  next.skyline.has_delta = sky["dHas"].as<bool>();
+  next.skyline.delta_positive = sky["dPos"].as<bool>();
+  next.skyline.has_data = sky["ok"].as<bool>();
+  JsonArrayConst bars = sky["bars"].as<JsonArrayConst>();
+  JsonArrayConst hi = sky["hi"].as<JsonArrayConst>();
+  if (bars.size() > kSkylineMaxBars || bars.size() != hi.size()) return false;
+  next.skyline.bar_count = (uint8_t)bars.size();
+  if (!valid_skyline_shape(next.skyline.scale, next.skyline.label,
+                           next.skyline.bar_count)) {
+    return false;
+  }
+  for (size_t i = 0; i < next.skyline.bar_count; i++) {
+    if (!ranged_int(bars[i], 0, kStationSkylineMaxBarH, v)) return false;
+    next.skyline.bar_heights[i] = (uint8_t)v;
+    if (!ranged_int(hi[i], 0, 1, v)) return false;
+    next.skyline.above_baseline[i] = (uint8_t)v;
+  }
+
   JsonArrayConst rows = root["rows"].as<JsonArrayConst>();
   if (rows.size() > kUsageMaxProviders) return false;
   next.row_count = rows.size();
@@ -332,7 +598,6 @@ bool decode_station_view(const std::string& json, StationView& out) {
     if (!small_str(o["id"], r.id, kUsageMaxIdLength) || r.id.empty()) {
       return false;
     }
-    int v = 0;
     if (!ranged_int(o["st"], 0, (int)UsageRowState::Stale, v)) return false;
     r.state = (UsageRowState)v;
     if (!ranged_int(o["left"], 0, 100, v)) return false;
