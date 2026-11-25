@@ -75,6 +75,14 @@ struct MonumentView;
 void render_monument(const MonumentView& view, const Shtc3Reading& env,
                      const BatteryReading& batt, RuntimeMode runtime_mode,
                      const MonumentFrame& frame, bool carousel_pinned = false);
+
+// Station home overview page shares Monument's 0.9 s entry/sync sweep and
+// 1 Hz HOST clock colon while remaining static in ACTIVE and ECO.
+using StationFrame = MonumentFrame;
+struct StationView;
+void render_station(const StationView& view, const Shtc3Reading& env,
+                    const BatteryReading& batt, RuntimeMode runtime_mode,
+                    const StationFrame& frame, bool carousel_pinned = false);
 #endif
 
 }  // namespace rcpaper

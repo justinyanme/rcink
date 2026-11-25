@@ -30,6 +30,7 @@
 #include "render/monument_persistence.h"
 #include "render/monument_view.h"
 #include "render/page.h"
+#include "render/station_view.h"
 #include "render/token_view.h"
 #include "sense/battery.h"
 #include "sense/clock.h"
@@ -111,6 +112,12 @@ static uint32_t g_monument_sweep_start_ms = 0;
 static uint32_t g_monument_last_frame_ms = 0;
 static std::string g_monument_view_json;
 static MonumentView g_monument_view;
+static bool g_station_sweeping = false;
+static bool g_station_last_colon = true;
+static uint32_t g_station_sweep_start_ms = 0;
+static uint32_t g_station_last_frame_ms = 0;
+static std::string g_station_view_json;
+static StationView g_station_view;
 #endif
 static bool g_render_pending = false;
 
@@ -322,6 +329,44 @@ static bool draw_monument_page(const PageRecord& rec) {
                   g_carousel_pinned);
   return true;
 }
+
+static void start_station_sweep() {
+  if (!monument_animating()) return;
+  g_station_sweeping = true;
+  g_station_last_colon = true;
+  g_station_sweep_start_ms = millis();
+}
+
+static StationFrame station_frame() {
+  StationFrame frame;
+  if (!monument_animating()) return frame;
+  if (g_station_sweeping) {
+    const uint32_t elapsed = millis() - g_station_sweep_start_ms;
+    if (elapsed >= kUsageSweepMs) {
+      g_station_sweeping = false;
+    } else {
+      const float rest = 1.0f - (float)elapsed / (float)kUsageSweepMs;
+      frame.sweep = 1.0f - rest * rest * rest;
+    }
+    return frame;
+  }
+  frame.show_colon = ((millis() / 500) % 2) == 0;
+  return frame;
+}
+
+static bool draw_station_page(const PageRecord& rec) {
+  if (rec.layout_json != g_station_view_json) {
+    StationView view;
+    if (!decode_station_view(rec.layout_json, view)) return false;
+    g_station_view = view;
+    g_station_view_json = rec.layout_json;
+  }
+  const StationFrame frame = station_frame();
+  g_station_last_colon = frame.show_colon;
+  render_station(g_station_view, g_env, g_battery, g_runtime.mode, frame,
+                 g_carousel_pinned);
+  return true;
+}
 #endif
 
 static bool maybe_sample_env(uint64_t now, bool force = false) {
@@ -381,12 +426,24 @@ void render_current() {
 
 #if RCRLCD_USAGE_ENABLED
   maybe_sample_env(now);
-  if (g_state.pages[g_state.page_index].id == kMonumentPageId) {
+  if (g_state.pages[g_state.page_index].id == kStationPageId) {
+    update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                        token_sync(), now, g_runtime.mode, g_heatmap_window);
+  } else if (g_state.pages[g_state.page_index].id == kMonumentPageId) {
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
                          g_runtime.mode, g_heatmap_window);
   }
   const PageRecord& rec = g_state.pages[g_state.page_index];
-  if (rec.id == kUsagePageId) {
+  if (rec.id == kStationPageId) {
+    const uint32_t t0 = millis();
+    if (!draw_station_page(rec)) {
+      g_last_result = "station-view-invalid";
+      render_error("station view decode failed", g_runtime.mode);
+      g_deck_frame_valid = false;
+      return;
+    }
+    Serial.printf("[render] station in %u ms\n", (unsigned)(millis() - t0));
+  } else if (rec.id == kUsagePageId) {
     const uint32_t t0 = millis();
     if (!draw_usage_page(rec)) {
       g_last_result = "usage-view-invalid";
@@ -527,7 +584,8 @@ void apply_navigation(const NavigationState& next) {
       (g_view != View::Deck || next.page_index != g_state.page_index) &&
       next.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[next.page_index].id;
-    if (id == kTokenPageId) start_token_sweep();
+    if (id == kStationPageId) start_station_sweep();
+    else if (id == kTokenPageId) start_token_sweep();
     else if (id == kMonumentPageId) start_monument_sweep();
     else start_usage_sweep();
   }
@@ -562,6 +620,8 @@ static void request_usage_sync() {
     g_usage_sync_requested = false;  // the task could not start
   }
   const uint64_t now = (uint64_t)time(nullptr);
+  update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                      token_sync(), now, g_runtime.mode, g_heatmap_window);
   update_usage_page(g_state, g_usage, now, usage_sync());
   update_token_page(g_state, g_token, now, token_sync());
   update_monument_page(g_state, g_monument, g_token, now, token_sync(),
@@ -616,6 +676,8 @@ static bool poll_refresh_completion() {
   g_usage_sync_requested = refresh_token_pending();
   if (g_usage_sync_requested) {
     const uint64_t now = (uint64_t)time(nullptr);
+    update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                        token_sync(), now, g_runtime.mode, g_heatmap_window);
     update_usage_page(g_state, g_usage, now, usage_sync());
     update_token_page(g_state, g_token, now, token_sync());
     update_monument_page(g_state, g_monument, g_token, now, token_sync(),
@@ -624,6 +686,11 @@ static bool poll_refresh_completion() {
   }
   if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[g_state.page_index].id;
+    if (id == kStationPageId &&
+        (monument_succeeded || token_succeeded ||
+         (allowance_page_changed && !g_usage_fetch_failed))) {
+      start_station_sweep();
+    }
     if (id == kTokenPageId && token_succeeded) start_token_sweep();
     if (id == kMonumentPageId && (monument_succeeded || token_succeeded)) {
       start_monument_sweep();
@@ -643,6 +710,9 @@ static bool poll_usage_freshness() {
   const uint64_t now = (uint64_t)time(nullptr);
   if (now == g_usage_evaluated_at_s) return false;
   g_usage_evaluated_at_s = now;
+  const bool station_changed =
+      update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                          token_sync(), now, g_runtime.mode, g_heatmap_window);
   const bool allowance_changed =
       update_usage_page(g_state, g_usage, now, usage_sync());
   const bool token_changed =
@@ -655,10 +725,11 @@ static bool poll_usage_freshness() {
     return false;
   }
   const std::string& id = g_state.pages[g_state.page_index].id;
+  if (id == kStationPageId) return station_changed || env_changed;
   if (id == kUsagePageId) return allowance_changed || env_changed;
   if (id == kTokenPageId) return token_changed;
   if (id == kMonumentPageId) return monument_changed || env_changed;
-  return allowance_changed || token_changed || monument_changed;
+  return station_changed || allowance_changed || token_changed || monument_changed;
 #else
   return false;
 #endif
@@ -697,11 +768,25 @@ static void poll_token_animation() {
 static void poll_monument_animation() {
 #if RCRLCD_USAGE_ENABLED
   if (g_view != View::Deck || !g_deck_frame_valid || !monument_animating() ||
-      g_state.page_index >= g_state.pages.size() ||
-      g_state.pages[g_state.page_index].id != kMonumentPageId) {
+      g_state.page_index >= g_state.pages.size()) {
     return;
   }
+  const std::string& id = g_state.pages[g_state.page_index].id;
   const uint32_t now = millis();
+  if (id == kStationPageId) {
+    if (g_station_sweeping) {
+      if (now - g_station_last_frame_ms < kUsageFrameMs) return;
+      g_station_last_frame_ms = now;
+      draw_station_page(g_state.pages[g_state.page_index]);
+      return;
+    }
+    if (station_frame().show_colon != g_station_last_colon) {
+      g_station_last_frame_ms = now;
+      draw_station_page(g_state.pages[g_state.page_index]);
+    }
+    return;
+  }
+  if (id != kMonumentPageId) return;
   if (g_monument_sweeping) {
     if (now - g_monument_last_frame_ms < kUsageFrameMs) return;
     g_monument_last_frame_ms = now;
@@ -726,9 +811,12 @@ static void toggle_carousel_pin(const char* source) {
 static void cycle_heatmap_window(const char* source) {
   g_heatmap_window = next_heatmap_window(g_heatmap_window);
   save_heatmap_window(g_heatmap_window);
+  g_station_sweeping = false;
   g_monument_sweeping = false;
   g_carousel_last_switch_ms = millis();
   const uint64_t now = (uint64_t)time(nullptr);
+  update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
+                      token_sync(), now, g_runtime.mode, g_heatmap_window);
   update_monument_page(g_state, g_monument, g_token, now, token_sync(),
                        g_runtime.mode, g_heatmap_window);
   Serial.printf("%s -> heatmap window=%s\n", source,
@@ -882,6 +970,9 @@ void console_dispatch(char c) {
 #if RCRLCD_USAGE_ENABLED
       g_usage_animation = !g_usage_animation;
       g_usage_sweeping = false;
+      g_token_sweeping = false;
+      g_monument_sweeping = false;
+      g_station_sweeping = false;
       Serial.printf("[console] usage animation %s\n", g_usage_animation ? "on" : "off");
       render_current_view();
 #else
@@ -1023,6 +1114,8 @@ void setup() {
   g_state.unchanged_fetches = g_usage_unchanged_fetches;
   const uint64_t now = (uint64_t)time(nullptr);
   g_state.pages = {
+      station_page(g_usage, usage_sync(), g_token, g_monument, token_sync(),
+                   now, g_runtime.mode, g_heatmap_window),
       usage_page(g_usage, now, usage_sync()),
       token_page(g_token, now, token_sync()),
       monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode,
@@ -1044,7 +1137,8 @@ void setup() {
 #if RCRLCD_USAGE_ENABLED
   if (!resumed_from_deep_sleep && g_view == View::Deck) {
     const std::string& pid = g_state.pages[g_state.page_index].id;
-    if (pid == kTokenPageId) start_token_sweep();
+    if (pid == kStationPageId) start_station_sweep();
+    else if (pid == kTokenPageId) start_token_sweep();
     else if (pid == kMonumentPageId) start_monument_sweep();
   }
 #endif

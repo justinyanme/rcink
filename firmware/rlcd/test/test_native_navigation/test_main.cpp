@@ -148,22 +148,24 @@ void test_hidden_dashboard_ring_cycles_only_deck_pages_and_forces_deck_startup()
 
 void test_three_page_hidden_dashboard_ring_and_host_carousel_policy() {
   NavigationState state = {View::Deck, 0};
-  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  state = navigation_after_next_press(state.view, state.page_index, 4, false);
   TEST_ASSERT_EQUAL_UINT(1, state.page_index);
-  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  state = navigation_after_next_press(state.view, state.page_index, 4, false);
   TEST_ASSERT_EQUAL_UINT(2, state.page_index);
-  state = navigation_after_next_press(state.view, state.page_index, 3, false);
+  state = navigation_after_next_press(state.view, state.page_index, 4, false);
+  TEST_ASSERT_EQUAL_UINT(3, state.page_index);
+  state = navigation_after_next_press(state.view, state.page_index, 4, false);
   TEST_ASSERT_EQUAL_UINT(0, state.page_index);
 
-  state = navigation_after_previous_press(state.view, state.page_index, 3, false);
-  TEST_ASSERT_EQUAL_UINT(2, state.page_index);
+  state = navigation_after_previous_press(state.view, state.page_index, 4, false);
+  TEST_ASSERT_EQUAL_UINT(3, state.page_index);
 
-  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, false, 3, 89999, 0));
-  TEST_ASSERT_TRUE(host_carousel_due(true, false, false, false, 3, 90000, 0));
-  TEST_ASSERT_FALSE(host_carousel_due(false, false, false, false, 3, 90000, 0));
-  TEST_ASSERT_FALSE(host_carousel_due(true, true, false, false, 3, 90000, 0));
-  TEST_ASSERT_FALSE(host_carousel_due(true, false, true, false, 3, 90000, 0));
-  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, true, 3, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, false, 4, 89999, 0));
+  TEST_ASSERT_TRUE(host_carousel_due(true, false, false, false, 4, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(false, false, false, false, 4, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, true, false, false, 4, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, true, false, 4, 90000, 0));
+  TEST_ASSERT_FALSE(host_carousel_due(true, false, false, true, 4, 90000, 0));
   TEST_ASSERT_FALSE(host_carousel_due(true, false, false, false, 1, 90000, 0));
 }
 

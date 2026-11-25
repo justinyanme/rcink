@@ -126,6 +126,47 @@ bool valid_window_shape(const std::string& label, uint8_t cols) {
 
 }  // namespace
 
+void derive_monument_totals(const MonumentSnapshot& monument,
+                            const TokenSnapshot& token, uint64_t now,
+                            bool& has_data, uint64_t& today_tokens,
+                            uint32_t& streak_days) {
+  std::vector<uint64_t> shifted(kMonumentDays, 0);
+  bool has_monument =
+      !monument.end_date.empty() && monument.days.size() == kMonumentDays;
+  if (has_monument) {
+    int y = 0, m = 0, d = 0;
+    if (!parse_ymd(monument.end_date, y, m, d)) {
+      has_monument = false;
+    } else {
+      const int64_t elapsed = elapsed_days_utc8(monument.end_date, now);
+      if (elapsed <= 0) {
+        shifted = monument.days;
+      } else if (elapsed < (int64_t)kMonumentDays) {
+        const size_t shift = (size_t)elapsed;
+        for (size_t i = 0; i < kMonumentDays; i++) {
+          shifted[i] = i + shift < kMonumentDays ? monument.days[i + shift] : 0;
+        }
+      }
+    }
+  }
+  const uint64_t tok_today = sum_token_today(token, now);
+  if (tok_today > shifted[kMonumentDays - 1]) {
+    shifted[kMonumentDays - 1] = tok_today;
+  }
+  uint64_t token_lifetime_sum = 0;
+  for (size_t p = 0; p < token.count; p++) {
+    token_lifetime_sum = sat_add(token_lifetime_sum, token.providers[p].lifetime);
+  }
+  has_data = has_monument || !token.today.empty() || token_lifetime_sum > 0;
+  today_tokens = shifted[kMonumentDays - 1];
+  streak_days = 0;
+  for (int i = (int)kMonumentDays - 2; i >= 0; i--) {
+    if (shifted[(size_t)i] > 0) streak_days++;
+    else break;
+  }
+  if (shifted[kMonumentDays - 1] > 0) streak_days++;
+}
+
 MonumentView derive_monument_view(const MonumentSnapshot& monument,
                                   const TokenSnapshot& token, uint64_t now,
                                   const TokenSync& sync,

@@ -36,6 +36,10 @@ void test_chord_redraws_and_key_long_routes_by_page() {
   TEST_ASSERT_EQUAL_UINT8(
       static_cast<uint8_t>(KeyLongAction::CycleHeatmapWindow),
       static_cast<uint8_t>(
+          key_long_action_for_page(View::Deck, "desk-station", true)));
+  TEST_ASSERT_EQUAL_UINT8(
+      static_cast<uint8_t>(KeyLongAction::CycleHeatmapWindow),
+      static_cast<uint8_t>(
           key_long_action_for_page(View::Deck, kMonumentPageId, true)));
   TEST_ASSERT_EQUAL_UINT8(
       static_cast<uint8_t>(KeyLongAction::ToggleCarouselPin),

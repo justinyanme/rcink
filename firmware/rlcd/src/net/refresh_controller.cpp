@@ -14,6 +14,7 @@
 #include "power/refresh_schedule.h"
 #include "render/monument_persistence.h"
 #include "render/monument_view.h"
+#include "render/station_view.h"
 #include "render/token_persistence.h"
 #include "sense/clock.h"
 
@@ -199,20 +200,24 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
   const uint64_t token_retry = app.link_failure != LinkFailure::None
       ? app.retry_not_before_s
       : std::max(app.token_retry_at_s, app.retry_not_before_s);
-  allowance_page_changed = update_usage_page(
-      app.device, app.usage, completion.completed_at_s,
-      {!success, app.device.last_fetch_s, app.retry_not_before_s, false,
-       app.link_failure, app.retry_cooldown_s, WIFI_SSID});
-  const bool token_changed = update_token_page(
-      app.device, app.token, completion.completed_at_s,
-      {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
-       app.link_failure, app.retry_cooldown_s, WIFI_SSID});
+  const UsageSync u_sync = {!success, app.device.last_fetch_s,
+                            app.retry_not_before_s, false, app.link_failure,
+                            app.retry_cooldown_s, WIFI_SSID};
+  const TokenSync t_sync = {app.token_fetch_failed, app.token_last_ok_s,
+                            token_retry, false, app.link_failure,
+                            app.retry_cooldown_s, WIFI_SSID};
+  const bool station_changed = update_station_page(
+      app.device, app.usage, u_sync, app.token, app.monument, t_sync,
+      completion.completed_at_s, app.runtime_mode, app.heatmap_window);
+  allowance_page_changed =
+      update_usage_page(app.device, app.usage, completion.completed_at_s, u_sync);
+  const bool token_changed =
+      update_token_page(app.device, app.token, completion.completed_at_s, t_sync);
   const bool monument_changed = update_monument_page(
-      app.device, app.monument, app.token, completion.completed_at_s,
-      {app.token_fetch_failed, app.token_last_ok_s, token_retry, false,
-       app.link_failure, app.retry_cooldown_s, WIFI_SSID},
+      app.device, app.monument, app.token, completion.completed_at_s, t_sync,
       app.runtime_mode, app.heatmap_window);
-  usage_page_changed = allowance_page_changed || token_changed || monument_changed;
+  usage_page_changed = station_changed || allowance_page_changed ||
+                       token_changed || monument_changed;
 #endif
   Serial.printf("[auto] retry gate %u s result=%u link=%u\n",
                 (unsigned)(gate - completion.completed_at_s),

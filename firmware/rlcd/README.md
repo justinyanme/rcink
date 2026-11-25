@@ -145,19 +145,19 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | Gesture | Dashboard | Deck |
 |---|---|---|
 | **KEY** (GPIO18) tap | Page 1 | next page; cycles Deck ring |
-| **KEY** (GPIO18) hold ≥ 600 ms | pin/unpin `HOST` carousel | on Monument Page: cycle **Heatmap Window** (`1Y → 6M → 3M → 1Y`, NVS persisted, static redraw); on other pages: pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
+| **KEY** (GPIO18) hold ≥ 600 ms | pin/unpin `HOST` carousel | on Station or Monument Page: cycle **Heatmap Window** (`1Y → 6M → 3M → 1Y`, NVS persisted, static redraw); on other pages: pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
 | **KEY + BOOT** chord | pin/unpin `HOST` carousel | pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) on *any* page without stray tap/sync on release |
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 | **BOOT** tap, usage build | Usage + sync now | sync now (Allowance + Token + Monument) |
 | **BOOT** (GPIO0) hold ≥ 600 ms | toggle dark mode | toggle & persist 1-bit dark/light polarity |
 
-In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles through the 3-page Deck ring (`Allowance ⇄ Token ⇄ Monument`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard). Notice room temperature & humidity from the onboard SHTC3 also appear cleanly as ambient chrome in the Allowance header and the Monument page.
-In USB `HOST` mode, unless pinned via `KEY + BOOT` chord (on any page), a 600 ms `KEY` hold on Allowance/Token, or console `l`, the Deck auto-rotates every 90 seconds. Cycling the Monument **Heatmap Window** also resets the 90-second timer. Battery `ACTIVE` and `ECO` modes never auto-rotate.
+In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles through the 4-page Deck ring (`Station ⇄ Allowance ⇄ Token ⇄ Monument`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard). Notice room temperature & humidity from the onboard SHTC3 also appear cleanly as ambient chrome in the Station, Allowance, and Monument headers.
+In USB `HOST` mode, unless pinned via `KEY + BOOT` chord (on any page), a 600 ms `KEY` hold on Allowance/Token, or console `l`, the Deck auto-rotates every 90 seconds. Cycling the **Heatmap Window** on Station or Monument also resets the 90-second timer. Battery `ACTIVE` and `ECO` modes never auto-rotate.
 BOOT tap means "sync now": on any Deck page it stays on that page and fetches
-Allowance, Token, and Monument annual history immediately; if climate Dashboard is enabled and active, BOOT opens Allowance and syncs. The
+Allowance, Token, and Monument annual history immediately; if climate Dashboard is enabled and active, BOOT opens Station and syncs. The
 visible page's footer reads `SYNCING · fetching now` until the fetch completes
 (a fetch already in flight is joined where possible, not doubled); a successful
-Token or Monument sync replays its 0.9-second sweep in HOST.
+Station, Token, or Monument sync replays its 0.9-second sweep in HOST.
 
 Production deep sleep arms only GPIO18/KEY as an EXT1 wake source. Each KEY wake
 classifies the press by duration: if KEY is already released when setup polls
@@ -240,9 +240,22 @@ The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. In the usage build the climate Dashboard is hidden by default
 (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so cold restarts and wakes stay in the Deck
-and KEY cycles across the 3-page Deck (`Allowance ⇄ Token ⇄ Monument`; define
+and KEY cycles across the 4-page Deck (`Station ⇄ Allowance ⇄ Token ⇄ Monument`; define
 `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include climate Dashboard in startup/navigation again)
-while BOOT syncs now (see Buttons). Usage `HOST` polls every 300 seconds after a success and
+while BOOT syncs now (see Buttons).
+
+#### Station page
+
+The Deck's home page (`id="desk-station"`, `src/render/station_render.cpp` +
+`src/render/station_view.cpp` + `src/render/station_layout.h`) unites the
+desktop wall clock (`LAST SYNC` in `ECO` deep sleep), `Total ODO`, the shared
+rolling 7-row **Heatmap Window** (`1Y` / `6M` / `3M`), SHTC3 ambient header
+climate, and horizontal per-Provider strips (`Allowance %`, `80 px` fuel-pace
+bar with `Even Pace` tick, reset countdown, and `Seven-Day Total`, or `—` for
+Allowance-only providers such as `Kimi`). Independent Allowance and Token fetch
+failures or staleness states are attributed explicitly in the shared footer
+(`[ALLOWANCE]`, `[TOKEN FAIL]`, `[SYNC FAILED]`, `[OLD DATA] M4 HH:MM` /
+`checked HH:MM`). Console `q` dumps its `rcink.station-view.v1` JSON model. Usage `HOST` polls every 300 seconds after a success and
 retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
 a failure the retry gate alone schedules the next attempt, so the footer's
 `retry HH:MM` is when it really happens, even soon after a success.

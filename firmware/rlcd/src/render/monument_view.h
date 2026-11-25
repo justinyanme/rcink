@@ -58,6 +58,10 @@ inline bool operator==(const MonumentView& a, const MonumentView& b) {
          a.footer_text == b.footer_text;
 }
 
+void derive_monument_totals(const MonumentSnapshot& monument,
+                            const TokenSnapshot& token, uint64_t now,
+                            bool& has_data, uint64_t& today_tokens,
+                            uint32_t& streak_days);
 MonumentView derive_monument_view(
     const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
     const TokenSync& sync, RuntimeMode runtime_mode,

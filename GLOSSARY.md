@@ -20,8 +20,12 @@ _Avoid_: Main tier, default account, active vendor
 The unused share of a Provider's weekly subscription limit, scoped to a single account and never summed across machines.
 _Avoid_: Quota, limit, usage
 
+**Station Page**:
+The home Deck page uniting the desktop wall clock, Total Odometer, rolling activity heatmap, ambient desk climate, and compact per-provider Allowance and Seven-Day Total telemetry on one screen.
+_Avoid_: Dashboard view, summary screen, overview tab, all-in-one page
+
 **Allowance Page**:
-The primary Deck page displaying per-provider remaining weekly subscription capacity, burn pace relative to reset, and expiry risk.
+The dedicated Deck page displaying per-provider remaining weekly subscription capacity, burn pace relative to reset, and expiry risk.
 _Avoid_: Limits screen, quota tab, usage road
 
 **Even Pace**:
@@ -49,7 +53,7 @@ Token Usage summed over today and the six preceding local days, independent of a
 _Avoid_: This week, weekly usage
 
 **Token Page**:
-The secondary Deck page displaying per-provider 7-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
+The dedicated Deck page displaying per-provider 7-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
 _Avoid_: Metrics screen, billing view, cost page
 
 **Active-Window Usual Day**:
@@ -61,7 +65,7 @@ A monotonic cumulative token total counted per provider (`ODO`) or across all pr
 _Avoid_: Lifetime, counter, lifetime gauge, mileage
 
 **Monument Page**:
-The third Deck page combining the desktop wall clock, rolling activity heatmap, Total Odometer milestone progress, and indoor micro-climate strip.
+The dedicated Deck page combining the desktop wall clock, rolling activity heatmap, Total Odometer milestone progress, and indoor micro-climate strip.
 _Avoid_: Dashboard view, heatmap view, climate screen, clock tab
 
 **Heatmap Window**:
