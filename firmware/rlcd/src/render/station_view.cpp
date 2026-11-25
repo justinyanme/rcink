@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <ctime>
 #include <limits>
+#include <memory>
 
 namespace rcpaper {
 namespace {
@@ -246,10 +247,13 @@ StationView derive_station_view(const UsageSnapshot& usage,
                                 const TokenSync& token_sync, uint64_t now,
                                 RuntimeMode runtime_mode,
                                 HeatmapWindow window) {
-  const MonumentView mv = derive_monument_view(monument, token, now, token_sync,
-                                               runtime_mode, window);
-  const UsageView uv = derive_usage_view(usage, now, usage_sync);
-  const TokenView tv = derive_token_view(token, now, token_sync);
+  auto mv = std::make_unique<MonumentView>(
+      derive_monument_view(monument, token, now, token_sync, runtime_mode,
+                           window));
+  auto uv = std::make_unique<UsageView>(
+      derive_usage_view(usage, now, usage_sync));
+  auto tv = std::make_unique<TokenView>(
+      derive_token_view(token, now, token_sync));
 
   StationView view;
   view.header_left = "STATION";
@@ -276,8 +280,8 @@ StationView derive_station_view(const UsageSnapshot& usage,
     view.minutes_of_day = 750;
   }
 
-  view.total_odo_value = mv.total_odo_value;
-  view.total_odo = mv.total_odo;
+  view.total_odo_value = mv->total_odo_value;
+  view.total_odo = mv->total_odo;
 
   bool has_token_history = false;
   const std::vector<uint64_t> shifted_days =
@@ -296,20 +300,20 @@ StationView derive_station_view(const UsageSnapshot& usage,
   std::snprintf(streak_buf, sizeof(streak_buf), "%ud", (unsigned)streak_days);
   view.streak_label = streak_buf;
 
-  view.window_label = mv.window_label;
-  view.cols = mv.cols;
-  view.cells = mv.cells;
-  view.months = mv.months;
-  view.month_count = mv.month_count;
+  view.window_label = mv->window_label;
+  view.cols = mv->cols;
+  view.cells = mv->cells;
+  view.months = mv->months;
+  view.month_count = mv->month_count;
 
   view.skyline = derive_token_skyline(shifted_days, has_token_history,
                                       skyline_scale_for_window(window));
 
-  view.row_count = uv.count;
+  view.row_count = uv->count;
   bool any_allowance_observed = false;
   bool all_allowance_stale = true;
-  for (size_t i = 0; i < uv.count; i++) {
-    const UsageRowView& src = uv.rows[i];
+  for (size_t i = 0; i < uv->count; i++) {
+    const UsageRowView& src = uv->rows[i];
     StationRowView& dst = view.rows[i];
     dst.id = src.id;
     dst.state = src.state;
@@ -332,15 +336,15 @@ StationView derive_station_view(const UsageSnapshot& usage,
     }
 
     int token_idx = -1;
-    for (size_t p = 0; p < tv.count; p++) {
-      if (tv.rows[p].id == src.id) {
+    for (size_t p = 0; p < tv->count; p++) {
+      if (tv->rows[p].id == src.id) {
         token_idx = (int)p;
         break;
       }
     }
     if (token_idx >= 0) {
       dst.has_token = true;
-      dst.seven_day = tv.rows[(size_t)token_idx].seven_day;
+      dst.seven_day = tv->rows[(size_t)token_idx].seven_day;
     } else if (is_always_numeric_token_provider(src.id)) {
       dst.has_token = true;
       dst.seven_day = token.today.empty() ? "--" : "0";
@@ -628,9 +632,10 @@ PageRecord station_page(const UsageSnapshot& usage, const UsageSync& usage_sync,
   PageRecord page;
   page.id = kStationPageId;
   page.data_ts = now;
-  page.layout_json = encode_station_view(derive_station_view(
+  auto view = std::make_unique<StationView>(derive_station_view(
       usage, usage_sync, token, monument, token_sync, now, runtime_mode,
       window));
+  page.layout_json = encode_station_view(*view);
   return page;
 }
 

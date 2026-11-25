@@ -127,10 +127,31 @@ void test_desk_cat_mood_weights_favor_sleep_at_night_and_play_on_active_days() {
   TEST_ASSERT_GREATER_THAN(200, active_play);
 }
 
+void test_desk_cat_random_spawn_spreads_across_all_ledges_and_stays_in_bounds() {
+  bool seen_ledge[kDeskCatLedgeCount] = {false, false, false};
+  for (uint32_t seed = 1; seed <= 64; seed++) {
+    const DeskCatState cat = desk_cat_random_spawn(seed * 2654435761u);
+    TEST_ASSERT_LESS_THAN(kDeskCatLedgeCount, cat.ledge_idx);
+    const DeskCatLedge& ledge = kDeskCatLedges[cat.ledge_idx];
+    seen_ledge[cat.ledge_idx] = true;
+    TEST_ASSERT_TRUE(cat.x >= (float)ledge.min_x && cat.x <= (float)ledge.max_x);
+    TEST_ASSERT_EQUAL_FLOAT((float)ledge.y, cat.y);
+    TEST_ASSERT_TRUE(cat.dir == 1 || cat.dir == -1);
+    if (cat.yarn_active) {
+      TEST_ASSERT_TRUE(cat.yarn_x >= (float)ledge.min_x &&
+                       cat.yarn_x <= (float)ledge.max_x);
+    }
+  }
+  for (size_t i = 0; i < kDeskCatLedgeCount; i++) {
+    TEST_ASSERT_TRUE(seen_ledge[i]);
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_desk_cat_stays_within_ledge_and_yarn_bounds_across_long_run);
   RUN_TEST(test_desk_cat_active_and_eco_never_mutate_state_and_render_static_pose);
   RUN_TEST(test_desk_cat_mood_weights_favor_sleep_at_night_and_play_on_active_days);
+  RUN_TEST(test_desk_cat_random_spawn_spreads_across_all_ledges_and_stays_in_bounds);
   return UNITY_END();
 }

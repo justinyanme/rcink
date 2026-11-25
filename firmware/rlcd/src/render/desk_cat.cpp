@@ -103,6 +103,41 @@ DeskCatState desk_cat_initial(uint32_t seed) {
   return cat;
 }
 
+DeskCatState desk_cat_random_spawn(uint32_t seed) {
+  DeskCatState cat = desk_cat_initial(seed);
+  // Mix seed twice so nearby timestamps/seeds spread cleanly across ledges.
+  (void)next_unit(cat);
+  const size_t ledge_pick =
+      (size_t)(next_unit(cat) * (float)kDeskCatLedgeCount);
+  cat.ledge_idx = (uint8_t)(ledge_pick >= kDeskCatLedgeCount
+                                ? kDeskCatLedgeCount - 1
+                                : ledge_pick);
+  const DeskCatLedge& ledge = kDeskCatLedges[cat.ledge_idx];
+  const float span = (float)(ledge.max_x - ledge.min_x);
+  cat.x = clampf(std::round((float)ledge.min_x + next_unit(cat) * span),
+                 (float)ledge.min_x, (float)ledge.max_x);
+  cat.y = (float)ledge.y;
+  cat.dir = next_unit(cat) < 0.5f ? 1 : -1;
+  const float mode_r = next_unit(cat);
+  if (mode_r < 0.40f) {
+    cat.mode = DeskCatMode::Walk;
+    cat.timer = (int16_t)(16 + (int)(next_unit(cat) * 20.0f));
+    cat.yarn_active = false;
+  } else if (mode_r < 0.72f) {
+    cat.mode = DeskCatMode::PlayYarn;
+    cat.timer = (int16_t)(24 + (int)(next_unit(cat) * 24.0f));
+    cat.yarn_active = true;
+    cat.yarn_x = clampf(cat.x + (float)cat.dir * 22.0f, (float)ledge.min_x,
+                        (float)ledge.max_x);
+    cat.yarn_vx = (float)cat.dir * (2.0f + next_unit(cat) * 1.4f);
+  } else {
+    cat.mode = DeskCatMode::Sit;
+    cat.timer = (int16_t)(12 + (int)(next_unit(cat) * 16.0f));
+    cat.yarn_active = false;
+  }
+  return cat;
+}
+
 DeskCatState desk_cat_static_pose() {
   DeskCatState cat;
   cat.ledge_idx = 1;

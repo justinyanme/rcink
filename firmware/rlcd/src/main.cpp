@@ -5,6 +5,8 @@
 #include <esp_system.h>
 #include <time.h>
 
+#include <memory>
+
 #include "config.h"
 #include "dev/console_dump.h"
 #include "display/st7305.h"
@@ -366,9 +368,9 @@ static StationFrame station_frame() {
 
 static bool draw_station_page(const PageRecord& rec) {
   if (rec.layout_json != g_station_view_json) {
-    StationView view;
-    if (!decode_station_view(rec.layout_json, view)) return false;
-    g_station_view = view;
+    auto view = std::make_unique<StationView>();
+    if (!decode_station_view(rec.layout_json, *view)) return false;
+    g_station_view = std::move(*view);
     g_station_view_json = rec.layout_json;
   }
   const StationFrame frame = station_frame();
@@ -595,7 +597,10 @@ void apply_navigation(const NavigationState& next) {
       (g_view != View::Deck || next.page_index != g_state.page_index) &&
       next.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[next.page_index].id;
-    if (id == kStationPageId) start_station_sweep();
+    if (id == kStationPageId) {
+      g_desk_cat = desk_cat_random_spawn(esp_random());
+      start_station_sweep();
+    }
     else if (id == kTokenPageId) start_token_sweep();
     else if (id == kMonumentPageId) start_monument_sweep();
     else start_usage_sweep();
@@ -1109,6 +1114,9 @@ void setup() {
   g_heatmap_window = load_heatmap_window();
   g_station_heatmap_window = load_station_heatmap_window();
   g_desk_cat_enabled = load_desk_cat_enabled();
+#if RCRLCD_USAGE_ENABLED
+  g_desk_cat = desk_cat_random_spawn(esp_random());
+#endif
   const buttons::WakeKeyDisposition wake_key = buttons::init(key_wake);
 
   rtc_begin();

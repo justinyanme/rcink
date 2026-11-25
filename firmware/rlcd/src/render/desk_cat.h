@@ -63,6 +63,7 @@ struct DeskCatState {
 };
 
 DeskCatState desk_cat_initial(uint32_t seed = 0x51A7C471u);
+DeskCatState desk_cat_random_spawn(uint32_t seed);
 DeskCatState desk_cat_static_pose();
 DeskCatState desk_cat_render_pose(const DeskCatState& cat, bool animating);
 void start_desk_cat_jump(DeskCatState& cat, int8_t target_ledge = -1);
