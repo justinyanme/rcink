@@ -58,6 +58,9 @@ inline bool operator==(const MonumentView& a, const MonumentView& b) {
          a.footer_text == b.footer_text;
 }
 
+std::vector<uint64_t> derive_monument_shifted_days(
+    const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
+    bool& has_data);
 void derive_monument_totals(const MonumentSnapshot& monument,
                             const TokenSnapshot& token, uint64_t now,
                             bool& has_data, uint64_t& today_tokens,

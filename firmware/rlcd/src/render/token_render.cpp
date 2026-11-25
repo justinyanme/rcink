@@ -49,6 +49,7 @@ const MonoBitmap* token_logo(const std::string& id) {
   if (id == "claude") return &usage_logos::kClaude28;
   if (id == "codex") return &usage_logos::kCodex28;
   if (id == "gemini") return &usage_logos::kGemini28;
+  if (id == "kimi") return &usage_logos::kKimi28;
   return nullptr;
 }
 
@@ -124,8 +125,10 @@ void row(size_t i, size_t count, const TokenRowView& row,
   const int16_t total_base = top + m.total_base;
   const int16_t today_base = top + m.today_base;
   const std::string name = token_provider_name(row.id);
-  text(name.c_str(), kTokenTextX, hdr_base, FontRole::Name);
-  int16_t after_name = kTokenTextX + text_w(name.c_str(), FontRole::Name);
+  const FontRole name_role =
+      m.compact_name ? FontRole::BodyBold : FontRole::Name;
+  text(name.c_str(), kTokenTextX, hdr_base, name_role);
+  int16_t after_name = kTokenTextX + text_w(name.c_str(), name_role);
   if (row.id == "gemini") {
     g->drawBitmap(after_name + 6, hdr_base - 12,
                   usage_logos::kAntigravity12.bits,
@@ -134,8 +137,10 @@ void row(size_t i, size_t count, const TokenRowView& row,
     after_name += 6 + usage_logos::kAntigravity12.w;
   }
   text("7 days", after_name + kTokenNameLabelGap, hdr_base, FontRole::Body);
-  text(row.seven_day.c_str(), kTokenTextX, total_base,
-       m.total_pt >= 24 ? FontRole::HeroLg : FontRole::HeroMd);
+  const FontRole total_role =
+      m.total_pt >= 24 ? FontRole::HeroLg
+                       : (m.total_pt >= 18 ? FontRole::HeroMd : FontRole::Name);
+  text(row.seven_day.c_str(), kTokenTextX, total_base, total_role);
   chart(row, total_base, m.chart_h, frame.sweep);
   rlcd_chrome::draw_dotted_text(g, row.today, kTokenTextX, today_base,
                                 FontRole::Body);

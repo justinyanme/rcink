@@ -145,7 +145,7 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | Gesture | Dashboard | Deck |
 |---|---|---|
 | **KEY** (GPIO18) tap | Page 1 | next page; cycles Deck ring |
-| **KEY** (GPIO18) hold ≥ 600 ms | pin/unpin `HOST` carousel | on Station or Monument Page: cycle **Heatmap Window** (`1Y → 6M → 3M → 1Y`, NVS persisted, static redraw); on other pages: pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
+| **KEY** (GPIO18) hold ≥ 600 ms | pin/unpin `HOST` carousel | on Station Page: cycle coupled **Heatmap Window** + **Token Skyline** (`6M/8W → 3M/7D → 1Y/6M`, NVS persisted); on Monument Page: cycle independent **Heatmap Window** (`1Y → 6M → 3M → 1Y`, NVS persisted); on other pages: pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) |
 | **KEY + BOOT** chord | pin/unpin `HOST` carousel | pin/unpin 90s `HOST` auto-carousel (`HOST` ↔ `PINNED`, NVS persisted) on *any* page without stray tap/sync on release |
 | **BOOT** (GPIO0) tap, while awake | last page | previous page; Page 1 → Dashboard |
 | **BOOT** tap, usage build | Usage + sync now | sync now (Allowance + Token + Monument) |
@@ -178,7 +178,8 @@ reset or intermediate blank frame.
 - `n` next through Dashboard/Deck ring
 - `v` previous through Dashboard/Deck ring
 - `l` pin/unpin `HOST` 90s auto-carousel (`HOST` ↔ `PINNED`)
-- `w` cycle Monument **Heatmap Window** (`1Y → 6M → 3M → 1Y`), persist to NVS, and redraw immediately
+- `w` cycle active page's **Heatmap Window** (Station `6M/8W → 3M/7D → 1Y/6M` or Monument `1Y → 6M → 3M → 1Y`), persist to NVS, and redraw immediately
+- `k` toggle Station Page **Desk Cat** on/off, persist to NVS (`dcat`), and redraw immediately
 - `t` re-read sensors + redraw current view
 - `i` invert light/dark polarity + redraw current View
 - `a` toggle the usage view's HOST animation (off gives the static frame for `p`)
@@ -247,15 +248,35 @@ while BOOT syncs now (see Buttons).
 #### Station page
 
 The Deck's home page (`id="desk-station"`, `src/render/station_render.cpp` +
-`src/render/station_view.cpp` + `src/render/station_layout.h`) unites the
-desktop wall clock (`LAST SYNC` in `ECO` deep sleep), `Total ODO`, the shared
-rolling 7-row **Heatmap Window** (`1Y` / `6M` / `3M`), SHTC3 ambient header
-climate, and horizontal per-Provider strips (`Allowance %`, `80 px` fuel-pace
-bar with `Even Pace` tick, reset countdown, and `Seven-Day Total`, or `—` for
-Allowance-only providers such as `Kimi`). Independent Allowance and Token fetch
-failures or staleness states are attributed explicitly in the shared footer
-(`[ALLOWANCE]`, `[TOKEN FAIL]`, `[SYNC FAILED]`, `[OLD DATA] M4 HH:MM` /
-`checked HH:MM`). Console `q` dumps its `rcink.station-view.v1` JSON model. Usage `HOST` polls every 300 seconds after a success and
+`src/render/station_view.cpp` + `src/render/station_layout.h` +
+`src/render/desk_cat.h`) unites the
+desktop wall clock (`LAST SYNC` in `ECO` deep sleep), `Total ODO`, a split
+middle spine pairing a `240 px` rolling 7-row **Heatmap Window** on the left
+with a `112 px` **Token Skyline** pixel cityscape on the right, SHTC3 ambient
+header climate, 1–4 horizontal per-Provider strips at `27 px` pitch (`Allowance %`,
+`80 px` fuel-pace bar with `Even Pace` tick, reset countdown, and `Seven-Day Total`
+for all reporting providers including `Kimi`, falling back to `—` when absent),
+and a zero-row-overhead `15×10 px` **Desk Cat** roaming its three natural
+horizontal divider ledges (`y = 28`, `y = 151`, `y = 272`).
+
+- **Token Skyline** is derived purely on-device from the 365-day `MonumentSnapshot`
+  and stays coupled to Station's `Heatmap Window` (`6M` default ↔ `8W` weekly
+  skyline + `WoW` %, `3M` ↔ `7D` daily skyline + `WoW` %, `1Y` ↔ `6M` monthly
+  skyline + `MoM` %; Monument keeps its independent `1Y` default). Behind the
+  skyscrapers, a local-RTC 4-phase sky renders Dawn (`05:30–07:30`), Day
+  (`07:30–17:00`, arcing sun + drifting clouds), Dusk (`17:00–19:30`), and Night
+  (`19:30–05:30`, arcing crescent moon, twinkling stars, and lit-window
+  silhouettes), with a blinking rooftop beacon on the latest building in `HOST`
+  mode (static in `ACTIVE`/`ECO`).
+- **Desk Cat** runs an 8 FPS (`125 ms`) state machine (`WALK`, `SIT`, `PLAY_YARN`,
+  `SLEEP`, and parabolic cross-ledge `JUMP` with a 1 px paper halo) in USB `HOST`
+  mode, lightly weighted by time of day and daily activity. In `ACTIVE` and `ECO`
+  modes it freezes into a deterministic static `SIT` pose. Console `k` toggles
+  `Desk Cat` on or off (persisted in NVS).
+- Independent Allowance and Token fetch
+  failures or staleness states are attributed explicitly in the shared footer
+  (`[ALLOWANCE]`, `[TOKEN FAIL]`, `[SYNC FAILED]`, `[OLD DATA] M4 HH:MM` /
+  `checked HH:MM`). Console `q` dumps its `rcink.station-view.v2` JSON model. Usage `HOST` polls every 300 seconds after a success and
 retries 60 seconds after a failure; unconfigured Axiom `HOST` stays at 900. After
 a failure the retry gate alone schedules the next attempt, so the footer's
 `retry HH:MM` is when it really happens, even soon after a success.
@@ -288,10 +309,15 @@ The Deck's second page is a hand-drawn 400×300 Token view
 `src/render/token.cpp` and `src/render/token_view.cpp`. It fetches the private
 `GET /api/usage-tokens` at the same origin as `RCRLCD_USAGE_URL`, using the same
 read key and bounded HTTPS policy as Allowance. Its schema is
-`rcink.token-usage.v2`, mirroring the active token-capable providers from the
-Allowance list (0–3 of `claude`/`codex`/`gemini`, vertically centered when fewer
-than three; `gemini` sums Antigravity CLI `transcript.jsonl` step tokens in
-`Asia/Shanghai`). All daily and lifetime values decode as 64-bit integers.
+`rcink.token-usage.v2`, mirroring up to four active token-reporting providers
+(`0–4` of `claude`/`codex`/`gemini`/`kimi`, vertically centered when fewer
+than four; `gemini` sums Antigravity CLI `transcript.jsonl` step tokens in
+`Asia/Shanghai`; `kimi` sums local `pi` coding-agent session JSONL logs via
+`scripts/collect_kimi_pi_tokens.py`, e.g.
+`python3 scripts/collect_kimi_pi_tokens.py --tz Asia/Shanghai --source m4`).
+All daily and lifetime values decode as 64-bit integers. Primary Provider
+headline/recommendation priority remains scoped to `claude`/`codex`/`gemini`
+while `kimi` displays full telemetry as a secondary backup pool.
 
 - Active token providers keep the Allowance names/logos. Each row shows its
   last-seven-day total, today versus the mean of the seven complete days before

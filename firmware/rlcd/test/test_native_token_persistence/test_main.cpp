@@ -75,6 +75,13 @@ void test_token_persistence_skips_served_at_only_changes() {
   TEST_ASSERT_EQUAL(2, stored.count);
   TEST_ASSERT_EQUAL_STRING("codex", stored.providers[0].id.c_str());
   TEST_ASSERT_EQUAL_STRING("gemini", stored.providers[1].id.c_str());
+
+  TokenSnapshot four;
+  TEST_ASSERT_TRUE(decode_token(four_token_response(), four));
+  TEST_ASSERT_TRUE(persist_token_snapshot(four));
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), stored));
+  TEST_ASSERT_EQUAL(4, stored.count);
+  TEST_ASSERT_TRUE(token_content_equal(four, stored));
 }
 
 int main() {

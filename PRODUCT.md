@@ -14,7 +14,7 @@ An always-glanceable desktop hardware instrument that shows weekly AI subscripti
 
 ## Brand Personality
 
-Precision desk instrument (Braun industrial hardware meets Swiss railway clock): calm, disciplined, generous breathing room, and clear numeric hierarchy, preserving subtle playful micro-craft (the fuel-road car, the 30-day chart) without clutter or visual noise.
+Precision desk instrument (Braun industrial hardware meets Swiss railway clock): calm, disciplined, generous breathing room, and clear numeric hierarchy, preserving subtle playful micro-craft (the fuel-road car, the 30-day chart, Token Skyline, Desk Cat) without clutter or visual noise.
 
 ## Anti-references
 
@@ -34,5 +34,5 @@ Precision desk instrument (Braun industrial hardware meets Swiss railway clock):
 
 - Target medium is a 4.2-inch 400×300 1-bit monochrome reflective LCD (~120 DPI) with zero grayscale or color encoding and high ambient-light dependency.
 - Light polarity (black ink on white paper) is the default, with optional live polarity inversion; neither mode may rely on thin sub-pixel contrast or crowded 1-px collisions.
-- Zero element overlap under worst-case strings, inverted low-fuel callouts, and maximum provider counts (4 rows on Allowance, 3 rows on Token).
-- Animation is strictly bounded to USB-connected `HOST` mode (entry sweep and gentle fuel-road motion); `ACTIVE` and `ECO` render crisp static frames.
+- Zero element overlap under worst-case strings, inverted low-fuel callouts, and maximum provider counts (4 rows on Allowance, Token, and Station).
+- Animation is strictly bounded to USB-connected `HOST` mode (entry sweep, gentle fuel-road motion, Token Skyline sky motion, and Desk Cat); `ACTIVE` and `ECO` render crisp static frames.
