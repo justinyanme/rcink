@@ -1,5 +1,37 @@
 # RLCD weekly usage API research
 
+## 2026-11-26 复核 · Kimi 与 Z.AI 的采集现状
+
+2026-11-26 05:45 UTC，从 M4 读取 OpenUsage 缓存并访问生产只读接口。`GET /api/usage-limits` 和 `GET /api/usage-tokens` 均返回 HTTP 200 和各自的 v2 schema，显示顺序均为 **Codex、Kimi、Gemini**。三行周额度的状态均为 `ok`，Kimi 已有非零累计 Token usage。下面 11 月 9 日的四行配置和每日调度是当时的记录。
+
+| 运行位置 | 数据来源和调度 | 核对结果 |
+| --- | --- | --- |
+| M4 OpenUsage | 运行 `/Volumes/T5/github/openusage/dist/OpenUsage.app`。同一 bundle 的 `Contents/Helpers/openusage` 读取缓存。源码 `9c11e79d` 比本地跟踪的 `upstream/main` 多一个 Kimi 提交。 | 缓存有 Codex、Kimi 和 Antigravity。Kimi 有新鲜的 session 和 weekly。Z.AI 尚无配置账号。 |
+| M4 周额度上传 | `me.justinyan.just-ship.usage-limits` 每 60 秒执行 `~/.local/share/rcink-deploy/v2-8066dfd/scripts/run-usage-limits.sh`，读取 `~/.config/just-ship/usage-limits.env`。 | 配置仍选择 Claude、Codex、Kimi、Gemini。脚本按稳定账号 ID 从缓存取数，省略缺席账号，仅在投影变化时上传。当前映射没有 Z.AI。 |
+| M4 和 MBP16 每日 Token usage | 两台机器均已加载 `me.justinyan.just-ship.token-usage`，每小时第 7 分钟执行。各自的 `~/.config/just-ship/token-usage.env` 均选择 `codex,claude,agy,kimi`，回看两天，关闭每日完成门控。 | M4 执行 `~/Documents/jproj/just-ship` 的 `74e571b`。MBP16 执行 `~/.local/share/just-ship` 的安装副本。两份 Token 采集库哈希相同。本机另一个开发 checkout 仍在 `8066dfd`。 |
+
+**Kimi 的额度和 Token usage 来自两条链路。** M4 的额度上传器读取 OpenUsage 的 `weekly`，要求 `consumption`、`percent`、604800 秒。两台 Mac 的 Token 上传器则读取本机 Pi 会话 `~/.pi/agent/sessions/*/*.jsonl`。它按助手消息的 provider 识别 Kimi/Moonshot，缺失时沿用最近的 `model_change`，优先取 `usage.totalTokens`，再回退到输入、输出、缓存读写之和。上传哪些 provider 由每台机器的 Token 配置独立决定。[额度投影](https://github.com/justinyanme/just-ship/blob/8066dfd0b5fa256dc18849bc500e2c231e69d5d7/scripts/usage-limits-projection.mjs#L25-L58) · [Pi 采集](https://github.com/justinyanme/just-ship/blob/74e571b21b2e37b10309093ac345613b176dd5bf/scripts/token-usage-fetcher-lib.mjs#L177-L325)
+
+**撤下账号对既有数据的影响。** Worker 按额度上传批次替换 `usage_limit_providers`，并删除缺席 provider 的最后一份额度快照。两个私有读接口均按此名单返回数据。Token 接口只返回已映射存储 ID 的 provider。Kimi 的每日 Token 数据另存于 `token_usage_daily` 的 provider **4**，移除额度账号不会改写这些记录，公开热力图仍把它们计入历史日总量。现有 Token 写入映射中没有 Z.AI。[额度名单与快照](https://github.com/justinyanme/just-ship/blob/74e571b21b2e37b10309093ac345613b176dd5bf/worker/src/usage-limits.ts#L59-L85) · [Token 页映射](https://github.com/justinyanme/just-ship/blob/74e571b21b2e37b10309093ac345613b176dd5bf/worker/src/usage-tokens.ts#L3-L58) · [公开热力图](https://github.com/justinyanme/just-ship/blob/74e571b21b2e37b10309093ac345613b176dd5bf/worker/src/index.ts#L240-L246)
+
+**中国区 GLM Coding Plan。** Pi 的 `zai-coding-cn` 使用 `open.bigmodel.cn`。M4 现有 OpenUsage 的 Z.AI client 将域名固定为国际站 `api.z.ai`。其中 `Sources/OpenUsage/Providers/ZAI/ZAIUsageClient.swift:4` 定义地址，`ZAIUsageMapper.swift:36` 将 `CREDIT_LIMIT` 和 `TOKENS_LIMIT` 按窗口投影为百分比。智谱官方插件按账号区域选择域名，分别调用额度接口和模型用量接口。[Pi 中国区 provider](https://github.com/earendil-works/pi/blob/main/packages/ai/src/providers/zai-coding-cn.ts) · [智谱官方查询脚本](https://github.com/zai-org/zai-coding-plugins/blob/main/plugins/glm-plan-usage/skills/usage-query-skill/scripts/query-usage.mjs)
+
+**本账号的只读实测。** 中国区 `GET /api/monitor/usage/quota/limit` 返回两个带重置时间的 `CREDIT_LIMIT` 窗口，分别是 5 小时和 1 周。RLCD 的 Allowance 对应 1 周窗口的剩余百分比。积分扣减随模型、输入、输出及缓存命中而变化。对同账号按 11 月 26 日上海自然日查询 `GET /api/monitor/usage/model-usage`，也返回成功，查询时 `totalUsage.totalTokensUsage` 为 0。同期 MacBook 的 Pi 有两条中国区助手回复，合计 19,151 token，其中已含 9,216 个缓存读取 token；M4 的 Pi 没有相应记录。本次样本无法确认差异原因、服务端统计延迟或历史保留期。[中国区积分规则](https://docs.bigmodel.cn/cn/coding-plan/overview) · [官方用量查询](https://docs.bigmodel.cn/cn/coding-plan/extension/usage-query-plugin)
+
+**切换前的设备行为。** 当时运行的 Station 和 Monument 取活动 Provider 的 lifetime 之和与最近 365 天日总量两者中的较大值。仅保留 D1 历史行足以维持公开热图，却不能确保设备的 Total ODO 保留已退订 Provider 的全部贡献。发送新 Provider 前也需要更新设备，旧版 Token 解码器遇到未知 ID 会拒绝整份响应。[Monument 总里程计算](../firmware/rlcd/src/render/monument_view.cpp) · [Token 解码器](../firmware/rlcd/src/render/token.cpp)
+
+### 11 月 26 日上线记录
+
+M4 的 OpenUsage 开发版 `2cfe5924` 在添加 Z.ai 账号时可选择 **China**。它向 BigModel 读取本账号的额度，沿用原有的 `zai@…` 稳定账号标识。中国区 Key 由用户在应用内输入。M4 的额度上传器按 `USAGE_LIMITS_ZAI_ACCOUNT_ID` 选择该账号的周窗口。
+
+首次录入时，M4 现有的 60 秒采集任务等待唯一的中国区账号及其新鲜周额度，然后把稳定账号 ID 写入私有配置。写入成功后每次都使用这个 ID。若有多个中国区账号，需在私有配置中指定其中一个。
+
+Just Ship `a16589c` 和 D1 迁移 `0007` 为 Z.AI 分配独立的存储 ID 5。MacBook 和 M4 的每小时任务都已启用 `zai`，从 Pi 读取 `zai-coding-cn`。迁移后核对了 Kimi 的记录数与累计量，均与切换前一致。首次回填的 Z.AI 日总量与本机 Pi 记录一致。M4 的定时额度上传名单也已撤下 Kimi。
+
+RLCD 固件 `54395a7` 读取 `/api/usage-tokens?version=3` 的 `totalLifetime`，其中包含已移出活动名单的 Provider。未指定版本的请求仍获得 v2 响应。设备继续从年度日汇总读取热图。[RLCD 运行说明](../firmware/rlcd/README.md)
+
+---
+
 调查时间：2026-11-09。范围：只读 SSH、源码/文档/既有测试检查、只读额度快照；未改动 M4 代码、配置或运行服务，未触发额度刷新或登录。
 
 ## M4 OpenUsage：已验证

@@ -9,11 +9,11 @@ The ordered ring of live dashboard pages cycled by the `KEY` button and `HOST` a
 _Avoid_: Carousel list, tab bar, app screens
 
 **Provider**:
-An AI service tracked on the instrument (`Claude`, `Codex`, `Gemini`, or `Kimi`), named identically across every Deck page. All four Providers report both Allowance and daily Token Usage (`Kimi` via local `pi` session logs), while remaining independently classified as primary or secondary pools for recommendations.
+An AI service whose Allowance or Token Usage the instrument tracks under the same name across Deck pages. Historical Token Usage belongs to the Provider that incurred it, including after its subscription ends.
 _Avoid_: Vendor, model, Claude Code, Antigravity, Gemini CLI
 
 **Primary Provider**:
-A primary subscription pool (`Claude`, `Codex`, `Gemini`) prioritized over secondary backup pools such as `Kimi` when recommending a provider or highlighting primary headlines, independent of whether a backup pool also reports daily Token Usage.
+A subscription pool prioritized in recommendations and headlines. Claude, Codex and Gemini are Primary Providers. Z.AI and Kimi are secondary Providers.
 _Avoid_: Main tier, default account, active vendor
 
 **Allowance**:
@@ -53,7 +53,7 @@ Token Usage summed over today and the six preceding local days, independent of a
 _Avoid_: This week, weekly usage
 
 **Token Page**:
-The dedicated Deck page displaying up to four Providers (`Claude`, `Codex`, `Gemini`, `Kimi`) with per-provider 7-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
+The dedicated Deck page displaying up to four active Providers with per-provider seven-day consumption totals, today's share against an Active-Window Usual Day, a 30-day activity chart, and lifetime odometers.
 _Avoid_: Metrics screen, billing view, cost page
 
 **Active-Window Usual Day**:
@@ -61,7 +61,7 @@ The daily baseline mean calculated over a provider's complete days within the pr
 _Avoid_: Usual day (unqualified), 30-day average, rolling mean, historical quota
 
 **Odometer**:
-A monotonic cumulative token total counted per provider (`ODO`) or across all providers (`Total ODO`) since tracking began (`2025-09-18`).
+A monotonic cumulative token total counted per Provider (`ODO`) or across all Providers (`Total ODO`) since tracking began (`2025-09-18`). Total ODO includes Token Usage from past subscriptions.
 _Avoid_: Lifetime, counter, lifetime gauge, mileage
 
 **Monument Page**:
