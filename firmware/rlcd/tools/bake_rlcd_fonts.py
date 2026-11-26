@@ -257,8 +257,8 @@ def print_metrics(baked: dict[str, tuple[list[int], list[BakedGlyph], int]]) -> 
             "checked 13:38", "since Sep '25", "100%", "~98% to spare", "7 days", "ODO",
             "today 999M", "999%+ of a usual day", "Best bet today:",
         ],
-        "kBarlowBodyBold18": ["dry 47h early", "999B", "Codex is on a tear today", "Busiest this week: Gemini"],
-        "kBarlowName24": ["Claude", "Codex", "Gemini", "Kimi", "%"],
+        "kBarlowBodyBold18": ["dry 47h early", "999B", "Codex is on a tear today", "Busiest this week: Gemini", "Z.AI"],
+        "kBarlowName24": ["Claude", "Codex", "Gemini", "Kimi", "Z.AI", "%"],
         "kBarlowHero36": ["99.9M", "2.96B", "3.6B"],
         "kBarlowHero48": ["100", "96", "70", "99", "99.9M", "2.96B", "--"],
     }

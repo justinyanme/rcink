@@ -28,6 +28,7 @@ void test_decoder_accepts_exact_schema_order_and_64_bit_totals() {
   TEST_ASSERT_EQUAL_UINT64(5000000000ULL, snapshot.providers[1].days[0]);
   TEST_ASSERT_EQUAL_UINT64(43400000000ULL, snapshot.providers[1].lifetime);
   TEST_ASSERT_EQUAL_UINT64(0ULL, snapshot.providers[2].lifetime);
+  TEST_ASSERT_FALSE(snapshot.total_lifetime.has_value());
   for (uint64_t day : snapshot.providers[2].days) TEST_ASSERT_EQUAL_UINT64(0ULL, day);
 }
 
@@ -40,13 +41,26 @@ void test_decoder_rejects_malformed_bounded_and_non_integer_responses_without_mu
     const char* expected_reason;
   } mutations[] = {
       {[](JsonDocument& d) { d["schema"] = "rcink.token-usage.v1"; }, "schema"},
-      {[](JsonDocument& d) { d["schema"] = "rcink.token-usage.v3"; }, "schema"},
+      {[](JsonDocument& d) { d["schema"] = "rcink.token-usage.v3"; }, "root-fields"},
+      {[](JsonDocument& d) { d["totalLifetime"] = 123; }, "root-fields"},
+      {[](JsonDocument& d) {
+        d["schema"] = "rcink.token-usage.v3";
+        d["totalLifetime"] = -1;
+      }, "total-lifetime"},
+      {[](JsonDocument& d) {
+        d["schema"] = "rcink.token-usage.v3";
+        d["totalLifetime"] = 0.5;
+      }, "total-lifetime"},
+      {[](JsonDocument& d) {
+        d["schema"] = "rcink.token-usage.v3";
+        d["totalLifetime"] = nullptr;
+      }, "total-lifetime"},
       {[](JsonDocument& d) { d["extra"] = true; }, "root-fields"},
       {[](JsonDocument& d) { d["today"] = "2026-02-30"; }, "today-date"},
       {[](JsonDocument& d) { d["today"] = "12-11-2026"; }, "today-date"},
       {[](JsonDocument& d) { d["requiredSourceCollectedAt"] = 0; }, "collected-at"},
       {[](JsonDocument& d) {
-        for (const char* id : {"kimi", "extra"}) {
+        for (const char* id : {"kimi", "zai"}) {
           JsonObject extra = d["providers"].as<JsonArray>().add<JsonObject>();
           extra["id"] = id;
           extra["days"].to<JsonArray>();
@@ -446,6 +460,37 @@ void test_four_provider_kimi_ordering_and_primary_pool_headline_priority() {
   TEST_ASSERT_EQUAL(0, primary_wins.headline_pick);
 }
 
+void test_v3_zai_row_and_backup_headline_with_old_data() {
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(zai_token_response(), snapshot));
+  TEST_ASSERT_TRUE(snapshot.total_lifetime.has_value());
+  TEST_ASSERT_EQUAL_UINT64(7570000000ULL, *snapshot.total_lifetime);
+  TokenSnapshot restored;
+  TEST_ASSERT_TRUE(decode_token(encode_token(snapshot), restored));
+  TEST_ASSERT_TRUE(token_content_equal(snapshot, restored));
+
+  const uint64_t now = local_epoch(2026, 11, 24, 18, 0);
+  snapshot.required_source_collected_at = now - 60;
+  const TokenSync synced = {false, now, 0, false};
+  const TokenView view = view_of(snapshot, now, synced);
+  TEST_ASSERT_EQUAL(4, view.count);
+  TEST_ASSERT_EQUAL_STRING("zai", view.rows[3].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("28.4M", view.rows[3].seven_day.c_str());
+  TEST_ASSERT_EQUAL_STRING("120M", view.rows[3].lifetime.c_str());
+
+  auto& zai = snapshot.providers[0];
+  zai.days[29] = 65000000ULL;
+  const TokenView primary = view_of(snapshot, now, synced);
+  TEST_ASSERT_EQUAL_STRING("Busiest this week: Claude", primary.headline.c_str());
+
+  snapshot.count = 1;
+  snapshot.required_source_collected_at = now - 3 * 3600;
+  const TokenView stale = view_of(snapshot, now, synced);
+  TEST_ASSERT_EQUAL_STRING("OLD DATA", stale.footer_chip.c_str());
+  TEST_ASSERT_EQUAL_STRING("Busiest this week: Z.AI", stale.headline.c_str());
+  TEST_ASSERT_EQUAL_STRING("120M", stale.rows[0].lifetime.c_str());
+}
+
 int main() {
   setenv("TZ", "SGT-8", 1);
   tzset();
@@ -466,5 +511,6 @@ int main() {
   RUN_TEST(test_link_failures_share_device_state_and_avoid_epoch_retry);
   RUN_TEST(test_mirrors_active_provider_subset_and_empty_deck);
   RUN_TEST(test_four_provider_kimi_ordering_and_primary_pool_headline_priority);
+  RUN_TEST(test_v3_zai_row_and_backup_headline_with_old_data);
   return UNITY_END();
 }

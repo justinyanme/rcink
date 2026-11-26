@@ -90,3 +90,15 @@ inline std::string four_token_response() {
   serializeJson(doc, json);
   return json;
 }
+
+inline std::string zai_token_response() {
+  JsonDocument doc;
+  deserializeJson(doc, four_token_response());
+  doc["schema"] = "rcink.token-usage.v3";
+  doc["providers"][0]["id"] = "zai";
+  // 2.49B from active rows, 80M from Kimi within the year and 5B before it.
+  doc["totalLifetime"] = 7570000000ULL;
+  std::string json;
+  serializeJson(doc, json);
+  return json;
+}

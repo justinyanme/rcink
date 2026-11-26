@@ -22,7 +22,7 @@ std::string origin_from_allowance_url() {
 }  // namespace
 
 std::string token_usage_url() {
-  return origin_from_allowance_url() + "/api/usage-tokens";
+  return origin_from_allowance_url() + "/api/usage-tokens?version=3";
 }
 
 std::string monument_usage_url() {

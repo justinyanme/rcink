@@ -50,6 +50,7 @@ const MonoBitmap* token_logo(const std::string& id) {
   if (id == "codex") return &usage_logos::kCodex28;
   if (id == "gemini") return &usage_logos::kGemini28;
   if (id == "kimi") return &usage_logos::kKimi28;
+  if (id == "zai") return &usage_logos::kZai28;
   return nullptr;
 }
 

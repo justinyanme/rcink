@@ -161,6 +161,7 @@ const MonoBitmap* row_logo(const std::string& id) {
   if (id == "claude") return &usage_logos::kClaude28;
   if (id == "codex") return &usage_logos::kCodex28;
   if (id == "kimi") return &usage_logos::kKimi28;
+  if (id == "zai") return &usage_logos::kZai28;
   if (id == "gemini") return &usage_logos::kGemini28;
   return nullptr;
 }
@@ -168,6 +169,7 @@ const MonoBitmap* pick_logo(const std::string& id) {
   if (id == "claude") return &usage_logos::kClaude15;
   if (id == "codex") return &usage_logos::kCodex15;
   if (id == "kimi") return &usage_logos::kKimi15;
+  if (id == "zai") return &usage_logos::kZai15;
   if (id == "gemini") return &usage_logos::kGemini15;
   return nullptr;
 }

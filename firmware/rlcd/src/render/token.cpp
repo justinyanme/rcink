@@ -8,9 +8,12 @@ namespace rcpaper {
 namespace {
 constexpr uint64_t kClockMinimum = 1704067200ULL;
 constexpr uint64_t kClockMaximum = 4102444800ULL;
+constexpr const char* kTokenSchemaV2 = "rcink.token-usage.v2";
+constexpr const char* kTokenSchemaV3 = "rcink.token-usage.v3";
 
 bool known_token_provider(const std::string& id) {
-  return id == "claude" || id == "codex" || id == "gemini" || id == "kimi";
+  return id == "claude" || id == "codex" || id == "gemini" || id == "kimi" ||
+         id == "zai";
 }
 
 bool has_provider(const TokenSnapshot& snapshot, size_t count, const std::string& id) {
@@ -87,6 +90,7 @@ std::string token_provider_name(const std::string& id) {
   if (id == "codex") return "Codex";
   if (id == "gemini") return "Gemini";
   if (id == "kimi") return "Kimi";
+  if (id == "zai") return "Z.AI";
   std::string name = id;
   if (!name.empty() && name[0] >= 'a' && name[0] <= 'z') {
     name[0] = (char)(name[0] - 'a' + 'A');
@@ -110,10 +114,17 @@ bool decode_token(const std::string& json, TokenSnapshot& out, std::string* reas
     }
   }
   JsonVariantConst root = doc.as<JsonVariantConst>();
-  if (!exact(root, {"schema", "servedAt", "today", "requiredSourceCollectedAt", "providers"})) {
-    return fail(reason, "root-fields");
+  const bool v3 = root["schema"] == kTokenSchemaV3;
+  const bool fields_ok = v3
+      ? exact(root, {"schema", "servedAt", "today", "requiredSourceCollectedAt",
+                     "providers", "totalLifetime"})
+      : exact(root, {"schema", "servedAt", "today", "requiredSourceCollectedAt",
+                     "providers"});
+  if (!fields_ok) return fail(reason, "root-fields");
+  if (!v3 && root["schema"] != kTokenSchemaV2) return fail(reason, "schema");
+  if (v3 && !token_integer(root["totalLifetime"])) {
+    return fail(reason, "total-lifetime");
   }
-  if (root["schema"] != "rcink.token-usage.v2") return fail(reason, "schema");
   if (!epoch(root["servedAt"])) return fail(reason, "served-at");
   if (!root["today"].is<const char*>()) return fail(reason, "today-type");
   if (!root["requiredSourceCollectedAt"].isNull() &&
@@ -129,6 +140,7 @@ bool decode_token(const std::string& json, TokenSnapshot& out, std::string* reas
   next.count = root["providers"].size();
   next.served_at = root["servedAt"].as<uint64_t>();
   next.today = root["today"].as<const char*>();
+  if (v3) next.total_lifetime = root["totalLifetime"].as<uint64_t>();
   if (!valid_date(next.today)) return fail(reason, "today-date");
   if (!root["requiredSourceCollectedAt"].isNull()) {
     next.required_source_collected_at = root["requiredSourceCollectedAt"].as<uint64_t>();
@@ -162,7 +174,8 @@ bool decode_token(const std::string& json, TokenSnapshot& out, std::string* reas
 
 std::string encode_token(const TokenSnapshot& snapshot) {
   JsonDocument doc;
-  doc["schema"] = "rcink.token-usage.v2";
+  doc["schema"] = snapshot.total_lifetime ? kTokenSchemaV3 : kTokenSchemaV2;
+  if (snapshot.total_lifetime) doc["totalLifetime"] = *snapshot.total_lifetime;
   doc["servedAt"] = snapshot.served_at;
   doc["today"] = snapshot.today;
   if (snapshot.required_source_collected_at == 0) doc["requiredSourceCollectedAt"] = nullptr;
@@ -182,6 +195,7 @@ std::string encode_token(const TokenSnapshot& snapshot) {
 
 bool token_content_equal(const TokenSnapshot& a, const TokenSnapshot& b) {
   if (a.today != b.today ||
+      a.total_lifetime != b.total_lifetime ||
       a.required_source_collected_at != b.required_source_collected_at ||
       a.count != b.count) return false;
   for (size_t p = 0; p < a.count; p++) {

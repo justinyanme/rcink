@@ -526,13 +526,25 @@ void test_provider_list_mirrors_the_source_adding_dropping_and_naming() {
   // back to a generic initial-in-a-disc logo for them.
   doc.clear();
   deserializeJson(doc, three_response());
-  doc["providers"][0]["id"] = "zai";
+  doc["providers"][0]["id"] = "beta";
   std::string renamed;
   serializeJson(doc, renamed);
   UsageSnapshot custom;
   TEST_ASSERT_TRUE(decode_usage(renamed, custom));
-  TEST_ASSERT_EQUAL_STRING("Zai", usage_provider_name(custom.providers[0].id).c_str());
+  TEST_ASSERT_EQUAL_STRING("Beta", usage_provider_name(custom.providers[0].id).c_str());
   TEST_ASSERT_EQUAL_STRING("Codex", usage_provider_name("codex").c_str());
+
+  doc["providers"][1]["id"] = "zai";
+  renamed.clear();
+  serializeJson(doc, renamed);
+  TEST_ASSERT_TRUE(decode_usage(renamed, custom));
+  TEST_ASSERT_TRUE(merge_usage(custom, three));
+  view = view_of(three, 1794297900);
+  TEST_ASSERT_EQUAL(3, view.count);
+  TEST_ASSERT_EQUAL_STRING("gemini", view.rows[0].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("zai", view.rows[1].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("beta", view.rows[2].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("Z.AI", usage_provider_name(view.rows[1].id).c_str());
 }
 
 void test_persistence_does_not_change_display_rounding_near_a_half_percent() {
@@ -653,17 +665,17 @@ void test_headline_surfaces_expiring_surplus_and_primary_priority() {
   s.providers[0] = live(70.0, now, now + 90 * 3600, "claude");
   s.providers[1] = live(45.0, now, now + 20 * 3600, "codex");
   s.providers[2] = live(10.0, now, now + 80 * 3600, "gemini");
-  s.providers[3] = live(1.0, now, now + 70 * 3600, "kimi");
+  s.providers[3] = live(1.0, now, now + 70 * 3600, "zai");
   auto view = view_of(s, now);
   TEST_ASSERT_EQUAL((int)UsageIcon::Spark, (int)view.headline_icon);
   TEST_ASSERT_EQUAL_STRING("Use it or lose it:", view.headline.c_str());
   TEST_ASSERT_EQUAL(1, view.pick);
 
-  // Removing expiring window falls back to comfortable Primary Provider over 99% Kimi.
+  // Removing expiring window falls back to comfortable Primary Provider over 99% Z.AI.
   s.providers[1].resets_at = now + 40 * 3600;
   view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
-  TEST_ASSERT_EQUAL(2, view.pick);  // Gemini (90%) beats Kimi (99%)
+  TEST_ASSERT_EQUAL(2, view.pick);  // Gemini (90%) beats Z.AI (99%)
 
   // Untouched Gemini (left=99%, pace=47.6% <= 85.7%) yields to touched Codex (55%).
   s.providers[2].used_percent = 1.0;
@@ -671,14 +683,13 @@ void test_headline_surfaces_expiring_surplus_and_primary_priority() {
   TEST_ASSERT_EQUAL_STRING("Best bet today:", view.headline.c_str());
   TEST_ASSERT_EQUAL(1, view.pick);
 
-  // When all Primary Providers are stressed (Hot/Low/Nap), Kimi becomes the pick.
+  // When all Primary Providers are stressed (Hot/Low/Nap), Z.AI becomes the pick.
   s.providers[0] = live(85.0, now, now + 120 * 3600, "claude");  // Hot
   s.providers[1] = live(85.0, now, now + 120 * 3600, "codex");   // Hot
   s.providers[2] = live(95.0, now, now + 120 * 3600, "gemini");  // Low
-  s.providers[3] = live(1.0, now, now + 70 * 3600, "kimi");      // 99%
   view = view_of(s, now);
   TEST_ASSERT_EQUAL_STRING("Gemini is almost out. Try", view.headline.c_str());
-  TEST_ASSERT_EQUAL(3, view.pick);  // Kimi
+  TEST_ASSERT_EQUAL(3, view.pick);  // Z.AI
 }
 
 int main() {

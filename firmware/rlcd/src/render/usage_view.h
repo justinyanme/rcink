@@ -63,7 +63,7 @@ inline bool operator==(const UsageView& a, const UsageView& b) {
 
 // `now` below 2024 means the wall clock is untrustworthy. Local HH:MM labels use
 // the process TZ (LOCAL_TZ on the device). Known providers display in
-// claude, codex, gemini, kimi order; unknown ids follow in payload order.
+// claude, codex, gemini, then kimi/zai; unknown ids follow in payload order.
 UsageView derive_usage_view(const UsageSnapshot& snapshot, uint64_t now,
                             const UsageSync& sync);
 std::string encode_usage_view(const UsageView& view);

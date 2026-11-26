@@ -5,8 +5,8 @@
 # ///
 """Bake the usage-view provider logos into 1-bit bitmaps for the RLCD.
 
-Sources are the single-colour 24x24 SVGs in tools/usage_logos/ (from the MIT
-lobe-icons set; the marks themselves belong to their owners). Each path is
+Sources are the single-colour SVGs with square viewBoxes in tools/usage_logos/.
+The marks belong to their owners. Each path is
 rasterized with even-odd fill at 16x supersampling and thresholded at 50 %
 coverage, which matches the browser mock-up's canvas-then-threshold pipeline.
 
@@ -35,6 +35,7 @@ LOGOS = [
     ("claude", (28, 15)),
     ("codex", (28, 15)),
     ("kimi", (28, 15)),
+    ("zai", (28, 15)),
     ("gemini", (28, 15)),
     ("antigravity", (12,)),
 ]
@@ -61,13 +62,19 @@ def subpaths(d: str) -> list[list[tuple[float, float]]]:
 
 def rasterize(svg: str, size: int) -> list[list[bool]]:
     big = size * SUPERSAMPLE
-    scale = big / 24.0
+    view_box = re.search(r'\bviewBox="(-?\d+) (-?\d+) ([1-9]\d*) \3"', svg)
+    if view_box is None:
+        raise ValueError("Expected a square integer SVG viewBox")
+    left, top, width = map(int, view_box.groups())
+    scale = big / width
     union = Image.new("1", (big, big), 0)
     for d in re.findall(r'<path[^>]*?\sd="([^"]+)"', svg):
         evenodd = Image.new("1", (big, big), 0)
         for poly in subpaths(d):
             mask = Image.new("1", (big, big), 0)
-            ImageDraw.Draw(mask).polygon([(x * scale, y * scale) for x, y in poly], fill=1)
+            ImageDraw.Draw(mask).polygon(
+                [((x - left) * scale, (y - top) * scale) for x, y in poly], fill=1
+            )
             evenodd = ImageChops.logical_xor(evenodd, mask)
         union = ImageChops.logical_or(union, evenodd)
     coverage = union.convert("L").resize((size, size), Image.Resampling.BOX)

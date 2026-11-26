@@ -255,7 +255,7 @@ middle spine pairing a `240 px` rolling 7-row **Heatmap Window** on the left
 with a `112 px` **Token Skyline** pixel cityscape on the right, SHTC3 ambient
 header climate, 1–4 horizontal per-Provider strips at `27 px` pitch (`Allowance %`,
 `80 px` fuel-pace bar with `Even Pace` tick, reset countdown, and `Seven-Day Total`
-for all reporting providers including `Kimi`, falling back to `—` when absent),
+for all reporting providers including Z.AI, falling back to `—` when absent),
 and a zero-row-overhead `15×10 px` **Desk Cat** roaming its three natural
 horizontal divider ledges (`y = 28`, `y = 151`, `y = 272`).
 
@@ -286,17 +286,16 @@ Console `f` remains the manual network refresh; button navigation never fetches.
 
 The background refresh fetches/validates the complete response; the main task
 applies it and builds one PageRecord. The `rcink.usage-limits.v2` `providers`
-array defines the active accounts (0–4 rows, unique ids — currently Codex,
-Kimi and Gemini/Antigravity); `UsageView` displays known providers in fixed order
-`claude`, `codex`, `gemini`, `kimi` (currently Codex, Gemini/Antigravity and
-Kimi), with any unknown ids following in payload order. An account removed
+array defines the active accounts (0–4 rows with unique IDs). `UsageView`
+displays `claude`, `codex`, `gemini`, then the backup providers `zai` and
+`kimi` in payload order. Unknown IDs follow in payload order. An account removed
 upstream drops out of the frame on the next successful fetch; a new one appears
 at once, even before its first observation. The collector selects an explicit
 stable account per
-provider: Codex/Kimi `weekly`, Antigravity `geminiWeekly`. Missing or invalid
+provider: Codex/Z.AI/Kimi `weekly`, Antigravity `geminiWeekly`. Missing or invalid
 sources keep their row as Unavailable; the API retains each account's last
 successful observation under its original expiry. Unobserved rows show `--`,
-without allowance bars. `claude`/`codex`/`kimi`/`gemini` keep their baked
+without allowance bars. `claude`/`codex`/`gemini`/`zai`/`kimi` use their baked
 logos and display names; any other id gets a capitalized name and a generic
 initial-in-a-disc logo. With fewer than four rows the row block centers
 itself vertically. Used is rounded once and remaining is its integer
@@ -304,20 +303,27 @@ complement. Bars represent remaining.
 
 #### Token page
 
-The Deck's second page is a hand-drawn 400×300 Token view
+The Deck's third page is a hand-drawn 400×300 Token view
 (`src/render/token_render.cpp`) backed by the pure codec and view model in
 `src/render/token.cpp` and `src/render/token_view.cpp`. It fetches the private
-`GET /api/usage-tokens` at the same origin as `RCRLCD_USAGE_URL`, using the same
-read key and bounded HTTPS policy as Allowance. Its schema is
-`rcink.token-usage.v2`, mirroring up to four active token-reporting providers
-(`0–4` of `claude`/`codex`/`gemini`/`kimi`, vertically centered when fewer
-than four; `gemini` sums Antigravity CLI `transcript.jsonl` step tokens in
-`Asia/Shanghai`; `kimi` sums local `pi` coding-agent session JSONL logs via
-`scripts/collect_kimi_pi_tokens.py`, e.g.
-`python3 scripts/collect_kimi_pi_tokens.py --tz Asia/Shanghai --source m4`).
-All daily and lifetime values decode as 64-bit integers. Primary Provider
-headline/recommendation priority remains scoped to `claude`/`codex`/`gemini`
-while `kimi` displays full telemetry as a secondary backup pool.
+`GET /api/usage-tokens?version=3` at the same origin as `RCRLCD_USAGE_URL`,
+using the same read key and bounded HTTPS policy as Allowance. The
+`rcink.token-usage.v3` response lists up to four active token-reporting
+providers among `claude`, `codex`, `gemini`, `zai` and `kimi`. The row block
+centers vertically when fewer than four are active. Z.AI tracks the China GLM
+Coding Plan through local `pi` sessions using `zai-coding-cn` in `Asia/Shanghai`.
+Gemini counts Antigravity CLI transcript tokens, and Kimi can be reactivated
+using `scripts/collect_kimi_pi_tokens.py`. Claude, Codex and Gemini retain
+Primary Provider headline and recommendation priority. Z.AI and Kimi are
+secondary backup pools.
+
+All daily and lifetime values decode as 64-bit integers. The v3 `totalLifetime`
+includes retired providers and usage older than the 365-day Heatmap Window.
+Station and Monument use it for Total ODO. The annual history feed at
+`/api/token-usage` continues to supply heatmap and Skyline values across all
+providers. The device still accepts `rcink.token-usage.v2` responses and NVS
+blobs. With v2, Total ODO uses the greater of the summed provider odometers and
+the full annual history sum.
 
 - Active token providers keep the Allowance names/logos. Each row shows its
   last-seven-day total, today versus the mean of the seven complete days before
@@ -351,7 +357,7 @@ shows as a pure, natively tested model; the page's `layout_json` carries that
 model's JSON, which is both what gets drawn and the redraw fingerprint.
 
 ```
-* Best bet today: [K] Kimi                         <- headline
+* Best bet today: [Z] Z.AI                         <- headline
 [logo]  34%  Claude                     ~6% to spare
              ..........[car]=|========  [pump] (o) 2d 1h
 ...
@@ -405,7 +411,9 @@ Synced 11:34                        [batt] 99% HOST
   parked on purpose.
 
 Logos are 1-bit bitmaps baked from the single-colour SVGs in
-`tools/usage_logos/` (lobe-icons; marks belong to their owners):
+`tools/usage_logos/`. The Z.AI path comes from OpenUsage with a tighter
+viewBox for the panel. The other marks come from lobe-icons. Marks belong to
+their owners.
 
 ```bash
 uv run tools/bake_usage_logos.py          # regenerate src/render/usage_logos.h
@@ -465,6 +473,7 @@ source, network button action or retry loop is added. Cold restart immediately
 shows restored values in the saved view before the next network completion.
 
 Five-minute source/upload/device schedules run independently and do not promise
-five-minute end-to-end latency. Firmware rollback restores the prior binary while
-leaving the additive `usage`/`token`/`monument` NVS blobs and Just Ship D1 tables
-intact.
+five-minute end-to-end latency. Firmware rollback leaves the NVS blobs and
+Just Ship D1 history intact. A binary that predates v3 needs a fresh v2 Token
+fetch to recover from a v3 Token cache. The unversioned endpoint retains the
+v2 schema and returns only active providers understood by older binaries.

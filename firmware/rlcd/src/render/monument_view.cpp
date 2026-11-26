@@ -113,6 +113,15 @@ uint64_t sum_token_today(const TokenSnapshot& token, uint64_t now) {
   return sum;
 }
 
+uint64_t token_lifetime_total(const TokenSnapshot& token) {
+  if (token.total_lifetime) return *token.total_lifetime;
+  uint64_t sum = 0;
+  for (size_t p = 0; p < token.count; p++) {
+    sum = sat_add(sum, token.providers[p].lifetime);
+  }
+  return sum;
+}
+
 bool small_str(JsonVariantConst v, std::string& out, size_t max_len = 64) {
   if (!v.is<const char*>()) return false;
   out = v.as<const char*>();
@@ -152,11 +161,7 @@ std::vector<uint64_t> derive_monument_shifted_days(
   if (tok_today > shifted[kMonumentDays - 1]) {
     shifted[kMonumentDays - 1] = tok_today;
   }
-  uint64_t token_lifetime_sum = 0;
-  for (size_t p = 0; p < token.count; p++) {
-    token_lifetime_sum = sat_add(token_lifetime_sum, token.providers[p].lifetime);
-  }
-  has_data = has_monument || !token.today.empty() || token_lifetime_sum > 0;
+  has_data = has_monument || !token.today.empty() || token_lifetime_total(token) > 0;
   return shifted;
 }
 
@@ -235,22 +240,19 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
   }
 
   // Merge live today Token usage into the final slot and compute full-365d
-  // invariants (Total ODO floor and uninterrupted streak) before slicing.
+  // invariants (legacy Total ODO floor and uninterrupted streak) before slicing.
   const uint64_t tok_today = sum_token_today(token, now);
   if (tok_today > shifted[kMonumentDays - 1]) {
     shifted[kMonumentDays - 1] = tok_today;
   }
 
-  uint64_t year_sum = 0;
-  for (size_t i = 0; i < kMonumentDays; i++) {
-    year_sum = sat_add(year_sum, shifted[i]);
+  const uint64_t lifetime_total = token_lifetime_total(token);
+  view.total_odo_value = lifetime_total;
+  if (!token.total_lifetime) {
+    uint64_t year_sum = 0;
+    for (uint64_t daily_tokens : shifted) year_sum = sat_add(year_sum, daily_tokens);
+    view.total_odo_value = std::max(lifetime_total, year_sum);
   }
-
-  uint64_t token_lifetime_sum = 0;
-  for (size_t p = 0; p < token.count; p++) {
-    token_lifetime_sum = sat_add(token_lifetime_sum, token.providers[p].lifetime);
-  }
-  view.total_odo_value = std::max(token_lifetime_sum, year_sum);
   view.total_odo = format_tokens(view.total_odo_value);
 
   uint32_t streak = 0;
@@ -282,7 +284,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
   std::snprintf(badge_buf, sizeof(badge_buf), "%ud", (unsigned)active_days);
   view.active_badge = badge_buf;
 
-  if (!has_monument && token_lifetime_sum == 0) {
+  if (!has_monument && lifetime_total == 0) {
     view.summary_left = "Waiting for annual history";
     view.summary_right.clear();
   } else {

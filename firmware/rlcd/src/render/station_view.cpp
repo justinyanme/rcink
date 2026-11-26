@@ -52,7 +52,7 @@ uint64_t sum_range(const std::vector<uint64_t>& days, size_t start, size_t end) 
 }
 
 // Primary token providers always reserve a numeric 7D slot ("--" before sync,
-// "0" when zero); backup providers such as Kimi populate 7D when present in
+// "0" when zero); backup providers populate 7D when present in
 // TokenSnapshot and fall back to an em-dash when absent.
 bool is_always_numeric_token_provider(const std::string& id) {
   return id == "claude" || id == "codex" || id == "gemini";

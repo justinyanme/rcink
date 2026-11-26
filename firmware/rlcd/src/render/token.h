@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "proto/envelope.h"
@@ -27,6 +28,7 @@ struct TokenSnapshot {
   uint64_t served_at = 0;
   uint64_t required_source_collected_at = 0;  // 0 represents JSON null.
   std::string today;
+  std::optional<uint64_t> total_lifetime;  // Includes providers without active rows (v3).
 };
 
 // Independent of Allowance sync state. `{}` means no Token sync has completed.

@@ -78,6 +78,7 @@ std::string usage_provider_name(const std::string& id) {
   if (id == "claude") return "Claude";
   if (id == "codex") return "Codex";
   if (id == "kimi") return "Kimi";
+  if (id == "zai") return "Z.AI";
   if (id == "gemini") return "Gemini";
   std::string name = id;
   if (name[0] >= 'a' && name[0] <= 'z') name[0] = (char)(name[0] - 'a' + 'A');

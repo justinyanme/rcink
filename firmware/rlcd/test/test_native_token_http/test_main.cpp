@@ -41,12 +41,16 @@ void reset_token_http() {
 }
 
 void test_token_url_shares_allowance_origin_and_http_success_uses_strict_decoder() {
-  TEST_ASSERT_EQUAL_STRING("https://example.invalid/api/usage-tokens", token_usage_url().c_str());
+  TEST_ASSERT_EQUAL_STRING("https://example.invalid/api/usage-tokens?version=3",
+                           token_usage_url().c_str());
   reset_token_http();
+  http_fixture::body = zai_token_response();
   TokenSnapshot snapshot;
   TEST_ASSERT_TRUE(token_fetch(snapshot));
-  TEST_ASSERT_EQUAL(3, snapshot.count);
-  TEST_ASSERT_EQUAL_UINT64(25900000000ULL, snapshot.providers[0].lifetime);
+  TEST_ASSERT_EQUAL(4, snapshot.count);
+  TEST_ASSERT_EQUAL_STRING("zai", snapshot.providers[0].id.c_str());
+  TEST_ASSERT_TRUE(snapshot.total_lifetime.has_value());
+  TEST_ASSERT_EQUAL_UINT64(7570000000ULL, *snapshot.total_lifetime);
   TEST_ASSERT_TRUE(http_fixture::ca_set);
   TEST_ASSERT_TRUE(http_fixture::redirects_disabled);
   TEST_ASSERT_EQUAL(1, http_fixture::requests);
@@ -55,6 +59,7 @@ void test_token_url_shares_allowance_origin_and_http_success_uses_strict_decoder
   http_fixture::body = two_token_response();
   TEST_ASSERT_TRUE(token_fetch(snapshot));
   TEST_ASSERT_EQUAL(2, snapshot.count);
+  TEST_ASSERT_FALSE(snapshot.total_lifetime.has_value());
   TEST_ASSERT_EQUAL_STRING("codex", snapshot.providers[0].id.c_str());
   TEST_ASSERT_EQUAL_STRING("gemini", snapshot.providers[1].id.c_str());
   TEST_ASSERT_EQUAL_UINT64(1184080706ULL, snapshot.providers[1].lifetime);
@@ -62,7 +67,7 @@ void test_token_url_shares_allowance_origin_and_http_success_uses_strict_decoder
 
 void test_token_http_failures_preserve_last_complete_snapshot() {
   TokenSnapshot cache;
-  TEST_ASSERT_TRUE(decode_token(token_response(), cache));
+  TEST_ASSERT_TRUE(decode_token(zai_token_response(), cache));
   const std::string saved = encode_token(cache);
   for (int failure = 0; failure < 6; failure++) {
     reset_token_http();

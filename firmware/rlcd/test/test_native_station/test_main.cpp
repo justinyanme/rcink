@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "render/station_view.h"
+#include "../fixtures/token_response.h"
 
 using namespace rcpaper;
 
@@ -130,6 +131,46 @@ void test_three_provider_daily_setup_kimi_presence_fallback_and_codec_round_trip
   StationView decoded;
   TEST_ASSERT_TRUE(decode_station_view(json, decoded));
   TEST_ASSERT_TRUE(decoded == v_kimi);
+}
+
+void test_zai_fourth_row_and_retired_usage_in_total_odo_and_heatmap() {
+  const uint64_t now = local_epoch(2026, 11, 24, 16, 25);
+  TokenSnapshot token;
+  TEST_ASSERT_TRUE(decode_token(zai_token_response(), token));
+  const TokenSync token_sync = {false, now - 180, 0, false};
+  UsageSnapshot usage;
+  usage.count = token.count;
+  for (size_t i = 0; i < token.count; i++) {
+    usage.providers[i] = {token.providers[i].id, UsageStatus::Ok, 10.0,
+                          now - 60, now + 540, now + 86400};
+  }
+  MonumentSnapshot history = sample_monument();
+  history.days.assign(kMonumentDays, 0);
+  history.days[kMonumentDays - 2] = 80000000ULL;  // In-window retired Kimi usage.
+
+  const StationView station = derive_station_view(
+      usage, {}, token, history, token_sync, now, RuntimeMode::Host);
+  TEST_ASSERT_EQUAL_UINT(4, station.row_count);
+  TEST_ASSERT_EQUAL_STRING("zai", station.rows[3].id.c_str());
+  TEST_ASSERT_EQUAL_STRING("28.4M", station.rows[3].seven_day.c_str());
+  TEST_ASSERT_EQUAL_UINT64(7570000000ULL, station.total_odo_value);
+  TEST_ASSERT_EQUAL_UINT64(101500000ULL, station.skyline.current_sum);
+  TEST_ASSERT_EQUAL_STRING("2d", station.streak_label.c_str());
+
+  const MonumentView monument = derive_monument_view(
+      history, token, now, token_sync, RuntimeMode::Host, HeatmapWindow::SixMonths);
+  TEST_ASSERT_EQUAL_UINT64(station.total_odo_value, monument.total_odo_value);
+  TEST_ASSERT_EQUAL_STRING("2d", monument.active_badge.c_str());
+  TEST_ASSERT_TRUE(station.cells == monument.cells);
+
+  // The v3 total remains authoritative if the independently fetched heatmap
+  // is newer. A v2 payload still uses the annual history floor.
+  history.days[kMonumentDays - 1] = 8000000000ULL;
+  TEST_ASSERT_EQUAL_UINT64(7570000000ULL, derive_monument_view(
+      history, token, now, token_sync, RuntimeMode::Host).total_odo_value);
+  token.total_lifetime.reset();
+  TEST_ASSERT_EQUAL_UINT64(8080000000ULL, derive_monument_view(
+      history, token, now, token_sync, RuntimeMode::Host).total_odo_value);
 }
 
 void test_skyline_buckets_deltas_baselines_and_window_coupling() {
@@ -393,6 +434,7 @@ int main() {
   tzset();
   UNITY_BEGIN();
   RUN_TEST(test_three_provider_daily_setup_kimi_presence_fallback_and_codec_round_trip);
+  RUN_TEST(test_zai_fourth_row_and_retired_usage_in_total_odo_and_heatmap);
   RUN_TEST(test_skyline_buckets_deltas_baselines_and_window_coupling);
   RUN_TEST(test_sky_phases_celestial_arc_bounds_and_static_eco_determinism);
   RUN_TEST(test_low_fuel_pre_token_sync_eco_last_sync_and_windows);

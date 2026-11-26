@@ -18,7 +18,7 @@ int token_provider_display_rank(const std::string& id) {
   if (id == "claude") return 0;
   if (id == "codex") return 1;
   if (id == "gemini") return 2;
-  if (id == "kimi") return 3;
+  if (id == "kimi" || id == "zai") return 3;
   return 4;
 }
 

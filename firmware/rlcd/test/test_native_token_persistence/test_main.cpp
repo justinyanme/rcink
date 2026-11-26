@@ -23,6 +23,7 @@ void test_token_blob_round_trips_separately_from_allowance_and_axiom() {
   snapshot = TokenSnapshot{};
   TEST_ASSERT_TRUE(decode_token(nvs_load_token(), snapshot));
   TEST_ASSERT_EQUAL_STRING(saved.c_str(), encode_token(snapshot).c_str());
+  TEST_ASSERT_FALSE(snapshot.total_lifetime.has_value());
   TEST_ASSERT_EQUAL_UINT64(43400000000ULL, snapshot.providers[1].lifetime);
   TEST_ASSERT_EQUAL_UINT64(0ULL, snapshot.providers[2].lifetime);
 }
@@ -84,10 +85,37 @@ void test_token_persistence_skips_served_at_only_changes() {
   TEST_ASSERT_TRUE(token_content_equal(four, stored));
 }
 
+void test_v3_token_persistence_keeps_all_provider_total() {
+  nvs_fixture::values.clear();
+  nvs_fixture::fail_write = false;
+  TokenSnapshot snapshot;
+  TEST_ASSERT_TRUE(decode_token(zai_token_response(), snapshot));
+  TEST_ASSERT_TRUE(persist_token_snapshot(snapshot));
+
+  // A correction to retired-provider data can change only the lifetime total.
+  const uint64_t new_total = *snapshot.total_lifetime + 1;
+  snapshot.total_lifetime = new_total;
+  TEST_ASSERT_TRUE(persist_token_snapshot(snapshot));
+  TokenSnapshot restored;
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), restored));
+  TEST_ASSERT_TRUE(restored.total_lifetime.has_value());
+  TEST_ASSERT_EQUAL_UINT64(new_total, *restored.total_lifetime);
+  TEST_ASSERT_TRUE(token_content_equal(snapshot, restored));
+
+  // A zero aggregate on a fresh database still identifies a v3 snapshot.
+  snapshot.count = 0;
+  snapshot.total_lifetime = 0;
+  TEST_ASSERT_TRUE(persist_token_snapshot(snapshot));
+  TEST_ASSERT_TRUE(decode_token(nvs_load_token(), restored));
+  TEST_ASSERT_TRUE(restored.total_lifetime.has_value());
+  TEST_ASSERT_EQUAL_UINT64(0, *restored.total_lifetime);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_token_blob_round_trips_separately_from_allowance_and_axiom);
   RUN_TEST(test_token_blob_rejects_failed_oversized_and_corrupt_writes_or_restores);
   RUN_TEST(test_token_persistence_skips_served_at_only_changes);
+  RUN_TEST(test_v3_token_persistence_keeps_all_provider_total);
   return UNITY_END();
 }
