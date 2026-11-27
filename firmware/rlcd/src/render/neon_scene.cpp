@@ -202,13 +202,17 @@ void fuel(Pen& p, const NeonView& v, bool paper, uint32_t frame) {
   for (size_t i = 0; i < v.providers.size(); ++i) {
     const auto& row = v.providers[i];
     const int y = 170 + 16*i;
+    const int fill = (row.left * 46 + 50) / 100;
     p.sign(32, y+2, 48, 10, lit);
     if (!lit) continue;
     p.glyph(row.id_initial, 16, y, 2, light);
     if (row.left < 0) {
       for (int x : {40,45,50}) p.pixel(x, y+7, light);
     } else if (!row.low_fuel || frame % 4 < 2) {
-      p.rect(33, y+3, (row.left*46+50)/100, 8, light);
+      p.rect(33, y+3, fill, 8, light);
+    } else if (fill == 0) {
+      // Blink the outline when the bar has no fill pixels to blink.
+      p.border(32, y+2, 48, 10, 1, ink);
     }
     if (row.low_fuel) p.glyph('!', 84, y+3, 1, light);
   }

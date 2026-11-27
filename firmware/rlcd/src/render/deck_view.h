@@ -5,8 +5,18 @@
 #include <string>
 
 #include "power/runtime_policy.h"
+#include "render/usage.h"
 
 namespace rcpaper {
+
+// Only frames actually shown on the panel can suppress a later ECO redraw.
+inline bool record_deck_frame(bool drawn, DeviceState& state, const PageRecord& page,
+                              uint32_t* usage_fingerprint) {
+  if (!drawn) return false;
+  if (usage_fingerprint) *usage_fingerprint = usage_page_fingerprint(page);
+  if (!render_marker_matches(state, page)) nvs_record_rendered_page(state, page);
+  return true;
+}
 
 struct DeckViewKey {
   std::string page_id;

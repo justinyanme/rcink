@@ -6,9 +6,21 @@
 #include <fstream>
 
 #include "input/interaction_policy.h"
+#include "display/st7305_frame.h"
+#include "render/deck_view.h"
 #include "render/neon_scene.h"
 
 using namespace rcpaper;
+
+void test_monument_retry_after_allowance_only_poll_and_host_entry();
+
+static unsigned marker_writes;
+namespace rcpaper {
+void nvs_record_rendered_page(DeviceState& state, const PageRecord& page) {
+  ++marker_writes;
+  update_render_marker(state, page);
+}
+}
 
 namespace {
 
@@ -23,8 +35,7 @@ struct Desk {
   BatteryReading battery{true, 3820, 73};
   Shtc3Reading env{22.4f, 48, true};
   bool cat = true;
-  bool monument_failed = false;
-  RuntimeMode mode = RuntimeMode::Host;
+  std::optional<uint64_t> monument_retry;
 
   Desk() {
     usage.count = 4;
@@ -42,7 +53,7 @@ struct Desk {
   }
 
   NeonView view(uint64_t at = now) const {
-    return derive_neon_view(usage, u, token, history, t, monument_failed, mode, at,
+    return derive_neon_view(usage, u, token, history, t, monument_retry, at,
                             env, battery, cat);
   }
 };
@@ -142,10 +153,7 @@ void test_codec_and_content_change_time() {
   Desk d;
   auto v = d.view();
   const auto json = encode_neon_view(v);
-  for (auto mode : {RuntimeMode::Active, RuntimeMode::Eco}) {
-    d.mode = mode;
-    TEST_ASSERT_EQUAL_STRING(json.c_str(), encode_neon_view(d.view()).c_str());
-  }
+  TEST_ASSERT_EQUAL_STRING(json.c_str(), encode_neon_view(d.view()).c_str());
   JsonDocument doc;
   TEST_ASSERT_FALSE(deserializeJson(doc, json));
   TEST_ASSERT_EQUAL_STRING("rcink.neon-view.v1", doc["schema"].as<const char*>());
@@ -190,18 +198,18 @@ void test_codec_and_content_change_time() {
 void test_monument_only_failure_follows_token_cadence_and_retains_history() {
   Desk d;
   const auto retained = d.view();
-  d.monument_failed = true;
-  d.t.retry_at_s = now+300; // next Allowance poll
+  d.monument_retry = now+14*60;
   status(d.view(), "TOKEN FAIL", "retry 19:54", false);
-  d.mode = RuntimeMode::Eco;
+  d.monument_retry = now+59*60;
   status(d.view(), "TOKEN FAIL", "retry 20:39", false);
   d.u.fetch_failed = true;
   status(d.view(), "SYNC FAILED", "retry 19:48", false);
   TEST_ASSERT_TRUE(d.view().skyline_bars == retained.skyline_bars);
-  d.history = {};  // first annual fetch retries on the next shared worker run
+  d.history = {};
+  d.monument_retry = now+300;
   d.u.fetch_failed = false;
   status(d.view(), "TOKEN FAIL", "retry 19:45", false);
-  d.monument_failed = false;
+  d.monument_retry.reset();
   status(d.view(), "", "", false);
 }
 
@@ -221,6 +229,135 @@ void test_fifth_page_keys_restore_and_carousel() {
 
 bool pixel(const NeonBitmap& bits, int x, int y) {
   return bits[y*50 + x/8] & (0x80 >> (x%8));
+}
+
+void test_empty_low_fuel_blinks_only_the_outline() {
+  Desk d;
+  for (int left : {0, 1}) {
+    d.usage.providers[3].used_percent = 100-left;
+    const auto view = d.view();
+    TEST_ASSERT_EQUAL(left, view.providers[0].left);
+    TEST_ASSERT_TRUE(view.providers[0].low_fuel);
+    for (auto pol : {MonoPolarity::Light, MonoPolarity::Dark}) {
+      for (int frame : {0, 1, 2, 3, 4}) {
+        NeonBitmap bits;
+        render_neon_scene(view, pol, frame, bits);
+        for (int y = 172; y < 182; ++y) for (int x = 32; x < 80; ++x) {
+          const bool outline = x == 32 || x == 79 || y == 172 || y == 181;
+          TEST_ASSERT_EQUAL(!(outline && frame % 4 < 2), pixel(bits,x,y));
+        }
+        for (int y = 173; y < 180; ++y)  // fixed exclamation glyph
+          TEST_ASSERT_EQUAL(y == 178, pixel(bits,86,y));
+      }
+    }
+  }
+}
+
+// Reconstruct visible pixels from the CASET, RASET and RAMWR payload passed
+// to the SPI writer. This receiver knows nothing about the driver's cache.
+struct WindowCapture {
+  NeonBitmap image{};
+  size_t windows = 0, bytes = 0;
+} capture;
+
+void receive_window(uint8_t xs, uint8_t xe, uint8_t ys, uint8_t ye,
+                    const uint8_t* data, size_t size) {
+  TEST_ASSERT_TRUE(0x12 <= xs && xs <= xe && xe <= 0x2a);
+  TEST_ASSERT_TRUE(ys <= ye && ye <= 199);
+  TEST_ASSERT_EQUAL_UINT32(3 * (xe-xs+1) * (ye-ys+1), size);
+  ++capture.windows;
+  capture.bytes += size;
+  for (int row = ys; row <= ye; ++row) {
+    for (int col = xe; col >= xs; --col) {  // MX=1, MY=0, MV=0
+      for (int b = 0; b < 3; ++b) {
+        const uint8_t unit = *data++;
+        for (int i = 0; i < 8; ++i) {
+          const int x = row*2 + i%2;
+          const int y = (col-0x12)*12 + 11 - 4*b - i/2;
+          auto& dst = capture.image[y*50 + x/8];
+          const uint8_t mask = 0x80 >> (x%8);
+          if (unit & (0x80 >> i)) dst &= ~mask;
+          else dst |= mask;
+        }
+      }
+    }
+  }
+}
+
+void test_panel_window_payloads_reconstruct_host_frames_and_console_capture() {
+  Desk d;
+  d.battery.pct = 7;
+  d.usage.providers[3].used_percent = 99;
+  const auto view = d.view();
+  St7305Frame panel(receive_window);
+  std::vector<uint16_t> canvas(400*300), reference(400*300);
+  for (auto pol : {MonoPolarity::Light, MonoPolarity::Dark, MonoPolarity::Light}) {
+    for (int frame : {0, 1, 2, 3, 4, 7, 8, 35, 50, 53, 0}) {
+      capture.bytes = capture.windows = 0;
+      std::fill(canvas.begin(), canvas.end(), 0x1234);
+      TEST_ASSERT_TRUE(render_neon(view, frame, pol, canvas.data(), panel));
+      if (frame == 0) {
+        TEST_ASSERT_EQUAL(1, capture.windows);
+        TEST_ASSERT_EQUAL(15000, capture.bytes);
+      } else {
+        TEST_ASSERT_TRUE(capture.windows > 0 && capture.windows < 200);
+        TEST_ASSERT_TRUE(capture.bytes < 5000);
+        TEST_ASSERT_TRUE(std::all_of(canvas.begin(), canvas.end(),
+                                    [](uint16_t p){ return p == 0x1234; }));
+      }
+      NeonBitmap expected;
+      render_neon_scene(view, pol, frame, expected);
+      TEST_ASSERT_TRUE(expected == capture.image);
+      for (int y = 0; y < 300; ++y) for (int x = 0; x < 400; ++x)
+        reference[y*400+x] = pixel(expected,x,y) ? 0 : 0xffff;
+      St7305Frame::Bytes packed;
+      pack_mono_landscape(reference.data(), 400, 300, packed.data());
+      TEST_ASSERT_TRUE(packed == panel.bytes());
+      if (frame) {
+        capture.bytes = capture.windows = 0;
+        TEST_ASSERT_TRUE(render_neon(view, frame, pol, canvas.data(), panel));
+        TEST_ASSERT_EQUAL(0, capture.windows);
+        TEST_ASSERT_EQUAL(0, capture.bytes);
+      }
+    }
+  }
+}
+
+void test_missing_canvas_preserves_display_and_allows_full_frame_retry() {
+  St7305Frame panel(receive_window);
+  std::vector<uint16_t> pixels(400*300, 0);  // a previously displayed Page
+  panel.push(pixels.data(), MonoPolarity::Dark);
+  const auto previous = panel.bytes();
+  const auto image = capture.image;
+  capture.bytes = capture.windows = 0;
+  const auto view = Desk{}.view();
+  DeviceState state;
+  const PageRecord old_page{"station", 0, now-60, "{}"};
+  update_render_marker(state, old_page);
+  uint32_t fingerprint = usage_page_fingerprint(old_page);
+  PageRecord page;
+  update_neon_page(page, view, now);
+  marker_writes = 0;
+  auto redraw = [&](uint16_t* canvas) {
+    const bool drawn = render_neon(view, 0, MonoPolarity::Light, canvas, panel);
+    return record_deck_frame(drawn, state, page, &fingerprint);
+  };
+  TEST_ASSERT_FALSE(redraw(nullptr));
+  TEST_ASSERT_EQUAL(0, marker_writes);
+  TEST_ASSERT_TRUE(render_marker_matches(state, old_page));
+  TEST_ASSERT_EQUAL_UINT32(usage_page_fingerprint(old_page), fingerprint);
+  TEST_ASSERT_FALSE(render_neon(view, 1, MonoPolarity::Light, nullptr, panel));
+  TEST_ASSERT_EQUAL(0, capture.windows);
+  TEST_ASSERT_TRUE(panel.bytes() == previous && capture.image == image);
+  TEST_ASSERT_TRUE(redraw(pixels.data()));
+  TEST_ASSERT_EQUAL(1, marker_writes);
+  TEST_ASSERT_TRUE(render_marker_matches(state, page));
+  TEST_ASSERT_EQUAL_UINT32(usage_page_fingerprint(page), fingerprint);
+  TEST_ASSERT_EQUAL(1, capture.windows);
+  TEST_ASSERT_EQUAL(15000, capture.bytes);
+  NeonBitmap expected;
+  render_neon_scene(view, MonoPolarity::Light, 0, expected);
+  TEST_ASSERT_TRUE(capture.image == expected);
 }
 
 struct Box {
@@ -397,7 +534,11 @@ int main() {
   RUN_TEST(test_footer_precedence_retention_and_outage_independent_of_chip);
   RUN_TEST(test_codec_and_content_change_time);
   RUN_TEST(test_monument_only_failure_follows_token_cadence_and_retains_history);
+  RUN_TEST(test_monument_retry_after_allowance_only_poll_and_host_entry);
   RUN_TEST(test_fifth_page_keys_restore_and_carousel);
+  RUN_TEST(test_empty_low_fuel_blinks_only_the_outline);
+  RUN_TEST(test_panel_window_payloads_reconstruct_host_frames_and_console_capture);
+  RUN_TEST(test_missing_canvas_preserves_display_and_allows_full_frame_retry);
   RUN_TEST(test_animation_is_bounded_and_static_frame_restores_both_polarities);
   RUN_TEST(test_layout_extremes_and_outage_signs);
   RUN_TEST(test_frame_zero_on_entry_polarity_and_battery_modes);

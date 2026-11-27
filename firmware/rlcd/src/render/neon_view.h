@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <tuple>
 
 #include "render/station_view.h"
@@ -45,7 +46,7 @@ struct NeonView {
 
 NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_sync,
                           const TokenSnapshot& token, const MonumentSnapshot& monument,
-                          TokenSync token_sync, bool monument_failed, RuntimeMode mode, uint64_t now,
+                          TokenSync token_sync, std::optional<uint64_t> monument_retry, uint64_t now,
                           const Shtc3Reading& env, const BatteryReading& battery,
                           bool cat_enabled);
 std::string encode_neon_view(const NeonView& view);

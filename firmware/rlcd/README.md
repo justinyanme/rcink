@@ -311,7 +311,8 @@ The saved page index survives reboot and wake. An out-of-range index opens Stati
 
 Read the FUEL sign from the top in Allowance order. Claude is C and Codex is X.
 Three dots mean an unavailable reading. A live row at 10% or less has a steady
-`!` and a bar that blinks at 2 Hz in HOST. The skyline always shows the last
+`!` and a bar that blinks at 2 Hz in HOST. At 0% and 1% the empty outline
+blinks while the interior stays empty. The skyline always shows the last
 eight rolling weeks. The stall ticker carries Total ODO, including retired
 providers. The battery sign blinks at 1 Hz below 20% or on an invalid ADC
 reading. Its `BATTERY n%` chip yields to all other status chips.
@@ -329,7 +330,9 @@ check time. BOOT or console `f` runs the usual three-feed sync in place.
 Light polarity has a paper sky, ring moon and solid skyline. Dark polarity has
 a night sky, disc moon and dotted skyline. BOOT hold or console `i` switches
 between them. In HOST the quiet 125 ms frames move the rain, cat tail, clock
-colon, U in FUEL, E in OPEN and wet-street reflections. ACTIVE, ECO and console
+colon, U in FUEL, E in OPEN and wet-street reflections. A page redraw sends a
+full frame. Quiet ticks write changed regions of panel RAM and skip the bus
+when the pixels match. ACTIVE, ECO and console
 `a` with animation off use static frame 0. Console `q` prints
 `rcink.neon-view.v1`, the content fingerprint. Console `p` captures the final
 panel polarity. The [native frame fixtures](test/fixtures/neon/) cover six

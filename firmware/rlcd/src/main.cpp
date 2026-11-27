@@ -230,7 +230,7 @@ static bool usage_animating() {
 
 static bool refresh_neon_record(PageRecord& page, uint64_t now) {
   auto next = derive_neon_view(g_usage, usage_sync(), g_token, g_monument, token_sync(),
-                               g_monument_fetch_failed, g_runtime.mode, now, g_env,
+                               monument_retry_at(refresh_app_state(), now), now, g_env,
                                g_battery, g_desk_cat_enabled);
   if (!page.layout_json.empty() && g_neon_view == next) return false;
   g_neon_view = std::move(next);
@@ -449,8 +449,10 @@ void render_current() {
   if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
   const uint64_t now = (uint64_t)time(nullptr);
   const bool stale = deck_is_stale(now);
+  bool drawn = true;
 
 #if RCRLCD_USAGE_ENABLED
+  auto* fingerprint = &g_usage_frame_fingerprint;
   maybe_sample_env(now);
   if (g_state.pages[g_state.page_index].id == kStationPageId) {
     update_station_page(g_state, g_usage, usage_sync(), g_token, g_monument,
@@ -464,7 +466,8 @@ void render_current() {
   if (rec.id == kNeonPageId) {
     refresh_neon_record(g_state.pages[g_state.page_index], now);
     g_neon_animation.restart(millis());
-    render_neon(g_neon_view, g_neon_animation.frame);
+    drawn = render_neon(g_neon_view, g_neon_animation.frame);
+    if (!drawn) g_last_result = "neon-canvas-unavailable";
   } else if (rec.id == kStationPageId) {
     const uint32_t t0 = millis();
     if (!draw_station_page(rec)) {
@@ -503,6 +506,7 @@ void render_current() {
     Serial.printf("[render] monument in %u ms\n", (unsigned)(millis() - t0));
   } else
 #else
+  uint32_t* fingerprint = nullptr;
   const PageRecord& rec = g_state.pages[g_state.page_index];
 #endif
   {
@@ -518,16 +522,8 @@ void render_current() {
       return;
     }
   }
-  g_deck_frame_valid = true;
-  g_last_deck_stale = stale;
-#if RCRLCD_USAGE_ENABLED
-  g_usage_frame_fingerprint = usage_page_fingerprint(rec);
-#endif
-
-  if (g_state.last_rendered_id != rec.id ||
-      g_state.last_rendered_data_ts != rec.data_ts) {
-    nvs_record_rendered_page(g_state, rec);
-  }
+  g_deck_frame_valid = record_deck_frame(drawn, g_state, rec, fingerprint);
+  if (g_deck_frame_valid) g_last_deck_stale = stale;
 }
 
 void render_diagnostics() {
@@ -815,7 +811,7 @@ static void poll_clock_animation() {
   const uint32_t now = millis();
   if (id == kNeonPageId) {
     if (g_neon_animation.advance(now, g_runtime.mode, g_usage_animation))
-      render_neon(g_neon_view, g_neon_animation.frame);
+      g_deck_frame_valid = render_neon(g_neon_view, g_neon_animation.frame);
     return;
   }
   if (!monument_animating()) return;
@@ -1296,7 +1292,7 @@ void loop() {
   poll_clock_animation();
 
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
-      refresh_due_now(refresh_app_state())) {
+      refresh_due_now(refresh_app_state(), time(nullptr))) {
     Serial.println("[auto] network refresh due");
     start_network_refresh(refresh_app_state());
     delay(20);

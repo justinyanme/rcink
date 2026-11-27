@@ -6,7 +6,6 @@
 #include <ctime>
 #include <sstream>
 
-#include "power/network_policy.h"
 #include "sense/clock.h"
 
 namespace rcpaper {
@@ -26,7 +25,7 @@ bool read_string(JsonVariantConst field, size_t max_size, std::string& out) {
 
 NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_sync,
                           const TokenSnapshot& token, const MonumentSnapshot& monument,
-                          TokenSync token_sync, bool monument_failed, RuntimeMode mode, uint64_t now,
+                          TokenSync token_sync, std::optional<uint64_t> monument_retry, uint64_t now,
                           const Shtc3Reading& env, const BatteryReading& battery,
                           bool cat_enabled) {
   NeonView v;
@@ -62,13 +61,9 @@ NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_syn
              token_sync.link_failure != LinkFailure::None;
   // Annual history rides the Token GET. Its failed response stays visible
   // until the next history attempt, even if an Allowance-only poll succeeds.
-  if (monument_failed && !token_sync.fetch_failed && !v.outage) {
+  if (monument_retry && !v.outage) {
     token_sync.fetch_failed = true;
-    if (!monument.end_date.empty()) {
-      const auto interval = mode == RuntimeMode::Host
-          ? kTokenHostRefreshIntervalSec : kTokenBatteryRefreshIntervalSec;
-      token_sync.retry_at_s = std::max(token_sync.retry_at_s, token_sync.last_ok_s + interval);
-    }
+    token_sync.retry_at_s = *monument_retry;
   }
   derive_station_footer(allowance, usage_sync, token, token_sync, now, v.footer_chip, v.footer_text);
   if (v.footer_chip.empty()) {

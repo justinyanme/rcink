@@ -43,38 +43,43 @@ uint64_t early_refetch_at(const RefreshAppState& app) {
 #endif
 }
 
-}  // namespace
-
-bool refresh_due_now(const RefreshAppState& app) {
-  const uint64_t now = (uint64_t)time(nullptr);
+uint64_t next_worker_at(const RefreshAppState& app, uint64_t now) {
   const NetworkRefreshQuery query = {
       now,
       app.device.last_fetch_s,
       app.retry_not_before_s,
       app.device.pages.empty(),
-      wall_clock_is_valid(),
+      wall_clock_is_valid(now),
       current_interval(app),
       app.usage_fetch_failed,
   };
-  if (network_refresh_due(query)) return true;
-  const uint64_t early = early_refetch_at(app);
-  if (early != 0 && query.clock_valid && now >= early && now >= app.retry_not_before_s) return true;
+  return network_refresh_at(query, early_refetch_at(app));
+}
+
+uint64_t next_token_at(const RefreshAppState& app) {
+  if (app.monument.end_date.empty() && !app.token_fetch_failed) return 0;
+  return token_refresh_at(app.token_last_ok_s, app.token_retry_at_s,
+                          app.runtime_mode, app.token_fetch_failed);
+}
+
+}  // namespace
+
+bool refresh_due_now(const RefreshAppState& app, uint64_t now) {
 #if RCRLCD_USAGE_ENABLED
-  // Token cadence never starts a worker; it rides the next Allowance run.
-  // Only an explicit BOOT request that missed the active worker is the exception.
-  return refresh_token_pending();
-#else
-  return false;
+  if (refresh_token_pending()) return true;
 #endif
+  return now >= next_worker_at(app, now);
+}
+
+std::optional<uint64_t> monument_retry_at(const RefreshAppState& app, uint64_t now) {
+  if (!app.monument_fetch_failed) return std::nullopt;
+  if (refresh_token_pending()) return now;  // a queued Token GET bypasses both deadlines
+  return std::max(next_worker_at(app, now), next_token_at(app));
 }
 
 bool start_network_refresh(RefreshAppState app, bool force_token) {
   const bool token_due = RCRLCD_USAGE_ENABLED &&
-      (force_token ||
-       (app.monument.end_date.empty() && !app.token_fetch_failed) ||
-       token_refresh_due(
-           (uint64_t)time(nullptr), app.token_last_ok_s, app.token_retry_at_s,
-           app.runtime_mode, app.token_fetch_failed));
+      (force_token || (uint64_t)time(nullptr) >= next_token_at(app));
   if (refresh_busy()) {
     refresh_start(app.device.last_fetch_fingerprint, token_due);  // join if possible
     Serial.println("[refresh] already running");

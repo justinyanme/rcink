@@ -33,4 +33,8 @@ struct NeonAnimation {
 void render_neon_scene(const NeonView& view, MonoPolarity polarity,
                        uint32_t frame, NeonBitmap& out);
 
+class St7305Frame;
+bool render_neon(const NeonView& view, uint32_t frame, MonoPolarity polarity,
+                 uint16_t* canvas, St7305Frame& panel);
+
 }  // namespace rcpaper
