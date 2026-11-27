@@ -32,6 +32,7 @@
 #include "render/link_status.h"
 #include "render/monument_persistence.h"
 #include "render/monument_view.h"
+#include "render/neon_scene.h"
 #include "render/page.h"
 #include "render/station_view.h"
 #include "render/token_view.h"
@@ -74,6 +75,7 @@ RTC_DATA_ATTR static bool g_deck_frame_valid = false;
 RTC_DATA_ATTR static bool g_last_deck_stale = false;
 RTC_DATA_ATTR static bool g_usage_fetch_failed = false;
 RTC_DATA_ATTR static bool g_token_fetch_failed = false;
+RTC_DATA_ATTR static bool g_monument_fetch_failed = false;
 RTC_DATA_ATTR static uint64_t g_token_last_ok_s = 0;
 RTC_DATA_ATTR static uint64_t g_token_retry_at_s = 0;
 RTC_DATA_ATTR static uint32_t g_usage_frame_fingerprint = 0;
@@ -125,6 +127,8 @@ static uint32_t g_station_tick = 0;
 static DeskCatState g_desk_cat = desk_cat_initial();
 static std::string g_station_view_json;
 static StationView g_station_view;
+static NeonView g_neon_view;
+static NeonAnimation g_neon_animation;
 #endif
 static bool g_render_pending = false;
 
@@ -176,6 +180,7 @@ static RefreshAppState refresh_app_state() {
       g_token_last_ok_s,
       g_token_retry_at_s,
       g_monument,
+      g_monument_fetch_failed,
       g_heatmap_window,
       g_station_heatmap_window,
       g_link_failure,
@@ -221,6 +226,15 @@ static TokenSync token_sync() {
 
 static bool usage_animating() {
   return g_usage_animation && g_runtime.mode == RuntimeMode::Host;
+}
+
+static bool refresh_neon_record(PageRecord& page, uint64_t now) {
+  auto next = derive_neon_view(g_usage, usage_sync(), g_token, g_monument, token_sync(),
+                               g_monument_fetch_failed, g_runtime.mode, now, g_env,
+                               g_battery, g_desk_cat_enabled);
+  if (!page.layout_json.empty() && g_neon_view == next) return false;
+  g_neon_view = std::move(next);
+  return update_neon_page(page, g_neon_view, now);
 }
 
 static void start_usage_sweep() {
@@ -447,7 +461,11 @@ void render_current() {
                          g_runtime.mode, g_heatmap_window);
   }
   const PageRecord& rec = g_state.pages[g_state.page_index];
-  if (rec.id == kStationPageId) {
+  if (rec.id == kNeonPageId) {
+    refresh_neon_record(g_state.pages[g_state.page_index], now);
+    g_neon_animation.restart(millis());
+    render_neon(g_neon_view, g_neon_animation.frame);
+  } else if (rec.id == kStationPageId) {
     const uint32_t t0 = millis();
     if (!draw_station_page(rec)) {
       g_last_result = "station-view-invalid";
@@ -603,7 +621,7 @@ void apply_navigation(const NavigationState& next) {
     }
     else if (id == kTokenPageId) start_token_sweep();
     else if (id == kMonumentPageId) start_monument_sweep();
-    else start_usage_sweep();
+    else if (id == kUsagePageId) start_usage_sweep();
   }
 #endif
   if (next.page_index != g_state.page_index) {
@@ -704,6 +722,8 @@ static bool poll_refresh_completion() {
   }
   if (g_view == View::Deck && g_state.page_index < g_state.pages.size()) {
     const std::string& id = g_state.pages[g_state.page_index].id;
+    if (id == kNeonPageId)
+      return refresh_neon_record(g_state.pages[g_state.page_index], (uint64_t)time(nullptr));
     if (id == kStationPageId &&
         (monument_succeeded || token_succeeded ||
          (allowance_page_changed && !g_usage_fetch_failed))) {
@@ -745,6 +765,7 @@ static bool poll_usage_freshness() {
   }
   const std::string& id = g_state.pages[g_state.page_index].id;
   if (id == kStationPageId) return station_changed || env_changed;
+  if (id == kNeonPageId) return refresh_neon_record(g_state.pages[g_state.page_index], now);
   if (id == kUsagePageId) return allowance_changed || env_changed;
   if (id == kTokenPageId) return token_changed;
   if (id == kMonumentPageId) return monument_changed || env_changed;
@@ -784,14 +805,20 @@ static void poll_token_animation() {
 #endif
 }
 
-static void poll_monument_animation() {
+static void poll_clock_animation() {
 #if RCRLCD_USAGE_ENABLED
-  if (g_view != View::Deck || !g_deck_frame_valid || !monument_animating() ||
+  if (g_view != View::Deck || !g_deck_frame_valid ||
       g_state.page_index >= g_state.pages.size()) {
     return;
   }
   const std::string& id = g_state.pages[g_state.page_index].id;
   const uint32_t now = millis();
+  if (id == kNeonPageId) {
+    if (g_neon_animation.advance(now, g_runtime.mode, g_usage_animation))
+      render_neon(g_neon_view, g_neon_animation.frame);
+    return;
+  }
+  if (!monument_animating()) return;
   if (id == kStationPageId) {
     if (now - g_station_last_frame_ms < kUsageFrameMs) return;
     g_station_last_frame_ms = now;
@@ -979,6 +1006,8 @@ void console_dispatch(char c) {
       break;
     case 'w':
 #if RCRLCD_USAGE_ENABLED
+      if (g_view == View::Deck && g_state.page_index < g_state.pages.size() &&
+          g_state.pages[g_state.page_index].id == kNeonPageId) break;
       cycle_heatmap_window("[console]");
       render_current_view();
 #else
@@ -1151,6 +1180,7 @@ void setup() {
   if (!resumed_from_deep_sleep) {
     g_usage_fetch_failed = false;
     g_token_fetch_failed = false;
+    g_monument_fetch_failed = false;
     g_token_last_ok_s = 0;
     g_token_retry_at_s = 0;
     g_usage_last_fetch_s = 0;
@@ -1173,7 +1203,13 @@ void setup() {
       monument_page(g_monument, g_token, now, token_sync(), g_runtime.mode,
                     g_heatmap_window),
   };
-  if (g_state.page_index >= g_state.pages.size()) g_state.page_index = 0;
+  g_state.pages.emplace_back();
+  refresh_neon_record(g_state.pages.back(), now);
+  if (resumed_from_deep_sleep && g_deck_frame_valid && g_state.last_rendered_id == kNeonPageId &&
+      usage_page_fingerprint(g_state.pages.back()) == g_usage_frame_fingerprint) {
+    g_state.pages.back().data_ts = g_state.last_rendered_data_ts;
+  }
+  g_state.page_index = restored_deck_index(g_state.page_index, g_state.pages.size());
 #endif
   const uint8_t startup_view = startup_view_id(
       g_state.view_id, RCRLCD_USAGE_ENABLED, g_state.view_saved,
@@ -1257,7 +1293,7 @@ void loop() {
 
   poll_usage_animation();
   poll_token_animation();
-  poll_monument_animation();
+  poll_clock_animation();
 
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
       refresh_due_now(refresh_app_state())) {

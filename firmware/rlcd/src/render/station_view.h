@@ -105,6 +105,14 @@ inline bool operator==(const TokenSkylineView& a, const TokenSkylineView& b) {
 TokenSkylineView derive_token_skyline(const std::vector<uint64_t>& shifted_days,
                                       bool has_data, SkylineScale scale);
 
+inline bool station_low_fuel(const UsageRowView& row) {
+  return row.state == UsageRowState::Live && row.left <= 10;
+}
+
+void derive_station_footer(const UsageView& allowance, const UsageSync& usage_sync,
+                           const TokenSnapshot& token, const TokenSync& token_sync,
+                           uint64_t now, std::string& chip, std::string& text);
+
 struct StationRowView {
   std::string id;
   UsageRowState state = UsageRowState::Unavailable;

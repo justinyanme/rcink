@@ -144,6 +144,7 @@ bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
     if (!completion.token_diag.ok) app.token_last_err = completion.token_diag;
   }
   if (completion.token_attempted) {
+    app.monument_fetch_failed = !completion.monument_ok;
     app.token_fetch_failed = !completion.token_ok;
     app.token_retry_at_s = completion.token_ok ? 0 : completion.completed_at_s +
         (app.runtime_mode == RuntimeMode::Host

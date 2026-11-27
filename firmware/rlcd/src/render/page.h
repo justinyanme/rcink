@@ -92,6 +92,8 @@ struct StationView;
 void render_station(const StationView& view, const Shtc3Reading& env,
                     const BatteryReading& batt, RuntimeMode runtime_mode,
                     const StationFrame& frame, bool carousel_pinned = false);
+struct NeonView;
+void render_neon(const NeonView& view, uint32_t frame);
 #endif
 
 }  // namespace rcpaper

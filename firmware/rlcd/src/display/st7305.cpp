@@ -133,12 +133,15 @@ void st7305_init(PanelStartup startup) {
 }
 
 void st7305_push_mono(const uint16_t* px, int w, int h) {
+  st7305_push_mono(px, w, h, g_dark_mode ? MonoPolarity::Dark : MonoPolarity::Light);
+}
+
+void st7305_push_mono(const uint16_t* px, int w, int h, MonoPolarity polarity) {
   if (w != kW || h != kH) {
     Serial.printf("[st7305] push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
     return;
   }
-  pack_mono_landscape(px, w, h, g_buf,
-                      g_dark_mode ? MonoPolarity::Dark : MonoPolarity::Light);
+  pack_mono_landscape(px, w, h, g_buf, polarity);
   g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
   cmd(0x2A, {0x12, 0x2A});
   cmd(0x2B, {0x00, 0xC7});

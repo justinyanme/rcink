@@ -151,8 +151,8 @@ press powers on, long press powers off, and normal taps do not reach the app.
 | **BOOT** tap, usage build | Usage + sync now | sync now (Allowance + Token + Monument) |
 | **BOOT** (GPIO0) hold ≥ 600 ms | toggle dark mode | toggle & persist 1-bit dark/light polarity |
 
-In the usage build the climate Dashboard is hidden by default (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so KEY cycles through the 4-page Deck ring (`Station ⇄ Allowance ⇄ Token ⇄ Monument`; define `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard). Notice room temperature & humidity from the onboard SHTC3 also appear cleanly as ambient chrome in the Station, Allowance, and Monument headers.
-In USB `HOST` mode, unless pinned via `KEY + BOOT` chord (on any page), a 600 ms `KEY` hold on Allowance/Token, or console `l`, the Deck auto-rotates every 90 seconds. Cycling the **Heatmap Window** on Station or Monument also resets the 90-second timer. Battery `ACTIVE` and `ECO` modes never auto-rotate.
+The usage build defaults to a five-page ring, `Station → Allowance → Token → Monument → Neon → Station`. Set `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include the standalone climate Dashboard. Room temperature and humidity also appear in the Station, Allowance and Monument headers. Neon puts room temperature on the clock billboard.
+In USB `HOST` mode the Deck auto-rotates every 90 seconds. Pin the current Page with the `KEY + BOOT` chord, a 600 ms `KEY` hold on Allowance, Token or Neon, or console `l`. Cycling the **Heatmap Window** on Station or Monument also resets the 90-second timer. Battery `ACTIVE` and `ECO` modes never auto-rotate.
 BOOT tap means "sync now": on any Deck page it stays on that page and fetches
 Allowance, Token, and Monument annual history immediately; if climate Dashboard is enabled and active, BOOT opens Station and syncs. The
 visible page's footer reads `SYNCING · fetching now` until the fetch completes
@@ -178,8 +178,8 @@ reset or intermediate blank frame.
 - `n` next through Dashboard/Deck ring
 - `v` previous through Dashboard/Deck ring
 - `l` pin/unpin `HOST` 90s auto-carousel (`HOST` ↔ `PINNED`)
-- `w` cycle active page's **Heatmap Window** (Station `6M/8W → 3M/7D → 1Y/6M` or Monument `1Y → 6M → 3M → 1Y`), persist to NVS, and redraw immediately
-- `k` toggle Station Page **Desk Cat** on/off, persist to NVS (`dcat`), and redraw immediately
+- `w` cycle the **Heatmap Window** (Station `6M/8W → 3M/7D → 1Y/6M` or Monument `1Y → 6M → 3M → 1Y`). On Neon this key does nothing.
+- `k` toggle the **Desk Cat** on Station and Neon, persist to NVS (`dcat`), and redraw immediately
 - `t` re-read sensors + redraw current view
 - `i` invert light/dark polarity + redraw current View
 - `a` toggle the usage view's HOST animation (off gives the static frame for `p`)
@@ -241,7 +241,7 @@ The device receives **only** the read key, never the existing upload key.
 Without these definitions, Axiom behavior is unchanged. Defining only one is a
 compile error. In the usage build the climate Dashboard is hidden by default
 (`RCRLCD_SHOW_CLIMATE_DASHBOARD=0`), so cold restarts and wakes stay in the Deck
-and KEY cycles across the 4-page Deck (`Station ⇄ Allowance ⇄ Token ⇄ Monument`; define
+and KEY cycles across the five-page Deck (`Station ⇄ Allowance ⇄ Token ⇄ Monument ⇄ Neon`; define
 `RCRLCD_SHOW_CLIMATE_DASHBOARD=1` to include climate Dashboard in startup/navigation again)
 while BOOT syncs now (see Buttons).
 
@@ -300,6 +300,40 @@ logos and display names; any other id gets a capitalized name and a generic
 initial-in-a-disc logo. With fewer than four rows the row block centers
 itself vertically. Used is rounded once and remaining is its integer
 complement. Bars represent remaining.
+
+#### Neon page
+
+Neon (`neon-alley`, saved index 4) is the clock Page after Monument. The
+35 px billboard digits show local RTC time in every runtime mode, including
+offline. The caption shows weekday, day and SHTC3 temperature. An unset clock
+shows `--:--` and omits the date. A failed temperature reading shows `--°`.
+The saved page index survives reboot and wake. An out-of-range index opens Station.
+
+Read the FUEL sign from the top in Allowance order. Claude is C and Codex is X.
+Three dots mean an unavailable reading. A live row at 10% or less has a steady
+`!` and a bar that blinks at 2 Hz in HOST. The skyline always shows the last
+eight rolling weeks. The stall ticker carries Total ODO, including retired
+providers. The battery sign blinks at 1 Hz below 20% or on an invalid ADC
+reading. Its `BATTERY n%` chip yields to all other status chips.
+
+Wi-Fi association failure or clock-blocking NTP failure triggers a **Neon
+Outage**. FUEL, battery, ODO, lanterns, OPEN and 24H become dashed outlines.
+The billboard, moon, stall, doorway and vending machine stay lit. An unset
+clock alone leaves the signs lit. A failed fetch keeps retained readings on
+the signs. Read the chip on the street in Station priority order:
+`SYNCING`, `NO WIFI`, `NO NTP`, `NO CLOCK`, `SYNC FAILED`, `ALLOWANCE`,
+`TOKEN FAIL`, `OLD DATA`. A failed annual-history GET counts on the Token
+side. Old Token data gives the M4 collection time. Old Allowance gives the last
+check time. BOOT or console `f` runs the usual three-feed sync in place.
+
+Light polarity has a paper sky, ring moon and solid skyline. Dark polarity has
+a night sky, disc moon and dotted skyline. BOOT hold or console `i` switches
+between them. In HOST the quiet 125 ms frames move the rain, cat tail, clock
+colon, U in FUEL, E in OPEN and wet-street reflections. ACTIVE, ECO and console
+`a` with animation off use static frame 0. Console `q` prints
+`rcink.neon-view.v1`, the content fingerprint. Console `p` captures the final
+panel polarity. The [native frame fixtures](test/fixtures/neon/) cover six
+states in both polarities.
 
 #### Token page
 
