@@ -16,6 +16,7 @@ using namespace rcpaper;
 void test_monument_retry_after_allowance_only_poll_and_host_entry();
 void test_allowance_only_worker_crosses_history_deadline();
 void test_boot_joins_or_queues_history_and_clears_on_failure();
+void test_boot_during_history_get_reports_the_followup();
 
 static unsigned marker_writes;
 namespace rcpaper {
@@ -207,6 +208,8 @@ void test_monument_only_failure_follows_token_cadence_and_retains_history() {
   d.monument_retry.at_s = now+59*60;
   status(d.view(), "TOKEN FAIL", "retry 20:39", false);
   d.u.fetch_failed = true;
+  status(d.view(), "SYNC FAILED", "retry 19:48", false);
+  d.monument_retry.at_s = 0;  // History must wait, but Allowance has a deadline.
   status(d.view(), "SYNC FAILED", "retry 19:48", false);
   TEST_ASSERT_TRUE(d.view().skyline_bars == retained.skyline_bars);
   d.history = {};
@@ -582,6 +585,7 @@ int main() {
   RUN_TEST(test_monument_retry_after_allowance_only_poll_and_host_entry);
   RUN_TEST(test_allowance_only_worker_crosses_history_deadline);
   RUN_TEST(test_boot_joins_or_queues_history_and_clears_on_failure);
+  RUN_TEST(test_boot_during_history_get_reports_the_followup);
   RUN_TEST(test_fifth_page_keys_restore_and_carousel);
   RUN_TEST(test_empty_low_fuel_blinks_only_the_outline);
   RUN_TEST(test_spi_window_bytes_at_unaligned_offsets_and_band_end);

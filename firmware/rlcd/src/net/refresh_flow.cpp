@@ -171,10 +171,10 @@ bool refresh_start(uint32_t previous_fingerprint, bool token_due) {
 RefreshFeeds refresh_feeds() {
   lock();
   TokenWork work = TokenWork::None;
-  if (g_phase == WorkerPhase::FetchingToken || (g_phase == WorkerPhase::BeforeToken && g_token_due))
+  if (g_token_due)
+    work = g_phase == WorkerPhase::BeforeToken ? TokenWork::InFlight : TokenWork::Queued;
+  else if (g_phase == WorkerPhase::FetchingToken)
     work = TokenWork::InFlight;
-  else if (g_token_due)
-    work = TokenWork::Queued;
   const RefreshFeeds feeds{g_phase != WorkerPhase::Idle, g_token_due, work};
   unlock();
   return feeds;

@@ -70,7 +70,8 @@ NeonView derive_neon_view(const UsageSnapshot& usage, UsageSync usage_sync,
   if (v.footer_chip == "SYNCING" && retry.work == TokenWork::Queued) {
     v.footer_text = "next sync";
   } else if (retry.failed && !retry.at_s &&
-             (v.footer_chip == "TOKEN FAIL" || v.footer_chip == "SYNC FAILED")) {
+             (v.footer_chip == "TOKEN FAIL" ||
+              (v.footer_chip == "SYNC FAILED" && usage_sync.retry_at_s == 0))) {
     v.footer_text = retry.work == TokenWork::InFlight ? "retrying" : "next sync";
   }
   if (v.footer_chip.empty()) {

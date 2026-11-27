@@ -216,3 +216,24 @@ void test_boot_joins_or_queues_history_and_clears_on_failure() {
   TEST_ASSERT_FALSE(refresh_token_pending());
   d.footer("NO NTP", "retry 12:12", true);
 }
+
+void test_boot_during_history_get_reports_the_followup() {
+  Desk d;
+  d.start();
+  on_call = [&](Call call) {
+    if (call == Call::History) {
+      TEST_ASSERT_FALSE(start_network_refresh(d.app, true));  // BOOT after the Token stage began
+      d.footer("SYNCING", "next sync", true);
+    }
+  };
+  d.finish();
+  d.footer("SYNCING", "next sync", true);
+
+  d.start();
+  on_call = [&](Call call) {
+    if (call == Call::History) d.footer("SYNCING", "fetching now", true);
+  };
+  d.finish();
+  TEST_ASSERT_EQUAL(2, history_requests);
+  TEST_ASSERT_FALSE(refresh_token_pending());
+}
