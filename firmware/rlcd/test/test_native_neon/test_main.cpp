@@ -7,12 +7,15 @@
 
 #include "input/interaction_policy.h"
 #include "display/st7305_frame.h"
+#include "display/st7305_spi.h"
 #include "render/deck_view.h"
 #include "render/neon_scene.h"
 
 using namespace rcpaper;
 
 void test_monument_retry_after_allowance_only_poll_and_host_entry();
+void test_allowance_only_worker_crosses_history_deadline();
+void test_boot_joins_or_queues_history_and_clears_on_failure();
 
 static unsigned marker_writes;
 namespace rcpaper {
@@ -35,7 +38,7 @@ struct Desk {
   BatteryReading battery{true, 3820, 73};
   Shtc3Reading env{22.4f, 48, true};
   bool cat = true;
-  std::optional<uint64_t> monument_retry;
+  MonumentRetry monument_retry;
 
   Desk() {
     usage.count = 4;
@@ -110,6 +113,7 @@ void test_footer_precedence_retention_and_outage_independent_of_chip() {
   d.u.link_failure = LinkFailure::WifiFailed;
   d.t.link_failure = LinkFailure::NtpFailed;
   d.t.syncing = true;
+  d.monument_retry.work = TokenWork::InFlight;
   status(d.view(0), "SYNCING", "fetching now", true);
   d.t.syncing = false;
   status(d.view(0), "NO WIFI", "retry ~1m", true);
@@ -198,18 +202,18 @@ void test_codec_and_content_change_time() {
 void test_monument_only_failure_follows_token_cadence_and_retains_history() {
   Desk d;
   const auto retained = d.view();
-  d.monument_retry = now+14*60;
+  d.monument_retry = {true, TokenWork::None, now+14*60};
   status(d.view(), "TOKEN FAIL", "retry 19:54", false);
-  d.monument_retry = now+59*60;
+  d.monument_retry.at_s = now+59*60;
   status(d.view(), "TOKEN FAIL", "retry 20:39", false);
   d.u.fetch_failed = true;
   status(d.view(), "SYNC FAILED", "retry 19:48", false);
   TEST_ASSERT_TRUE(d.view().skyline_bars == retained.skyline_bars);
   d.history = {};
-  d.monument_retry = now+300;
+  d.monument_retry.at_s = now+300;
   d.u.fetch_failed = false;
   status(d.view(), "TOKEN FAIL", "retry 19:45", false);
-  d.monument_retry.reset();
+  d.monument_retry = {};
   status(d.view(), "", "", false);
 }
 
@@ -260,11 +264,52 @@ struct WindowCapture {
   size_t windows = 0, bytes = 0;
 } capture;
 
+struct CaptureSpi {
+  std::vector<uint8_t> wire;
+  unsigned bulk_calls = 0;
+  size_t bulk_bytes = 0;
+  void transfer(uint8_t byte) { wire.push_back(byte); }
+  void writeBytes(const uint8_t* data, size_t size) {
+    TEST_ASSERT_EQUAL(0, reinterpret_cast<uintptr_t>(data) % 4);
+    TEST_ASSERT_EQUAL(0, size % 4);
+    TEST_ASSERT_GREATER_THAN(0, size);
+    ++bulk_calls;
+    bulk_bytes += size;
+    wire.insert(wire.end(), data, data + size);
+  }
+};
+
+void test_spi_window_bytes_at_unaligned_offsets_and_band_end() {
+  alignas(uint32_t) uint8_t band[600];
+  for (size_t i = 0; i < sizeof(band); ++i) band[i] = static_cast<uint8_t>(i);
+  auto check = [&](size_t offset, size_t size) {
+    CaptureSpi spi;
+    write_window_bytes(spi, band + offset, size);
+    TEST_ASSERT_EQUAL(size, spi.wire.size());
+    TEST_ASSERT_TRUE(std::equal(spi.wire.begin(), spi.wire.end(), band + offset));
+    TEST_ASSERT_LESS_OR_EQUAL(1, spi.bulk_calls);
+  };
+  for (size_t offset = 0; offset < 4; ++offset) {
+    for (size_t size : {0,1,2,3,4,5,6,7,8,9,63,64,65,127,128,129})
+      check(offset, size);
+    check(offset, sizeof(band) - offset);
+  }
+  check(597, 3);  // the final 2x12-pixel unit, controller row 199
+}
+
 void receive_window(uint8_t xs, uint8_t xe, uint8_t ys, uint8_t ye,
                     const uint8_t* data, size_t size) {
   TEST_ASSERT_TRUE(0x12 <= xs && xs <= xe && xe <= 0x2a);
   TEST_ASSERT_TRUE(ys <= ye && ye <= 199);
   TEST_ASSERT_EQUAL_UINT32(3 * (xe-xs+1) * (ye-ys+1), size);
+  CaptureSpi spi;
+  write_window_bytes(spi, data, size);
+  TEST_ASSERT_EQUAL(size, spi.wire.size());
+  if (size == 15000) {
+    TEST_ASSERT_EQUAL(1, spi.bulk_calls);
+    TEST_ASSERT_EQUAL(size, spi.bulk_bytes);
+  }
+  data = spi.wire.data();
   ++capture.windows;
   capture.bytes += size;
   for (int row = ys; row <= ye; ++row) {
@@ -535,8 +580,11 @@ int main() {
   RUN_TEST(test_codec_and_content_change_time);
   RUN_TEST(test_monument_only_failure_follows_token_cadence_and_retains_history);
   RUN_TEST(test_monument_retry_after_allowance_only_poll_and_host_entry);
+  RUN_TEST(test_allowance_only_worker_crosses_history_deadline);
+  RUN_TEST(test_boot_joins_or_queues_history_and_clears_on_failure);
   RUN_TEST(test_fifth_page_keys_restore_and_carousel);
   RUN_TEST(test_empty_low_fuel_blinks_only_the_outline);
+  RUN_TEST(test_spi_window_bytes_at_unaligned_offsets_and_band_end);
   RUN_TEST(test_panel_window_payloads_reconstruct_host_frames_and_console_capture);
   RUN_TEST(test_missing_canvas_preserves_display_and_allows_full_frame_retry);
   RUN_TEST(test_animation_is_bounded_and_static_frame_restores_both_polarities);

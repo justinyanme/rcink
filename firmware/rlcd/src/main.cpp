@@ -90,6 +90,8 @@ RTC_DATA_ATTR static FetchDiag g_token_last_diag;
 RTC_DATA_ATTR static FetchDiag g_token_last_err;
 static uint64_t g_usage_evaluated_at_s = UINT64_MAX;
 static const char* g_last_result = "boot";
+// BOOT asked for a sync that has not completed yet; the footer says SYNCING.
+static bool g_usage_sync_requested = false;
 #if RCRLCD_USAGE_ENABLED
 // HOST-only animation of the usage road view. ECO and ACTIVE always draw the
 // static frame, which is also what deep sleep retains.
@@ -104,8 +106,6 @@ static uint32_t g_usage_last_frame_ms = 0;
 // would alias (the car would skip a bob every ~1.6 s); keyed to this, each frame
 // moves exactly one step.
 static uint32_t g_usage_tick = 0;
-// BOOT asked for a sync that has not completed yet; the footer says SYNCING.
-static bool g_usage_sync_requested = false;
 static std::string g_usage_view_json;
 static UsageView g_usage_view;
 static bool g_token_sweeping = false;
@@ -230,7 +230,7 @@ static bool usage_animating() {
 
 static bool refresh_neon_record(PageRecord& page, uint64_t now) {
   auto next = derive_neon_view(g_usage, usage_sync(), g_token, g_monument, token_sync(),
-                               monument_retry_at(refresh_app_state(), now), now, g_env,
+                               monument_retry(refresh_app_state(), now), now, g_env,
                                g_battery, g_desk_cat_enabled);
   if (!page.layout_json.empty() && g_neon_view == next) return false;
   g_neon_view = std::move(next);
@@ -1294,7 +1294,7 @@ void loop() {
   if (!refresh_busy() && !buttons::any_down() && !g_runtime.host_missing &&
       refresh_due_now(refresh_app_state(), time(nullptr))) {
     Serial.println("[auto] network refresh due");
-    start_network_refresh(refresh_app_state());
+    if (!start_network_refresh(refresh_app_state())) g_usage_sync_requested = false;
     delay(20);
     return;
   }

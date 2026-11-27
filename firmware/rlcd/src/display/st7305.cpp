@@ -10,6 +10,7 @@
 
 #include "display/pins_config.h"
 #include "display/power_policy.h"
+#include "display/st7305_spi.h"
 #include "render/mono_pack.h"
 
 #ifndef RCRLCD_DEFAULT_DARK_MODE
@@ -55,7 +56,7 @@ void write_window(uint8_t col_start, uint8_t col_end, uint8_t row_start, uint8_t
   cs_lo();
   g_spi.transfer(0x2C);
   digitalWrite(ST7305_DC, HIGH);
-  g_spi.writeBytes(bytes, count);
+  write_window_bytes(g_spi, bytes, count);
   cs_hi();
   g_spi.endTransaction();
 }

@@ -23,9 +23,9 @@ bool read_string(JsonVariantConst field, size_t max_size, std::string& out) {
 
 }  // namespace
 
-NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_sync,
+NeonView derive_neon_view(const UsageSnapshot& usage, UsageSync usage_sync,
                           const TokenSnapshot& token, const MonumentSnapshot& monument,
-                          TokenSync token_sync, std::optional<uint64_t> monument_retry, uint64_t now,
+                          TokenSync token_sync, MonumentRetry retry, uint64_t now,
                           const Shtc3Reading& env, const BatteryReading& battery,
                           bool cat_enabled) {
   NeonView v;
@@ -43,6 +43,7 @@ NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_syn
     std::snprintf(temp, sizeof(temp), "%.1f", env.temp_c);
     v.env_temp = temp;
   }
+  if (retry.work == TokenWork::None) usage_sync.syncing = token_sync.syncing = false;
   const auto allowance = derive_usage_view(usage, now, usage_sync);
   for (size_t i = 0; i < allowance.count; ++i) {
     const auto& row = allowance.rows[i];
@@ -61,11 +62,17 @@ NeonView derive_neon_view(const UsageSnapshot& usage, const UsageSync& usage_syn
              token_sync.link_failure != LinkFailure::None;
   // Annual history rides the Token GET. Its failed response stays visible
   // until the next history attempt, even if an Allowance-only poll succeeds.
-  if (monument_retry && !v.outage) {
+  if (retry.failed && !v.outage) {
     token_sync.fetch_failed = true;
-    token_sync.retry_at_s = *monument_retry;
+    token_sync.retry_at_s = retry.at_s;
   }
   derive_station_footer(allowance, usage_sync, token, token_sync, now, v.footer_chip, v.footer_text);
+  if (v.footer_chip == "SYNCING" && retry.work == TokenWork::Queued) {
+    v.footer_text = "next sync";
+  } else if (retry.failed && !retry.at_s &&
+             (v.footer_chip == "TOKEN FAIL" || v.footer_chip == "SYNC FAILED")) {
+    v.footer_text = retry.work == TokenWork::InFlight ? "retrying" : "next sync";
+  }
   if (v.footer_chip.empty()) {
     v.footer_text.clear();  // L1 has no healthy footer or last-sync timestamp.
     if (v.battery_low) v.footer_chip = "BATTERY " + std::to_string(battery.pct) + "%";

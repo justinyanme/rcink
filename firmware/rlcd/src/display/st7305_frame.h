@@ -22,7 +22,7 @@ class St7305Frame {
   void push_changes(const uint8_t* bitmap);  // row-major, MSB first, 1 = black
 
  private:
-  Bytes bytes_{};
+  alignas(uint32_t) Bytes bytes_{};
   WriteWindow write_;
 };
 

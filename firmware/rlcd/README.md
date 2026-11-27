@@ -324,7 +324,10 @@ clock alone leaves the signs lit. A failed fetch keeps retained readings on
 the signs. Read the chip on the street in Station priority order:
 `SYNCING`, `NO WIFI`, `NO NTP`, `NO CLOCK`, `SYNC FAILED`, `ALLOWANCE`,
 `TOKEN FAIL`, `OLD DATA`. A failed annual-history GET counts on the Token
-side. Old Token data gives the M4 collection time. Old Allowance gives the last
+side. Its footer shows the known retry time, or `next sync` while it waits for
+a worker that can fetch Token and history. It shows `retrying` once that run
+is in progress. A late BOOT queued for the following run shows `SYNCING`
+with `next sync`. Old Token data gives the M4 collection time. Old Allowance gives the last
 check time. BOOT or console `f` runs the usual three-feed sync in place.
 
 Light polarity has a paper sky, ring moon and solid skyline. Dark polarity has

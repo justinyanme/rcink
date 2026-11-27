@@ -71,10 +71,14 @@ bool refresh_due_now(const RefreshAppState& app, uint64_t now) {
   return now >= next_worker_at(app, now);
 }
 
-std::optional<uint64_t> monument_retry_at(const RefreshAppState& app, uint64_t now) {
-  if (!app.monument_fetch_failed) return std::nullopt;
-  if (refresh_token_pending()) return now;  // a queued Token GET bypasses both deadlines
-  return std::max(next_worker_at(app, now), next_token_at(app));
+MonumentRetry monument_retry(const RefreshAppState& app, uint64_t now) {
+  const auto feeds = refresh_feeds();
+  MonumentRetry retry{app.monument_fetch_failed, feeds.token_work};
+  if (retry.failed && !feeds.busy && !feeds.token_pending) {
+    const auto worker_at = next_worker_at(app, now);
+    if (worker_at > now && worker_at >= next_token_at(app)) retry.at_s = worker_at;
+  }
+  return retry;
 }
 
 bool start_network_refresh(RefreshAppState app, bool force_token) {

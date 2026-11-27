@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
 
 #include "net/fetch_diag.h"
 #include "power/runtime_policy.h"
@@ -39,7 +38,7 @@ struct RefreshAppState {
 };
 
 bool refresh_due_now(const RefreshAppState& app, uint64_t now);
-std::optional<uint64_t> monument_retry_at(const RefreshAppState& app, uint64_t now);
+MonumentRetry monument_retry(const RefreshAppState& app, uint64_t now);
 bool start_network_refresh(RefreshAppState app, bool force_token = false);
 bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
                             bool& token_succeeded, bool& allowance_page_changed,
