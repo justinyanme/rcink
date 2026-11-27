@@ -9,8 +9,7 @@
 namespace rcpaper {
 
 bool wall_clock_is_valid() {
-  return time(nullptr) >=
-         1704067200;  // 2024-01-01 UTC; earlier means RTC/NTP absent.
+  return wall_clock_is_valid(time(nullptr));
 }
 
 void seed_clock_from_rtc() {

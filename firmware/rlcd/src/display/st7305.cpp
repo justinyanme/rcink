@@ -10,6 +10,7 @@
 
 #include "display/pins_config.h"
 #include "display/power_policy.h"
+#include "display/st7305_spi.h"
 #include "render/mono_pack.h"
 
 #ifndef RCRLCD_DEFAULT_DARK_MODE
@@ -28,7 +29,6 @@ constexpr uint32_t kSpiHz = 10 * 1000 * 1000;
 constexpr int kW = 400;
 constexpr int kH = 300;
 constexpr int kBufBytes = (kW * kH) / 8;  // 15000
-uint8_t g_buf[kBufBytes];
 bool g_dark_mode = RCRLCD_DEFAULT_DARK_MODE != 0;
 
 inline void cs_lo() { digitalWrite(ST7305_CS, LOW); }
@@ -47,7 +47,25 @@ void cmd(uint8_t c, std::initializer_list<uint8_t> data = {}) {
   cs_hi();
 }
 
+void write_window(uint8_t col_start, uint8_t col_end, uint8_t row_start, uint8_t row_end,
+                  const uint8_t* bytes, size_t count) {
+  g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
+  cmd(0x2A, {col_start, col_end});
+  cmd(0x2B, {row_start, row_end});
+  digitalWrite(ST7305_DC, LOW);
+  cs_lo();
+  g_spi.transfer(0x2C);
+  digitalWrite(ST7305_DC, HIGH);
+  write_window_bytes(g_spi, bytes, count);
+  cs_hi();
+  g_spi.endTransaction();
+}
+
+St7305Frame g_frame(write_window);
+
 }  // namespace
+
+St7305Frame& st7305_frame() { return g_frame; }
 
 bool st7305_dark_mode() {
   return g_dark_mode;
@@ -137,23 +155,12 @@ void st7305_push_mono(const uint16_t* px, int w, int h) {
     Serial.printf("[st7305] push REJECTED: got %dx%d, expected %dx%d\n", w, h, kW, kH);
     return;
   }
-  pack_mono_landscape(px, w, h, g_buf,
-                      g_dark_mode ? MonoPolarity::Dark : MonoPolarity::Light);
-  g_spi.beginTransaction(SPISettings(kSpiHz, MSBFIRST, SPI_MODE0));
-  cmd(0x2A, {0x12, 0x2A});
-  cmd(0x2B, {0x00, 0xC7});
-  digitalWrite(ST7305_DC, LOW);  // memory-write command
-  cs_lo();
-  g_spi.transfer(0x2C);
-  digitalWrite(ST7305_DC, HIGH);  // bulk pixel data, CS held low across it
-  g_spi.writeBytes(g_buf, kBufBytes);
-  cs_hi();
-  g_spi.endTransaction();
+  g_frame.push(px, g_dark_mode ? MonoPolarity::Dark : MonoPolarity::Light);
 }
 
 const uint8_t* st7305_last_frame(size_t* len) {
-  if (len) *len = kBufBytes;
-  return g_buf;
+  if (len) *len = g_frame.bytes().size();
+  return g_frame.bytes().data();
 }
 
 void st7305_prepare_for_deep_sleep() {

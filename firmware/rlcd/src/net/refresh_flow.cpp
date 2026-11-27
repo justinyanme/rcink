@@ -29,10 +29,11 @@ constexpr uint32_t kWorkerStackBytes = 16384;
 constexpr UBaseType_t kWorkerPriority = 1;
 
 SemaphoreHandle_t g_mutex = nullptr;
-bool g_busy = false;
+enum class WorkerPhase { Idle, BeforeToken, FetchingToken, Finishing };
+WorkerPhase g_phase = WorkerPhase::Idle;
+bool g_token_due = false;
 bool g_completion_ready = false;
 uint32_t g_previous_fingerprint = 0;
-bool g_token_due = false;
 RefreshCompletion g_completion;
 
 [[noreturn]] void fatal(const char* message) {
@@ -56,10 +57,11 @@ void unlock() {
   if (xSemaphoreGive(g_mutex) != pdTRUE) fatal("mutex give failed");
 }
 
-bool consume_token_due() {
+bool consume_token_due(bool link_ready) {
   lock();
   const bool due = g_token_due;
   g_token_due = false;
+  g_phase = due && link_ready ? WorkerPhase::FetchingToken : WorkerPhase::Finishing;
   unlock();
   return due;
 }
@@ -70,7 +72,7 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
     Serial.println("[main] wifi failed");
     completion.result = FetchResult::WifiFailed;
     completion.link_failure = LinkFailure::WifiFailed;
-    completion.token_attempted = consume_token_due();
+    completion.token_attempted = consume_token_due(false);
   } else {
     completion.clock_synced = ntp_sync_once(LOCAL_TZ);
 #if RCRLCD_USAGE_ENABLED
@@ -78,16 +80,19 @@ RefreshCompletion run_refresh(uint32_t previous_fingerprint) {
       Serial.println("[main] clock still invalid after NTP; skipping HTTPS");
       completion.result = FetchResult::DataFailed;
       completion.link_failure = LinkFailure::NtpFailed;
-      completion.token_attempted = consume_token_due();
+      completion.token_attempted = consume_token_due(false);
     } else {
       completion.link_failure = LinkFailure::None;
       completion.result = usage_fetch(completion.usage, &completion.usage_diag)
           ? FetchResult::Changed : FetchResult::DataFailed;
-      completion.token_attempted = consume_token_due();
+      completion.token_attempted = consume_token_due(true);
       if (completion.token_attempted) {
         completion.token_ok = token_fetch(completion.token, &completion.token_diag);
         completion.monument_ok =
             monument_fetch(completion.monument, &completion.monument_diag);
+        lock();
+        g_phase = WorkerPhase::Finishing;
+        unlock();
       }
     }
 #else
@@ -142,11 +147,11 @@ bool refresh_start(uint32_t previous_fingerprint, bool token_due) {
   // A BOOT during an Allowance-only run can still join before its second GET.
   // If that stage already passed, the pending bit triggers an immediate run.
   if (token_due) g_token_due = true;
-  if (g_busy) {
+  if (g_phase != WorkerPhase::Idle) {
     unlock();
     return false;
   }
-  g_busy = true;
+  g_phase = WorkerPhase::BeforeToken;
   g_previous_fingerprint = previous_fingerprint;
   unlock();
 
@@ -156,25 +161,23 @@ bool refresh_start(uint32_t previous_fingerprint, bool token_due) {
   if (created == pdPASS) return true;
 
   lock();
-  g_busy = false;
+  g_phase = WorkerPhase::Idle;
   g_token_due = false;  // the ordinary failure gate must not be bypassed forever
   unlock();
   Serial.printf("[refresh] task creation FAILED: code=%ld\n", (long)created);
   return false;
 }
 
-bool refresh_busy() {
+RefreshFeeds refresh_feeds() {
   lock();
-  const bool busy = g_busy;
+  TokenWork work = TokenWork::None;
+  if (g_token_due)
+    work = g_phase == WorkerPhase::BeforeToken ? TokenWork::InFlight : TokenWork::Queued;
+  else if (g_phase == WorkerPhase::FetchingToken)
+    work = TokenWork::InFlight;
+  const RefreshFeeds feeds{g_phase != WorkerPhase::Idle, g_token_due, work};
   unlock();
-  return busy;
-}
-
-bool refresh_token_pending() {
-  lock();
-  const bool pending = g_token_due;
-  unlock();
-  return pending;
+  return feeds;
 }
 
 bool refresh_take(RefreshCompletion& out) {
@@ -195,7 +198,7 @@ bool refresh_take(RefreshCompletion& out) {
   g_completion.clock_synced = false;
   g_completion.completed_at_s = 0;
   g_completion_ready = false;
-  g_busy = false;
+  g_phase = WorkerPhase::Idle;  // keep a late BOOT for the next run
   unlock();
   return true;
 }

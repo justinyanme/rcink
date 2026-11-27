@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>rcink · Cyberpunk lofi 时钟页 · 400×300 1-bit mock</title>
+<style>
+  :root { --bg:#0b0b10; --panel:#131319; --line:#26262f; --fg:#e8e8ee; --mut:#8b8b98; --acc:#f0a6c2; --acc2:#7fd6d6; }
+  * { box-sizing: border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font: 14px/1.5 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
+  .wrap { display:grid; grid-template-columns: minmax(0, 860px) minmax(300px, 400px); gap: 28px; padding: 28px; max-width: 1340px; margin: 0 auto; }
+  @media (max-width: 1100px) { .wrap { grid-template-columns: 1fr } }
+  h1 { font-size: 18px; margin: 0 0 4px; font-weight: 600; letter-spacing: .02em; grid-column: 1 / -1 }
+  .sub { color: var(--mut); margin: 0 0 4px; font-size: 13px; grid-column: 1 / -1 }
+  .device { background:#1a1a20; border-radius: 14px; padding: 22px; box-shadow: inset 0 0 0 1px #2a2a33; align-self: start }
+  canvas { width: 100%; aspect-ratio: 4 / 3; image-rendering: pixelated; display:block; background:#000; border-radius: 4px }
+  .cap { font: 12px ui-monospace, monospace; color: var(--mut); margin-top: 10px; text-align: center }
+  .ctl { background: var(--panel); border:1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px }
+  .ctl h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mut); margin: 0 0 8px }
+  .row { display:flex; flex-wrap:wrap; gap: 6px; }
+  button { background:#1c1c24; color:var(--fg); border:1px solid #2e2e38; border-radius: 6px; padding: 5px 10px; font-size: 13px; cursor:pointer }
+  button.on { background: var(--acc); color:#1a0a12; border-color: var(--acc); font-weight: 600 }
+  button.on.alt { background: var(--acc2); color:#062020; border-color: var(--acc2) }
+  .map { width:100%; border-collapse: collapse; font-size: 12.5px }
+  .map td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-align: top }
+  .map tr:first-child td { border-top: 0 }
+  .map td:first-child { color: var(--acc2); white-space: nowrap; width: 104px }
+  .note { font-size: 12px; color: var(--mut); margin: 0 }
+  .strip { grid-column: 1 / -1 }
+  .strip h2 { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--mut); margin: 0 0 10px }
+  .thumbs { display:flex; gap: 14px; flex-wrap: wrap }
+  .thumb canvas { width: 400px; height: 300px; image-rendering: pixelated; background:#000; border-radius: 4px; display:block }
+  .thumb div { font-size: 12px; color: var(--mut); margin-top: 6px; text-align:center }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cyberpunk lofi 时钟页 <span class="cap" style="display:inline">· Waveshare RLCD 4.2" · 400×300 · 1-bit</span></h1>
+  <p class="sub">同一帧就是设备会画出来的像素。主体是夜景 + 楼顶广告牌时钟；Deck 数据被塞进霓虹灯里。右侧可切换 白纸/黑夜、HOST/ECO、信息密度与故障状态。</p>
+
+  <div class="device">
+    <canvas id="main" width="400" height="300" style="outline:1px solid #2a2a33"></canvas>
+    <div class="cap" id="cap">HOST · 8 FPS · L1</div>
+  </div>
+
+  <aside>
+    <div class="ctl">
+      <h2>底色</h2>
+      <div class="row" id="g-paper">
+        <button data-v="1" class="on alt">白纸 · 黑墨（设备默认亮极性）</button>
+        <button data-v="0">黑夜 · 白墨（暗极性）</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <h2>运行模式</h2>
+      <div class="row" id="g-mode">
+        <button data-v="host" class="on alt">HOST · 动画（雨 / 尾巴 / 霓虹闪烁）</button>
+        <button data-v="eco">ECO · 静态帧</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <h2>信息密度</h2>
+      <div class="row" id="g-density">
+        <button data-v="0">L0 纯场景</button>
+        <button data-v="1" class="on">L1 场景内嵌</button>
+        <button data-v="2">L2 +页眉页脚</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <h2>状态</h2>
+      <div class="row" id="g-state">
+        <button data-v="ok" class="on">正常</button>
+        <button data-v="link">Wi-Fi 断链</button>
+        <button data-v="sync">同步失败</button>
+        <button data-v="old">旧数据</button>
+        <button data-v="lowbat">低电量</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <h2>时钟位置</h2>
+      <div class="row" id="g-clock">
+        <button data-v="billboard" class="on">楼顶广告牌</button>
+        <button data-v="sill">柜台小闹钟</button>
+      </div>
+    </div>
+    <div class="ctl">
+      <h2>数据 → 场景</h2>
+      <table class="map">
+        <tr><td>时间 / 星期 / 日期</td><td>楼顶广告牌（RTC 驱动，离线也准）</td></tr>
+        <tr><td>Ambient Chrome</td><td>广告牌副标「22.4°」；L2 时回到页眉</td></tr>
+        <tr><td>Allowance</td><td>左侧「FUEL」霓虹招牌：每行一个 Provider，横条 = 剩余；&lt;20% 闪烁 +「!」</td></tr>
+        <tr><td>Token Skyline</td><td>远景那排楼就是 8W 柱状图，楼高 = 用量</td></tr>
+        <tr><td>Total ODO</td><td>摊位柜台的 LED 跑马条「ODO 123.4M」</td></tr>
+        <tr><td>电量</td><td>右侧墙上电池霓虹；低电量 1 Hz 闪烁</td></tr>
+        <tr><td>Desk Cat</td><td>摊位柜台上的猫（HOST 摆尾，ECO 静坐）</td></tr>
+        <tr><td>Link failure</td><td>整座城的霓虹熄灭，只剩时钟 / 月亮 / 摊位；页脚 chip「WIFI FAILED」</td></tr>
+        <tr><td>Sync / Old data</td><td>沿用现有页脚语法：「SYNC FAILED」「OLD DATA」chip</td></tr>
+      </table>
+      <p class="note">L0 = 只有场景 + 时钟 + 故障 chip；L1 = 数据塞进霓虹；L2 = 再加标准页眉页脚（页名 / 温湿度 / HOST·PINNED / checked）。</p>
+    </div>
+  </aside>
+
+  <div class="strip">
+    <h2>五种状态（跟随上面的密度 / 时钟位置）</h2>
+    <div class="thumbs" id="thumbs"></div>
+  </div>
+</div>
+
+<script>
+// 1-bit 400x300 renderer for the cyberpunk-lofi clock page mock.
+// Works in Node (PNG export) and in the browser (canvas). Pure: same opts -> same frame.
+'use strict';
+const W = 400, H = 300;
+
+const FONT = {
+  '0': ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  '1': ['..#..', '.##..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+  '2': ['.###.', '#...#', '....#', '...#.', '..#..', '.#...', '#####'],
+  '3': ['#####', '...#.', '..#..', '...#.', '....#', '#...#', '.###.'],
+  '4': ['...#.', '..##.', '.#.#.', '#..#.', '#####', '...#.', '...#.'],
+  '5': ['#####', '#....', '####.', '....#', '....#', '#...#', '.###.'],
+  '6': ['..##.', '.#...', '#....', '####.', '#...#', '#...#', '.###.'],
+  '7': ['#####', '....#', '...#.', '..#..', '.#...', '.#...', '.#...'],
+  '8': ['.###.', '#...#', '#...#', '.###.', '#...#', '#...#', '.###.'],
+  '9': ['.###.', '#...#', '#...#', '.####', '....#', '...#.', '.##..'],
+  'A': ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+  'B': ['####.', '#...#', '#...#', '####.', '#...#', '#...#', '####.'],
+  'C': ['.###.', '#...#', '#....', '#....', '#....', '#...#', '.###.'],
+  'D': ['###..', '#..#.', '#...#', '#...#', '#...#', '#..#.', '###..'],
+  'E': ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
+  'F': ['#####', '#....', '#....', '####.', '#....', '#....', '#....'],
+  'G': ['.###.', '#...#', '#....', '#.###', '#...#', '#...#', '.###.'],
+  'H': ['#...#', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
+  'I': ['.###.', '..#..', '..#..', '..#..', '..#..', '..#..', '.###.'],
+  'J': ['..###', '...#.', '...#.', '...#.', '...#.', '#..#.', '.##..'],
+  'K': ['#...#', '#..#.', '#.#..', '##...', '#.#..', '#..#.', '#...#'],
+  'L': ['#....', '#....', '#....', '#....', '#....', '#....', '#####'],
+  'M': ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
+  'N': ['#...#', '#...#', '##..#', '#.#.#', '#..##', '#...#', '#...#'],
+  'O': ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  'P': ['####.', '#...#', '#...#', '####.', '#....', '#....', '#....'],
+  'Q': ['.###.', '#...#', '#...#', '#...#', '#.#.#', '#..#.', '.##.#'],
+  'R': ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
+  'S': ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
+  'T': ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
+  'U': ['#...#', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.'],
+  'V': ['#...#', '#...#', '#...#', '#...#', '#...#', '.#.#.', '..#..'],
+  'W': ['#...#', '#...#', '#...#', '#.#.#', '#.#.#', '##.##', '#...#'],
+  'X': ['#...#', '#...#', '.#.#.', '..#..', '.#.#.', '#...#', '#...#'],
+  'Y': ['#...#', '#...#', '.#.#.', '..#..', '..#..', '..#..', '..#..'],
+  'Z': ['#####', '....#', '...#.', '..#..', '.#...', '#....', '#####'],
+  '%': ['##..#', '##.#.', '...#.', '..#..', '.#...', '.#.##', '#..##'],
+  '.': ['.....', '.....', '.....', '.....', '.....', '.##..', '.##..'],
+  ':': ['.....', '.##..', '.##..', '.....', '.##..', '.##..', '.....'],
+  '!': ['..#..', '..#..', '..#..', '..#..', '..#..', '.....', '..#..'],
+  '-': ['.....', '.....', '.....', '#####', '.....', '.....', '.....'],
+  '/': ['....#', '....#', '...#.', '..#..', '.#...', '#....', '#....'],
+  '°': ['.##..', '#..#.', '#..#.', '.##..', '.....', '.....', '.....'],
+  '·': ['.....', '.....', '.....', '..#..', '.....', '.....', '.....'],
+  ' ': ['.....', '.....', '.....', '.....', '.....', '.....', '.....'],
+};
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+class Pen {
+  constructor() { this.fb = new Uint8Array(W * H); }
+  px(x, y, v = 1) { x |= 0; y |= 0; if (x >= 0 && y >= 0 && x < W && y < H) this.fb[y * W + x] = v; }
+  rect(x, y, w, h, v = 1) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.px(x + i, y + j, v); }
+  frame(x, y, w, h, t = 1, v = 1) {
+    this.rect(x, y, w, t, v); this.rect(x, y + h - t, w, t, v);
+    this.rect(x, y, t, h, v); this.rect(x + w - t, y, t, h, v);
+  }
+  dashedFrame(x, y, w, h, v = 1) {
+    for (let i = 0; i < w; i++) { if (i & 1) { this.px(x + i, y, v); this.px(x + i, y + h - 1, v); } }
+    for (let j = 0; j < h; j++) { if (j & 1) { this.px(x, y + j, v); this.px(x + w - 1, y + j, v); } }
+  }
+  dither(x, y, w, h, phase = 0, v = 1) {       // 50 %
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (((i + j + phase) & 1) === 0) this.px(x + i, y + j, v);
+  }
+  sparse(x, y, w, h, v = 1) {                  // 25 %
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (((i & 1) === 0) && ((j & 1) === 0)) this.px(x + i, y + j, v);
+  }
+  line(x0, y0, x1, y1, v = 1) {
+    x0 |= 0; y0 |= 0; x1 |= 0; y1 |= 0;
+    const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      this.px(x0, y0, v);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+  thick(x0, y0, x1, y1, t, v = 1) { for (let i = 0; i < t; i++) this.line(x0 + i - (t >> 1), y0, x1 + i - (t >> 1), y1, v); }
+  disc(cx, cy, r, v = 1) {
+    for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (i * i + j * j <= r * r + r * 0.5) this.px(cx + i, cy + j, v);
+  }
+  ring(cx, cy, r, v = 1, a0 = 0, a1 = 360) {
+    for (let a = a0; a <= a1; a += 2) this.px(Math.round(cx + Math.cos(a * Math.PI / 180) * r), Math.round(cy + Math.sin(a * Math.PI / 180) * r), v);
+  }
+  oval(cx, cy, rx, ry, v = 1) {
+    for (let j = -ry; j <= ry; j++) for (let i = -rx; i <= rx; i++) if ((i * i) / (rx * rx) + (j * j) / (ry * ry) <= 1.05) this.px(cx + i, cy + j, v);
+  }
+  ellipse(cx, cy, rx, ry, v = 1) {
+    for (let a = 0; a < 360; a += 3) this.px(Math.round(cx + Math.cos(a * Math.PI / 180) * rx), Math.round(cy + Math.sin(a * Math.PI / 180) * ry), v);
+  }
+  glyph(ch, x, y, s, v = 1) {
+    const g = FONT[ch] || FONT[' '];
+    for (let r = 0; r < 7; r++) for (let c = 0; c < 5; c++) if (g[r][c] === '#') this.rect(x + c * s, y + r * s, s, s, v);
+  }
+  text(str, x, y, s, v = 1) {
+    let cx = x;
+    for (const ch of str) { if (ch !== ' ') this.glyph(ch, cx, y, s, v); cx += 6 * s; }
+    return cx - s;
+  }
+  textR(str, xr, y, s, v = 1) { return this.text(str, xr - textW(str, s), y, s, v); }
+  sprite(rows, x, y, v = 1, k = 1) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === '#') this.rect(x + c * k, y + r * k, k, k, v); }
+}
+function textW(str, s) { return str.length * 6 * s - s; }
+
+// Desk Cat, SIT pose (15x10), two tail poses. Drawn at 2x on the stall counter.
+const CAT_A = [   // tail up, tip curled right
+  '.#...#..........',
+  '.#...#.........#',
+  '.#####........#.',
+  '.#.#.#........#.',
+  '.#####........#.',
+  '..####........#.',
+  '.#######......#.',
+  '.########.....#.',
+  '.#########...##.',
+  '.##########.##..',
+];
+const CAT_B = [   // tail swished left
+  '.#...#..........',
+  '.#...#......#...',
+  '.#####.....#....',
+  '.#.#.#.....#....',
+  '.#####.....#....',
+  '..####....#.....',
+  '.#######..#.....',
+  '.########.#.....',
+  '.#########.##...',
+  '.##########.##..',
+];
+
+// The lofi worker at the laptop: 42x44, head with headphones + hair bun, shoulders,
+// forearm to the keyboard, laptop with a lit screen. Bottom row sits on the counter.
+const WORKER = [
+  '..........................................',
+  '..........................................',
+  '..........................................',
+  '...........#..............................',
+  '.......#########..........................',
+  '.....###.......###........................',
+  '....##.....#.....##.......................',
+  '...##...#######...##......................',
+  '...##..#########..##......................',
+  '..##..###########..##.....................',
+  '..##..###############.....................',
+  '..##.################.....................',
+  '..##.################.....................',
+  '.####################.....................',
+  '.####.##############......................',
+  '.####.##############......................',
+  '.####.###############.....................',
+  '.####...#######...........................',
+  '...........#..............................',
+  '.........#####............................',
+  '.........#####............................',
+  '.........#####............................',
+  '.....###############......................',
+  '....#################.....................',
+  '...###################.........##########.',
+  '..####################.........##########.',
+  '..####################.........##......##.',
+  '..####################.........##......##.',
+  '..####################.........##......##.',
+  '..####################.........##......##.',
+  '..####################.........##......##.',
+  '..######################.......##......##.',
+  '..############################.##......##.',
+  '..############################.##......##.',
+  '..############################.##......##.',
+  '..############################.##......##.',
+  '..######################.......##########.',
+  '..######################......############',
+  '..######################......############',
+  '..######################..................',
+  '..######################..................',
+  '..######################..................',
+  '..######################..................',
+  '..######################..................',
+];
+
+const SKYLINE = [0.30, 0.55, 0.90, 0.40, 0.70, 1.00, 0.50, 0.35]; // 8 Token-Skyline bars (8W)
+const BASE = 130, STREET = 266, COUNTER = 244; // horizontal datums
+
+// opts: hour, minute, weekday, day, density(0|1|2), state, host, frame, paper,
+//       clockPos ('billboard'|'sill'), providers[{id,left}], battery, odo, env{temp,rh}, pinned, ssid,
+//       checkedLabel, retryLabel, sourceLabel
+function renderScene(o) {
+  const p = new Pen();
+  const f = o.host ? (o.frame | 0) : 0;
+  const density = o.density | 0;
+  const link = o.state === 'link';
+  const lowbat = o.state === 'lowbat';
+  const bad = o.state && o.state !== 'ok' && !lowbat;
+  const top = density === 2 ? 18 : 0;
+  const bottom = density === 2 ? 282 : (bad ? 280 : 300);
+  const lit = !link;                                   // neon goes dark on link failure
+  const paper = !!o.paper;                             // light polarity: black ink on white paper
+  const BG = paper ? 1 : 0, FG = 1 - BG;               // sky/street and the ink drawn on them
+  const LIGHT = 1, INK = 0;                            // lit content is white in both polarities
+  if (paper) p.fb.fill(BG);
+  const blink1 = !o.host || (f % 8) < 4;               // 1 Hz at 8 FPS; steady when static
+  const blink2 = !o.host || (f % 4) < 2;
+  const flick = (period, width) => !o.host || (f % period) >= width; // tired neon letter
+  const jit = (x) => ((x * 7 + f * 13) & 1);
+  const rnd = mulberry32(0x51A7C471);
+  const bb = o.clockPos === 'sill' ? null : { x: 116, y: 40, w: 168, h: 64 };
+  const inBox = (x, y, b, pad) => b && x >= b.x - pad && x < b.x + b.w + pad && y >= b.y - pad && y < b.y + b.h + pad;
+
+  // ===================== sky =====================
+  for (let i = 0; i < (paper ? 30 : 80); i++) {
+    const x = (rnd() * W) | 0, y = (rnd() * 112) | 0;
+    if (y < top + 2 || inBox(x, y, bb, 8)) continue;
+    const dx = x - 356, dy = y - 34; if (dx * dx + dy * dy < 19 * 19) continue;
+    p.px(x, y, FG);
+  }
+  // telegraph pole + two sagging wires
+  p.rect(6, top + 2, 2, BASE - top, FG);
+  p.rect(0, top + 8, 14, 1, FG); p.rect(0, top + 16, 14, 1, FG);
+  for (let x = 14; x < W; x++) {
+    const t = (x - 14) / (W - 14);
+    p.px(x, top + 9 + Math.round(Math.sin(t * Math.PI) * 14), FG);
+    p.px(x, top + 17 + Math.round(Math.sin(t * Math.PI) * 20), FG);
+  }
+  // moon: a lit disc at night, an ink ring on paper
+  if (paper) { p.disc(356, 34, 13, FG); p.disc(356, 34, 11, BG); }
+  else p.disc(356, 34, 13, LIGHT);
+  p.rect(351, 30, 3, 3, FG); p.rect(360, 38, 3, 3, FG); p.rect(352, 41, 2, 2, FG);
+
+  // ===================== Token Skyline as the far city =====================
+  {
+    const bw = 44, gap = 5, x0 = 8;
+    for (let i = 0; i < SKYLINE.length; i++) {
+      const h = Math.round(8 + SKYLINE[i] * 40), bx = x0 + i * (bw + gap), by = BASE - h;
+      if (paper) p.rect(bx, by, bw, h, INK); else p.sparse(bx, by, bw, h, FG);
+      const wr = mulberry32(100 + i);
+      for (let wy = by + 5; wy < BASE - 3; wy += 6)
+        for (let wx = bx + 4; wx < bx + bw - 3; wx += 6) if (wr() < 0.5) p.rect(wx, wy, 2, 2, LIGHT);
+      if (i % 3 === 1 && h > 20) p.rect(bx + 8, by + 3, 10, 3, LIGHT);   // rooftop sign
+    }
+  }
+
+  // ===================== the city block (50 % dither = concrete at night) =====================
+  p.dither(0, BASE, W, STREET - BASE, 0, FG);
+  {
+    // facades: 4x5 windows, lit or dark, skipping everything that lives on the wall
+    const zones = [
+      [6, 136, 96, 240], [306, 132, 400, 164], [310, 162, 354, 184], [370, 162, 400, 252],
+      [308, 200, 350, 266], [252, 194, 308, 266], [88, 180, 246, 268],
+    ];
+    const inZone = (x, y) => zones.some(([zx0, zy0, zx1, zy1]) => x >= zx0 && x < zx1 && y >= zy0 && y < zy1);
+    const wr = mulberry32(7);
+    for (let wy = 136; wy < STREET - 8; wy += 13) for (let wx = 8; wx < W - 8; wx += 12) {
+      if (inZone(wx, wy) || inZone(wx + 4, wy + 5)) continue;
+      p.rect(wx, wy, 4, 5, wr() < 0.45 ? LIGHT : INK);
+    }
+  }
+
+  // ===================== left wall: FUEL sign (Allowance) =====================
+  if (density >= 1) {
+    const sx = 10, sy = 140, sw = 82, sh = 96;
+    p.frame(sx - 3, sy - 3, sw + 6, sh + 6, 3, INK);                 // shadow gap
+    if (lit) { p.frame(sx, sy, sw, sh, 2, LIGHT); p.rect(sx + 2, sy + 2, sw - 4, sh - 4, INK); if (!paper) { p.dither(sx - 4, sy - 4, sw + 8, 1, 0, FG); p.dither(sx - 4, sy + sh + 4, sw + 8, 1, 0, FG); p.dither(sx - 4, sy - 4, 1, sh + 8, 0, FG); p.dither(sx + sw + 4, sy - 4, 1, sh + 8, 0, FG); } }
+    else p.dashedFrame(sx, sy, sw, sh, LIGHT);
+    'FUEL'.split('').forEach((ch, i) => { if (lit && (i !== 2 || flick(53, 3))) p.glyph(ch, 16 + i * 12, 146, 2, LIGHT); });
+    if (lit) p.rect(16, 164, 60, 1, LIGHT);
+    (o.providers || []).slice(0, 4).forEach((pr, i) => {
+      const y = 170 + i * 18;
+      if (!lit) { p.dashedFrame(32, y + 2, 48, 10, LIGHT); return; }
+      p.glyph(pr.id[0], 16, y, 2, LIGHT);
+      p.frame(32, y + 2, 48, 10, 1, LIGHT);
+      if (pr.left == null) { p.px(40, y + 7, LIGHT); p.px(45, y + 7, LIGHT); p.px(50, y + 7, LIGHT); return; }
+      if (!(pr.left < 20 && !blink2)) p.rect(33, y + 3, Math.round(pr.left / 100 * 46), 8, LIGHT);
+      if (pr.left < 20) p.glyph('!', 84, y + 3, 1, LIGHT);
+    });
+  }
+
+  // ===================== right wall: lanterns, battery, OPEN, vending =====================
+  p.rect(310, 134, 86, 30, INK);                                     // dark patch behind the lanterns
+  p.line(312, 136, 394, 136, LIGHT);
+  [324, 350, 376].forEach((cx) => {
+    p.rect(cx, 137, 1, 6, LIGHT);
+    if (lit) {
+      p.rect(cx - 7, 143, 15, 17, INK);
+      p.rect(cx - 6, 144, 12, 14, LIGHT); p.rect(cx - 6, 144, 12, 2, INK); p.rect(cx - 6, 156, 12, 2, INK);
+      p.rect(cx - 6, 148, 12, 1, INK); p.rect(cx - 6, 152, 12, 1, INK);
+      p.rect(cx - 1, 161, 3, 3, LIGHT);                                // tassel
+    } else p.dashedFrame(cx - 6, 144, 12, 14, LIGHT);
+  });
+  if (density >= 1) {
+    const bx = 316, by = 166, bw = 28, bh = 12;                       // battery neon
+    p.rect(bx - 3, by - 3, bw + 9, bh + 6, INK);
+    if (!lowbat || blink1) {
+      if (lit) { p.frame(bx, by, bw, bh, 1, LIGHT); p.rect(bx + bw, by + 3, 2, 6, LIGHT); p.rect(bx + 2, by + 2, Math.round(o.battery / 100 * 24), 8, LIGHT); }
+      else p.dashedFrame(bx, by, bw, bh, LIGHT);
+      if (lowbat) p.glyph('!', bx + 33, by + 2, 1, LIGHT);
+    }
+  }
+  {
+    const sx = 374, sy = 166, sw = 20, sh = 84;                       // vertical OPEN sign
+    p.frame(sx - 3, sy - 3, sw + 6, sh + 6, 3, INK);
+    if (lit) { p.frame(sx, sy, sw, sh, 1, LIGHT); p.rect(sx + 1, sy + 1, sw - 2, sh - 2, INK); } else p.dashedFrame(sx, sy, sw, sh, LIGHT);
+    'OPEN'.split('').forEach((ch, i) => { if (lit && (i !== 2 || flick(37, 2))) p.glyph(ch, sx + 5, sy + 5 + i * 20, 2, LIGHT); });
+  }
+  {                                                                   // vending machine (scene light, stays on)
+    const vx = 314, vy = 206, vw = 30, vh = 60;
+    p.rect(vx - 3, vy - 3, vw + 6, vh + 6, INK);
+    p.rect(vx, vy, vw, vh, LIGHT); p.frame(vx, vy, vw, vh, 1, INK);
+    p.rect(vx + 3, vy + 4, 24, 24, INK);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) if ((c + r) % 3 !== 1) p.rect(vx + 5 + c * 6, vy + 6 + r * 8, 3, 5, LIGHT);
+    p.rect(vx + 3, vy + 32, 24, 3, INK);
+    p.rect(vx + 3, vy + 40, 12, 8, INK); p.rect(vx + 18, vy + 40, 9, 3, INK);
+    p.rect(vx + 3, vy + 53, 24, 4, INK);
+  }
+
+  // ===================== alley depth: 24H sign + noren doorway =====================
+  {
+    const sx = 258, sy = 196, sw = 44, sh = 16;
+    p.frame(sx - 3, sy - 3, sw + 6, sh + 6, 3, INK);
+    if (lit) { p.frame(sx, sy, sw, sh, 1, LIGHT); p.rect(sx + 1, sy + 1, sw - 2, sh - 2, INK); p.text('24H', sx + 5, sy + 1, 2, LIGHT); } else p.dashedFrame(sx, sy, sw, sh, LIGHT);
+  }
+  {
+    const dx = 264, dy = 218, dw = 28, dh = STREET - dy + 2;
+    p.rect(dx - 3, dy - 3, dw + 6, dh + 3, INK);
+    p.rect(dx, dy, dw, dh, LIGHT);
+    p.rect(dx, dy, dw, 9, INK);                                        // noren curtain
+    [8, 15, 22].forEach((k) => p.rect(dx + k, dy + 1, 2, 7, LIGHT));
+    p.rect(dx + 13, dy + 9, 2, dh - 9, INK);                           // sliding-door mullion
+    p.frame(dx, dy, dw, dh, 1, INK);
+  }
+
+  // ===================== the stall (foreground, lit) =====================
+  const stX = 94, stW = 146, awY = 184, inX = stX + 10, inY = 200, inW = stW - 20, inH = COUNTER - inY + 4;
+  p.frame(stX - 2, awY - 2, stW + 4, 86, 2, INK);                      // solid edge against the dither
+  for (let x = stX; x < stX + stW; x += 8) {                           // awning
+    const white = ((x - stX) / 8) % 2 === 0;
+    p.rect(x, awY, 8, 10, white ? LIGHT : INK);
+    p.disc(x + 4, awY + 10, 4, white ? LIGHT : INK);
+  }
+  p.rect(inX, inY, inW, inH, LIGHT);                                   // lit interior
+  [150, 184].forEach((lx) => { p.rect(lx, inY, 1, 6, INK); p.rect(lx - 5, 206, 11, 4, INK); p.rect(lx - 3, 210, 7, 1, INK); });  // two hanging lamps
+  p.sprite(WORKER, 106, inY, INK, 1);                                  // the lofi worker
+  // Desk Cat at 2x on the counter, with a steaming cup
+  p.rect(182, COUNTER - 6, 6, 6, INK); p.rect(183, COUNTER - 5, 4, 4, LIGHT); p.px(189, COUNTER - 4, INK); p.px(189, COUNTER - 3, INK);
+  for (let k = 0; k < 3; k++) { const sy = COUNTER - 9 - ((k * 4 + (o.host ? f : 0)) % 9); if (sy > inY + 2) p.px(183 + (k & 1) * 3 + ((f >> 2) & 1), sy, INK); }
+  p.sprite(o.host && (f % 16) < 8 ? CAT_A : CAT_B, 198, COUNTER - 20, INK, 2);
+  p.rect(inX, COUNTER, inW, 3, INK);                                   // counter top
+  p.rect(stX, COUNTER + 4, stW, STREET - COUNTER - 4, INK);            // stall front
+  if (density >= 1) { if (lit) p.text('ODO ' + o.odo, stX + 6, COUNTER + 6, 2, LIGHT); else p.text('ODO ·····', stX + 6, COUNTER + 6, 2, LIGHT); }
+
+  // ===================== the clock =====================
+  const hh = String(o.hour).padStart(2, '0'), mm = String(o.minute).padStart(2, '0');
+  if (bb) {
+    p.rect(bb.x, bb.y, bb.w, bb.h, INK);
+    p.rect(140, bb.y + bb.h, 3, BASE - bb.y - bb.h, FG); p.rect(252, bb.y + bb.h, 3, BASE - bb.y - bb.h, FG);
+    for (let k = 0; k < 10; k++) { p.px(144 + k * 2.2, bb.y + bb.h + 2 + k * 2, FG); p.px(250 - k * 2.2, bb.y + bb.h + 2 + k * 2, FG); }   // X-brace
+    p.frame(bb.x, bb.y, bb.w, bb.h, 2, LIGHT);
+    p.dither(bb.x - 2, bb.y - 2, bb.w + 4, 2, 0, FG); p.dither(bb.x - 2, bb.y + bb.h, bb.w + 4, 2, 0, FG);
+    p.dither(bb.x - 2, bb.y, 2, bb.h, 0, FG); p.dither(bb.x + bb.w, bb.y, 2, bb.h, 0, FG);
+    const dy = density >= 1 ? bb.y + 8 : bb.y + 16;
+    p.text(hh, 136, dy, 5, LIGHT);
+    if (blink1) { p.rect(200, dy + 8, 5, 5, LIGHT); p.rect(200, dy + 22, 5, 5, LIGHT); }
+    p.text(mm, 213, dy, 5, LIGHT);
+    if (density >= 1) {
+      const cap = `${o.weekday} ${o.day}  ${o.env.temp}°`;
+      p.text(cap, bb.x + Math.round((bb.w - textW(cap, 2)) / 2), bb.y + bb.h - 18, 2, LIGHT);
+    }
+  } else {
+    const bx = inX + 2, by = inY + 12;
+    p.rect(bx, by, 94, 28, INK); p.frame(bx, by, 94, 28, 1, LIGHT);
+    p.text(hh, bx + 6, by + 4, 3, LIGHT);
+    if (blink1) { p.rect(bx + 48, by + 8, 3, 3, LIGHT); p.rect(bx + 48, by + 16, 3, 3, LIGHT); }
+    p.text(mm, bx + 55, by + 4, 3, LIGHT);
+  }
+
+  // ===================== street: wet asphalt, reflections, puddle, grate =====================
+  // Ground = horizontal dash texture (reads as wet asphalt); every light above gets a
+  // reflection streak below it: solid at the kerb, breaking into dashes further down.
+  for (let y = STREET + 2; y < bottom - 1; y += 3) {
+    const off = ((y / 3) % 2) * 2;
+    for (let x = 0; x < W; x++) if (((x + off) % 5) < (paper ? 4 : 3)) p.px(x, y, FG);
+  }
+  p.rect(0, STREET, W, 2, FG);                                        // kerb
+  const streak = (x, w, len) => {
+    const y1 = Math.min(STREET + 2 + len, bottom - 1);
+    for (let y = STREET + 2; y < y1; y++) {
+      const d = y - STREET - 2, on = d < 6 || ((d - 6) % (3 + ((d - 6) >> 3))) < 2;
+      if (on) p.rect(x + (o.host ? jit(x + d) : 0), y, w, 1, LIGHT);
+    }
+  };
+  if (bb && lit) [150, 182, 222, 252].forEach((x) => streak(x - 3, 6, 40));      // billboard digits
+  if (lit) {
+    if (density >= 1) { [24, 48, 72].forEach((x) => streak(x - 2, 5, 26)); streak(316, 4, 14); }   // FUEL sign, battery
+    [324, 350, 376].forEach((x) => streak(x - 3, 6, 22)); streak(378, 8, 24);                          // lanterns, OPEN
+  }
+  streak(270, 4, 30); streak(283, 4, 30);                              // doorway
+  [320, 334].forEach((x) => streak(x - 3, 6, 18));                     // vending machine
+  [118, 150, 204].forEach((x) => streak(x, 8, 30));                    // stall interior
+  if (!bad) {                                                          // puddle with the billboard in it
+    p.oval(150, 287, 30, 4, FG); p.oval(150, 287, 28, 3, BG);
+    streak(147, 6, 40);
+  }
+  {                                                                   // drain grate by the kerb
+    const gx = 298, gy = STREET + 4;
+    p.rect(gx, gy, 22, 6, BG); p.frame(gx, gy, 22, 6, 1, FG);
+    for (let k = 2; k < 20; k += 3) p.rect(gx + k, gy + 1, 1, 4, FG);
+  }
+
+  // ===================== rain (sky band only; fixed sparse pattern when static) =====================
+  {
+    const drops = o.host ? 70 : 22, rr = mulberry32(99);
+    for (let i = 0; i < drops; i++) {
+      const rx = rr() * W, speed = 2 + (rr() * 2 | 0), len = 5 + (rr() * 4 | 0), phase = rr() * 400;
+      const span = 112 - top, y = top + ((phase + f * speed) % span), x = (rx + (o.host ? -f * 0.5 : 0) + W) % W;
+      for (let k = 0; k < len; k++) {
+        const xx = Math.round(x - k * 0.5), yy = y + k;
+        if (inBox(xx, yy, bb, 4) || xx < 0 || xx >= W || yy >= 112) continue;
+        p.px(xx, yy, FG);
+      }
+    }
+  }
+
+  // ===================== chrome =====================
+  const label = bad ? { sync: 'SYNC FAILED', old: 'OLD DATA', link: 'WIFI FAILED' }[o.state] : lowbat ? 'BATTERY ' + o.battery + '%' : null;
+  const sub = bad ? { sync: o.retryLabel || 'retry 19:48', old: o.sourceLabel || 'M4 18:02', link: o.ssid || 'rcink' }[o.state] : '';
+  if (density === 2) {
+    p.rect(0, 0, W, top, LIGHT); p.text('NEON', 8, 2, 2, INK);
+    p.textR(`${o.env.temp}° ${o.env.rh}%`, W - 8, 2, 2, INK); p.rect(0, top - 1, W, 1, INK);
+    p.rect(0, bottom, W, H - bottom, LIGHT); p.rect(0, bottom, W, 1, INK);
+    const chip = label || (o.pinned ? 'PINNED' : 'HOST');
+    p.rect(8, bottom + 2, textW(chip, 2) + 10, 16, INK);
+    p.text(chip, 13, bottom + 3, 2, LIGHT);
+    if (sub) p.text(sub, 8 + textW(chip, 2) + 10 + 8, bottom + 3, 2, INK);
+    else p.textR(o.checkedLabel || 'checked 14:02', W - 8, bottom + 3, 2, INK);
+  } else if (label) {
+    p.rect(8, 282, textW(label, 2) + 10, 16, INK);
+    p.text(label, 13, 283, 2, LIGHT);
+    if (sub) p.text(sub, 8 + textW(label, 2) + 10 + 8, 283, 2, FG);
+  }
+  return p.fb;
+}
+
+if (typeof module !== 'undefined') module.exports = { renderScene, W, H };
+
+
+// ---- demo wiring ----
+const S = { mode: 'host', density: 1, state: 'ok', clock: 'billboard', paper: true };
+const DATA = {
+  providers: [{ id: 'C', left: 62 }, { id: 'X', left: 41 }, { id: 'G', left: 88 }, { id: 'K', left: null }],
+  battery: 73, odo: '123.4M', env: { temp: '22.4', rh: 48 }, pinned: false, ssid: 'rcink',
+  checkedLabel: 'checked 19:40', retryLabel: 'retry 19:48', sourceLabel: 'M4 18:02',
+};
+function opts(extra) {
+  const d = new Date();
+  const wd = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()];
+  return Object.assign({}, DATA, {
+    hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(), weekday: wd, day: d.getDate(),
+    density: S.density, state: S.state, host: S.mode === 'host', clockPos: S.clock, frame: 0, paper: S.paper,
+  }, extra || {});
+}
+function draw(canvas, fb) {
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(400, 300);
+  for (let i = 0; i < fb.length; i++) { const v = fb[i] ? 255 : 0; img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255; }
+  ctx.putImageData(img, 0, 0);
+}
+const main = document.getElementById('main');
+const cap = document.getElementById('cap');
+let frame = 0, last = 0, lastKey = '';
+function tick(ts) {
+  if (S.mode === 'host') {
+    if (ts - last >= 125) { last = ts; frame++; draw(main, renderScene(opts({ frame }))); }
+  } else {
+    const d = new Date(); const key = [S.density, S.state, S.clock, S.paper, d.getMinutes(), d.getHours()].join('|');
+    if (key !== lastKey) { lastKey = key; draw(main, renderScene(opts({ frame: 0 }))); }
+  }
+  cap.textContent = (S.paper ? '白纸' : '黑夜') + ' · ' + (S.mode === 'host' ? 'HOST · 8 FPS' : 'ECO · 静态') + ' · L' + S.density + ' · ' + document.querySelector('#g-state .on').textContent;
+  requestAnimationFrame(tick);
+}
+function group(id, key, parse) {
+  const el = document.getElementById(id);
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+    S[key] = parse ? parse(b.dataset.v) : b.dataset.v; lastKey = ''; thumbs();
+  });
+}
+group('g-mode', 'mode'); group('g-density', 'density', v => +v); group('g-state', 'state'); group('g-clock', 'clock'); group('g-paper', 'paper', v => v === '1');
+const STATES = [['ok', '正常'], ['link', 'Wi-Fi 断链 · 霓虹熄灭'], ['sync', '同步失败'], ['old', '旧数据'], ['lowbat', '低电量']];
+function thumbs() {
+  const box = document.getElementById('thumbs'); box.innerHTML = '';
+  for (const [st, label] of STATES) {
+    const d = document.createElement('div'); d.className = 'thumb';
+    const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+    draw(c, renderScene(opts({ state: st, frame: 3 })));
+    const t = document.createElement('div'); t.textContent = label;
+    d.appendChild(c); d.appendChild(t); box.appendChild(d);
+  }
+}
+thumbs(); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

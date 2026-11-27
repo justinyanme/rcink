@@ -135,6 +135,14 @@ bool valid_window_shape(const std::string& label, uint8_t cols) {
 
 }  // namespace
 
+uint64_t total_odometer(const TokenSnapshot& token,
+                        const std::vector<uint64_t>& shifted_days) {
+  if (token.total_lifetime) return *token.total_lifetime;
+  uint64_t year_sum = 0;
+  for (uint64_t daily : shifted_days) year_sum = sat_add(year_sum, daily);
+  return std::max(token_lifetime_total(token), year_sum);
+}
+
 std::vector<uint64_t> derive_monument_shifted_days(
     const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
     bool& has_data) {
@@ -247,12 +255,7 @@ MonumentView derive_monument_view(const MonumentSnapshot& monument,
   }
 
   const uint64_t lifetime_total = token_lifetime_total(token);
-  view.total_odo_value = lifetime_total;
-  if (!token.total_lifetime) {
-    uint64_t year_sum = 0;
-    for (uint64_t daily_tokens : shifted) year_sum = sat_add(year_sum, daily_tokens);
-    view.total_odo_value = std::max(lifetime_total, year_sum);
-  }
+  view.total_odo_value = total_odometer(token, shifted);
   view.total_odo = format_tokens(view.total_odo_value);
 
   uint32_t streak = 0;

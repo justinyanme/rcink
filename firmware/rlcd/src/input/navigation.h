@@ -12,6 +12,10 @@ struct NavigationState {
   size_t page_index;
 };
 
+inline uint8_t restored_deck_index(uint8_t saved_index, size_t page_count) {
+  return saved_index < page_count ? saved_index : 0;
+}
+
 inline uint8_t startup_view_id(uint8_t saved_view_id, bool usage_enabled,
                                bool view_saved, bool include_dashboard = true) {
   if (!include_dashboard) return 1;

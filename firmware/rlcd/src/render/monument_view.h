@@ -61,6 +61,8 @@ inline bool operator==(const MonumentView& a, const MonumentView& b) {
 std::vector<uint64_t> derive_monument_shifted_days(
     const MonumentSnapshot& monument, const TokenSnapshot& token, uint64_t now,
     bool& has_data);
+uint64_t total_odometer(const TokenSnapshot& token,
+                        const std::vector<uint64_t>& shifted_days);
 void derive_monument_totals(const MonumentSnapshot& monument,
                             const TokenSnapshot& token, uint64_t now,
                             bool& has_data, uint64_t& today_tokens,

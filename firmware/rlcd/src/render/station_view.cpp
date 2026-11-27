@@ -310,15 +310,13 @@ StationView derive_station_view(const UsageSnapshot& usage,
                                       skyline_scale_for_window(window));
 
   view.row_count = uv->count;
-  bool any_allowance_observed = false;
-  bool all_allowance_stale = true;
   for (size_t i = 0; i < uv->count; i++) {
     const UsageRowView& src = uv->rows[i];
     StationRowView& dst = view.rows[i];
     dst.id = src.id;
     dst.state = src.state;
     dst.left = src.left;
-    dst.low_fuel = (src.state == UsageRowState::Live && src.left <= 10);
+    dst.low_fuel = station_low_fuel(src);
     dst.car_px = src.car_px >= 0
                      ? (int16_t)std::lround((double)src.car_px * kStationBarPx /
                                             kUsageRoadPx)
@@ -329,11 +327,6 @@ StationView derive_station_view(const UsageSnapshot& usage,
                       : -1;
     dst.countdown = src.countdown;
     dst.chip = src.chip;
-
-    if (src.state != UsageRowState::Unavailable) {
-      any_allowance_observed = true;
-      if (src.state != UsageRowState::Stale) all_allowance_stale = false;
-    }
 
     int token_idx = -1;
     for (size_t p = 0; p < tv->count; p++) {
@@ -353,8 +346,16 @@ StationView derive_station_view(const UsageSnapshot& usage,
       dst.seven_day.clear();
     }
   }
-  all_allowance_stale = any_allowance_observed && all_allowance_stale;
+  derive_station_footer(*uv, usage_sync, token, token_sync, now,
+                        view.footer_chip, view.footer_text);
+  return view;
+}
 
+void derive_station_footer(const UsageView& allowance, const UsageSync& usage_sync,
+                           const TokenSnapshot& token, const TokenSync& token_sync,
+                           uint64_t now, std::string& chip, std::string& text) {
+  const bool clock_valid = now >= kClockMinimum;
+  chip.clear();
   const bool token_old_data =
       !token.today.empty() &&
       (token.required_source_collected_at == 0 ||
@@ -373,19 +374,19 @@ StationView derive_station_view(const UsageSnapshot& usage,
           : token_sync.retry_cooldown_s;
 
   if (usage_sync.syncing || token_sync.syncing) {
-    view.footer_chip = "SYNCING";
-    view.footer_text = "fetching now";
+    chip = "SYNCING";
+    text = "fetching now";
   } else if (link == LinkFailure::WifiFailed) {
-    view.footer_chip = "NO WIFI";
-    view.footer_text =
+    chip = "NO WIFI";
+    text =
         retry_footer_text(now, clock_valid, link_retry_at, link_cooldown);
   } else if (link == LinkFailure::NtpFailed) {
-    view.footer_chip = "NO NTP";
-    view.footer_text =
+    chip = "NO NTP";
+    text =
         retry_footer_text(now, clock_valid, link_retry_at, link_cooldown);
   } else if (!clock_valid) {
-    view.footer_chip = "NO CLOCK";
-    view.footer_text = "waiting for NTP";
+    chip = "NO CLOCK";
+    text = "waiting for NTP";
   } else if (usage_sync.fetch_failed && token_sync.fetch_failed) {
     const uint64_t retry_at =
         (usage_sync.retry_at_s > 0 && token_sync.retry_at_s > 0)
@@ -393,37 +394,35 @@ StationView derive_station_view(const UsageSnapshot& usage,
             : std::max(usage_sync.retry_at_s, token_sync.retry_at_s);
     const uint32_t cooldown =
         std::min(usage_sync.retry_cooldown_s, token_sync.retry_cooldown_s);
-    view.footer_chip = "SYNC FAILED";
-    view.footer_text = retry_footer_text(now, clock_valid, retry_at, cooldown);
+    chip = "SYNC FAILED";
+    text = retry_footer_text(now, clock_valid, retry_at, cooldown);
   } else if (usage_sync.fetch_failed) {
-    view.footer_chip = "ALLOWANCE";
-    view.footer_text = retry_footer_text(
+    chip = "ALLOWANCE";
+    text = retry_footer_text(
         now, clock_valid, usage_sync.retry_at_s, usage_sync.retry_cooldown_s);
   } else if (token_sync.fetch_failed) {
-    view.footer_chip = "TOKEN FAIL";
-    view.footer_text = retry_footer_text(
+    chip = "TOKEN FAIL";
+    text = retry_footer_text(
         now, clock_valid, token_sync.retry_at_s, token_sync.retry_cooldown_s);
   } else if (token_old_data) {
-    view.footer_chip = "OLD DATA";
-    view.footer_text = token.required_source_collected_at == 0
+    chip = "OLD DATA";
+    text = token.required_source_collected_at == 0
                            ? "M4 --:--"
                            : "M4 " + local_hhmm(token.required_source_collected_at);
-  } else if (all_allowance_stale) {
-    view.footer_chip = "OLD DATA";
-    view.footer_text = usage_sync.last_ok_s
+  } else if (allowance.footer_chip == "OLD DATA") {
+    chip = "OLD DATA";
+    text = usage_sync.last_ok_s
                            ? "checked " + local_hhmm(usage_sync.last_ok_s)
                            : "not synced yet";
   } else if (usage_sync.last_ok_s == 0 && token_sync.last_ok_s == 0) {
-    view.footer_text = "Not synced yet";
+    text = "Not synced yet";
   } else {
     const uint64_t conservative_ok =
         (usage_sync.last_ok_s > 0 && token_sync.last_ok_s > 0)
             ? std::min(usage_sync.last_ok_s, token_sync.last_ok_s)
             : std::max(usage_sync.last_ok_s, token_sync.last_ok_s);
-    view.footer_text = "Synced " + local_hhmm(conservative_ok);
+    text = "Synced " + local_hhmm(conservative_ok);
   }
-
-  return view;
 }
 
 std::string encode_station_view(const StationView& view) {

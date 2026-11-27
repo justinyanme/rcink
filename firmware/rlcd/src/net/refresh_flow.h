@@ -36,10 +36,17 @@ struct RefreshCompletion {
   uint64_t completed_at_s = 0;
 };
 
+struct RefreshFeeds {
+  bool busy;
+  bool token_pending;
+  TokenWork token_work;
+};
+
 void refresh_flow_init();
 bool refresh_start(uint32_t previous_fingerprint, bool token_due = false);
-bool refresh_token_pending();
-bool refresh_busy();
+RefreshFeeds refresh_feeds();
+inline bool refresh_token_pending() { return refresh_feeds().token_pending; }
+inline bool refresh_busy() { return refresh_feeds().busy; }
 bool refresh_take(RefreshCompletion& out);
 
 inline bool fetch_succeeded(FetchResult result) {

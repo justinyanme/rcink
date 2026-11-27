@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 
 #include "power/runtime_policy.h"
@@ -52,25 +53,30 @@ inline uint64_t token_retry_on_host_entry(uint64_t retry_at_s, bool token_failed
 // Token rides in Allowance worker runs, but has its own success clock. Battery
 // modes fetch no more often than hourly; a failed attempt becomes eligible at
 // the shared retry gate regardless of the last successful Token response.
-inline bool token_refresh_due(uint64_t now_s, uint64_t last_ok_s,
-                              uint64_t retry_at_s, RuntimeMode mode,
-                              bool last_attempt_failed) {
-  if (last_attempt_failed) return now_s >= retry_at_s;
-  if (last_ok_s == 0) return true;
-  if (now_s < last_ok_s) return false;
+inline uint64_t token_refresh_at(uint64_t last_ok_s, uint64_t retry_at_s,
+                                 RuntimeMode mode, bool last_attempt_failed) {
+  if (last_attempt_failed) return retry_at_s;
+  if (last_ok_s == 0) return 0;
   const uint32_t interval = mode == RuntimeMode::Host
       ? kTokenHostRefreshIntervalSec : kTokenBatteryRefreshIntervalSec;
-  return now_s - last_ok_s >= interval;
+  return last_ok_s + interval;
+}
+
+inline bool token_refresh_due(uint64_t now_s, uint64_t last_ok_s, uint64_t retry_at_s,
+                              RuntimeMode mode, bool last_attempt_failed) {
+  return now_s >= token_refresh_at(last_ok_s, retry_at_s, mode, last_attempt_failed);
+}
+
+inline uint64_t network_refresh_at(const NetworkRefreshQuery& query, uint64_t early_at = 0) {
+  if (query.last_attempt_failed || query.cache_empty || !query.clock_valid || !query.last_fetch_s)
+    return query.retry_not_before_s;
+  uint64_t due = query.last_fetch_s + query.interval_sec;
+  if (early_at) due = std::min(due, early_at);
+  return std::max(query.retry_not_before_s, due);
 }
 
 inline bool network_refresh_due(const NetworkRefreshQuery& query) {
-  if (query.now_s < query.retry_not_before_s) return false;
-  // The failure gate can be shorter than the poll interval (powered usage host),
-  // and the screen promises a retry at that gate.
-  if (query.last_attempt_failed) return true;
-  return query.cache_empty || !query.clock_valid || query.last_fetch_s == 0 ||
-         (query.now_s >= query.last_fetch_s &&
-          query.now_s - query.last_fetch_s >= query.interval_sec);
+  return query.now_s >= network_refresh_at(query);
 }
 
 }  // namespace rcpaper

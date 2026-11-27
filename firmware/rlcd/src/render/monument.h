@@ -81,6 +81,14 @@ struct MonumentSnapshot {
   std::vector<uint64_t> days = std::vector<uint64_t>(kMonumentDays, 0);
 };
 
+enum class TokenWork : uint8_t { None, Queued, InFlight };
+
+struct MonumentRetry {
+  bool failed = false;
+  TokenWork work = TokenWork::None;  // Token and annual history share one worker
+  uint64_t at_s = 0;                // known start of a future eligible worker
+};
+
 bool decode_monument(const std::string& json, MonumentSnapshot& out,
                      std::string* reason = nullptr);
 std::string encode_monument(const MonumentSnapshot& snapshot);

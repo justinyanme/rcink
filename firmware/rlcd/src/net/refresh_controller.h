@@ -26,6 +26,7 @@ struct RefreshAppState {
   uint64_t& token_last_ok_s;
   uint64_t& token_retry_at_s;
   MonumentSnapshot& monument;
+  bool& monument_fetch_failed;
   HeatmapWindow heatmap_window;
   HeatmapWindow station_heatmap_window;
   LinkFailure& link_failure;
@@ -36,7 +37,8 @@ struct RefreshAppState {
   FetchDiag& token_last_err;
 };
 
-bool refresh_due_now(const RefreshAppState& app);
+bool refresh_due_now(const RefreshAppState& app, uint64_t now);
+MonumentRetry monument_retry(const RefreshAppState& app, uint64_t now);
 bool start_network_refresh(RefreshAppState app, bool force_token = false);
 bool finish_network_refresh(RefreshAppState app, bool& usage_page_changed,
                             bool& token_succeeded, bool& allowance_page_changed,
